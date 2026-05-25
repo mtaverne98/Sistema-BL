@@ -406,17 +406,13 @@ export default function MainLayout() {
       <aside className="flex-shrink-0 flex flex-col bg-white border-r border-gray-100" style={{ width: 224 }}>
 
         {/* Logo */}
-        <div className="px-4 pt-5 pb-4 border-b border-gray-100">
-          <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-lg flex items-center justify-center text-white text-xs font-bold tracking-tight flex-shrink-0"
-              style={{ backgroundColor: '#1a2e4a' }}>
-              BL
-            </div>
-            <div className="leading-tight">
-              <p className="text-[13px] font-semibold text-gray-900 tracking-tight">Bianchi Leiva</p>
-              <p className="text-[10px] text-gray-400 uppercase tracking-widest">Abogadas</p>
-            </div>
-          </div>
+        <div className="px-4 pt-4 pb-3 border-b border-gray-100">
+          <img
+            src="/logo.jpg"
+            alt="Bianchi Leiva Abogadas"
+            className="w-full object-contain"
+            style={{ maxHeight: 56 }}
+          />
         </div>
 
         {/* CMD+K search bar */}

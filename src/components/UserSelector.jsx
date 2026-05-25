@@ -14,17 +14,13 @@ export default function UserSelector() {
     <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50">
 
       {/* Logo */}
-      <div className="flex items-center gap-3 mb-10">
-        <div
-          className="w-10 h-10 rounded-xl flex items-center justify-center text-white text-sm font-bold tracking-tight"
-          style={{ backgroundColor: '#1a2e4a' }}
-        >
-          BL
-        </div>
-        <div className="leading-tight">
-          <p className="text-[16px] font-semibold text-gray-900 tracking-tight">Bianchi Leiva</p>
-          <p className="text-[11px] text-gray-400 uppercase tracking-widest">Abogadas</p>
-        </div>
+      <div className="mb-10">
+        <img
+          src="/logo.jpg"
+          alt="Bianchi Leiva Abogadas"
+          className="object-contain"
+          style={{ height: 72 }}
+        />
       </div>
 
       {/* Card */}
@@ -67,7 +63,7 @@ export default function UserSelector() {
         </div>
       </div>
 
-      <p className="mt-6 text-[11px] text-gray-300">Sistema de gestión interno · Bianchi Leiva</p>
+      <p className="mt-6 text-[11px] text-gray-300">Sistema de gestión interno</p>
     </div>
   )
 }
