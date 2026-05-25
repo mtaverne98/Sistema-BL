@@ -1,5 +1,7 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { SistemaProvider } from './context/SistemaContext'
+import { UserProvider, useUser } from './context/UserContext'
+import UserSelector from './components/UserSelector'
 import MainLayout from './layouts/MainLayout'
 import Dashboard from './pages/Dashboard'
 import Clientes from './pages/Clientes'
@@ -18,31 +20,43 @@ import Gastos from './pages/Gastos'
 import Apuntes from './pages/Apuntes'
 import Configuracion from './pages/Configuracion'
 
-export default function App() {
+function AppInner() {
+  const { user } = useUser()
+
+  if (!user) return <UserSelector />
+
   return (
     <SistemaProvider>
-    <BrowserRouter>
-      <Routes>
-        <Route element={<MainLayout />}>
-          <Route index              element={<Dashboard />} />
-          <Route path="clientes"   element={<Clientes />} />
-          <Route path="causas"     element={<Causas />} />
-          <Route path="prospectos" element={<Prospectos />} />
-          <Route path="audiencias" element={<Audiencias />} />
-          <Route path="calendario" element={<Calendario />} />
-          <Route path="plazos"     element={<Plazos />} />
-          <Route path="pjud"       element={<PJUD />} />
-          <Route path="siau"       element={<SIAU />} />
-          <Route path="revision"   element={<RevisionCausas />} />
-          <Route path="tareas"     element={<Tareas />} />
-          <Route path="reuniones"  element={<Reuniones />} />
-          <Route path="documentos" element={<Documentos />} />
-          <Route path="gastos"     element={<Gastos />} />
-          <Route path="apuntes"    element={<Apuntes />} />
-          <Route path="configuracion" element={<Configuracion />} />
-        </Route>
-      </Routes>
-    </BrowserRouter>
+      <BrowserRouter>
+        <Routes>
+          <Route element={<MainLayout />}>
+            <Route index                 element={<Dashboard />} />
+            <Route path="clientes"       element={<Clientes />} />
+            <Route path="causas"         element={<Causas />} />
+            <Route path="prospectos"     element={<Prospectos />} />
+            <Route path="audiencias"     element={<Audiencias />} />
+            <Route path="calendario"     element={<Calendario />} />
+            <Route path="plazos"         element={<Plazos />} />
+            <Route path="pjud"           element={<PJUD />} />
+            <Route path="siau"           element={<SIAU />} />
+            <Route path="revision"       element={<RevisionCausas />} />
+            <Route path="tareas"         element={<Tareas />} />
+            <Route path="reuniones"      element={<Reuniones />} />
+            <Route path="documentos"     element={<Documentos />} />
+            <Route path="gastos"         element={<Gastos />} />
+            <Route path="apuntes"        element={<Apuntes />} />
+            <Route path="configuracion"  element={<Configuracion />} />
+          </Route>
+        </Routes>
+      </BrowserRouter>
     </SistemaProvider>
+  )
+}
+
+export default function App() {
+  return (
+    <UserProvider>
+      <AppInner />
+    </UserProvider>
   )
 }

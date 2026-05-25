@@ -13,6 +13,7 @@ import {
 import { useSistema } from '../context/SistemaContext'
 import { CAUSAS }    from '../pages/Causas'
 import { CLIENTES }  from '../pages/Clientes'
+import { useUser }   from '../context/UserContext'
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 const TODAY_LAYOUT = new Date().toISOString().slice(0, 10)
@@ -53,7 +54,7 @@ const sections = [
   { label: 'Notas',    items: [{ to: '/apuntes', icon: BookOpen, label: 'Agenda diaria' }] },
 ]
 
-const currentUser = { name: 'Macarena T.', initials: 'MT' }
+// currentUser ahora viene de UserContext
 
 // ── NavItem ───────────────────────────────────────────────────────────────────
 function NavItem({ to, icon: Icon, label, badge }) {
@@ -382,6 +383,7 @@ function GlobalCmdK({ open, onClose }) {
 // ── MainLayout ────────────────────────────────────────────────────────────────
 export default function MainLayout() {
   const { plazos } = useSistema()
+  const { user, setUser } = useUser()
   const [cmdOpen, setCmdOpen] = useState(false)
   const plazosAlerta = plazos.filter(p => !!getUrgenciaLayout(p)).length
 
@@ -456,14 +458,20 @@ export default function MainLayout() {
 
         {/* User */}
         <div className="px-2 pb-4 pt-2 border-t border-gray-100">
-          <div className="flex items-center gap-2.5 px-2.5 py-2 rounded-md hover:bg-gray-50 cursor-pointer group transition-colors">
+          <button
+            onClick={() => setUser(null)}
+            className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md hover:bg-gray-50 cursor-pointer group transition-colors"
+            title="Cambiar usuario"
+          >
             <div className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0"
-              style={{ backgroundColor: '#2570ba' }}>
-              {currentUser.initials}
+              style={{ backgroundColor: user?.color || '#2570ba' }}>
+              {user?.id || 'MT'}
             </div>
-            <span className="text-[13px] text-gray-600 flex-1 truncate">{currentUser.name}</span>
+            <span className="text-[13px] text-gray-600 flex-1 truncate text-left">
+              {user ? `${user.nombre} ${user.apellido}` : 'Macarena T.'}
+            </span>
             <LogOut size={13} className="text-gray-300 group-hover:text-gray-400 flex-shrink-0 transition-colors" />
-          </div>
+          </button>
         </div>
       </aside>
 

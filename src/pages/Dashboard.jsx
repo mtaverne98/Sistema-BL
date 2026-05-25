@@ -7,6 +7,7 @@ import {
   Receipt, ArrowRight, Wifi, WifiOff,
 } from 'lucide-react'
 import { supabase, verificarConexion } from '../lib/supabase'
+import { useUser } from '../context/UserContext'
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 const TODAY = new Date().toISOString().slice(0, 10)
@@ -242,7 +243,8 @@ export default function Dashboard() {
     return items.sort((a, b) => b.urg - a.urg || b.dias - a.dias).slice(0, 4)
   }, [siauRows])
 
-  const nombre   = 'Macarena'
+  const { user } = useUser()
+  const nombre   = user?.nombre || 'Macarena'
   const greeting = getGreeting()
   const hoy      = new Date().toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' })
 
