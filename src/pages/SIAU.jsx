@@ -274,19 +274,53 @@ function RegistroRow({ reg, index, onUpdate }) {
 
 // ── ClienteCard — un cliente con resumen de causas ─────────────────────────────
 function ClienteCard({ clienteNombre, registros, allCausas, onSelect }) {
-  // Agrupar registros por causa para mostrar chips
+  // Agrupar registros por causa
+  // Fuente primaria: allCausas filtrado por cliente → garantiza que todas las causas aparezcan
   const porCausa = useMemo(() => {
+    const causasCliente = allCausas.filter(c => c.cliente_nombre === clienteNombre)
+
+    // Asignar cada registro a una causa: primero por causa_id, luego por causa_rit
+    const byId = {}
+    const sinCausa = []
+    registros.forEach(r => {
+      let asignadaId = r.causa_id || null
+      if (!asignadaId && r.causa_rit) {
+        const ci = causasCliente.find(c => c.rit === r.causa_rit)
+        if (ci) asignadaId = ci.id
+      }
+      if (asignadaId) {
+        if (!byId[asignadaId]) byId[asignadaId] = []
+        byId[asignadaId].push(r)
+      } else {
+        sinCausa.push(r)
+      }
+    })
+
+    if (causasCliente.length > 0) {
+      const result = causasCliente.map(ci => ({
+        causa_rit: ci.rit || null,
+        materia:   ci.materia   || '',
+        fiscalia:  ci.fiscalia  || '',
+        registros: byId[ci.id] || [],
+      }))
+      if (sinCausa.length > 0) {
+        result.push({ causa_rit: null, materia: '', fiscalia: '', registros: sinCausa })
+      }
+      return result.sort((a, b) => (a.causa_rit || '').localeCompare(b.causa_rit || ''))
+    }
+
+    // Fallback: agrupar por causa_rit desde registros
     const map = {}
     registros.forEach(r => {
       const key = r.causa_rit || 'sin_causa'
       if (!map[key]) {
         const ci = allCausas.find(c => c.rit === r.causa_rit)
-        map[key] = { causa_rit: r.causa_rit, materia: ci?.materia || '', fiscalia: ci?.fiscalia || '', registros: [] }
+        map[key] = { causa_rit: r.causa_rit || null, materia: ci?.materia || '', fiscalia: ci?.fiscalia || '', registros: [] }
       }
       map[key].registros.push(r)
     })
     return Object.values(map).sort((a, b) => (a.causa_rit || '').localeCompare(b.causa_rit || ''))
-  }, [registros, allCausas])
+  }, [registros, allCausas, clienteNombre])
 
   const urgentes   = registros.filter(r => r.estado === 'Urgente').length
   const pendientes = registros.filter(r => r.estado === 'Pendiente' || r.estado === 'Sin respuesta' || r.estado === 'Urgente').length
@@ -405,11 +439,16 @@ function CausaBlockSIAU({ causaRit, causaInfo, registros, defaultOpen, onUpdate,
           ) : (
             <span className="text-[11px] text-gray-400">Sin causa vinculada</span>
           )}
+          {causaInfo?.ruc && (
+            <span className="font-mono text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded whitespace-nowrap">
+              RUC {causaInfo.ruc}
+            </span>
+          )}
           {causaInfo?.materia && (
             <span className="text-[13px] font-semibold text-gray-800 truncate">{causaInfo.materia}</span>
           )}
           {causaInfo?.fiscalia && (
-            <span className="text-[11px] text-gray-400">· Fiscalía {causaInfo.fiscalia}</span>
+            <span className="text-[11px] text-gray-400 whitespace-nowrap">· Fiscalía {causaInfo.fiscalia}</span>
           )}
         </div>
         <div className="flex items-center gap-1.5 flex-shrink-0">
@@ -533,23 +572,52 @@ function CausaBlockSIAU({ causaRit, causaInfo, registros, defaultOpen, onUpdate,
 
 // ── ClienteDrawer — panel completo de un cliente con todas sus causas ────────
 function ClienteDrawer({ clienteNombre, registros, onClose, onUpdate, onAdd, allCausas }) {
-  // Agrupar registros por causa_rit
+  // Agrupar registros por causa
+  // Fuente primaria: allCausas filtrado por cliente → muestra TODAS las causas, incluso las sin solicitudes
   const porCausa = useMemo(() => {
+    const causasCliente = allCausas.filter(c => c.cliente_nombre === clienteNombre)
+
+    // Asignar cada registro a una causa: primero por causa_id, luego por causa_rit
+    const byId = {}
+    const sinCausa = []
+    registros.forEach(r => {
+      let asignadaId = r.causa_id || null
+      if (!asignadaId && r.causa_rit) {
+        const ci = causasCliente.find(c => c.rit === r.causa_rit)
+        if (ci) asignadaId = ci.id
+      }
+      if (asignadaId) {
+        if (!byId[asignadaId]) byId[asignadaId] = []
+        byId[asignadaId].push(r)
+      } else {
+        sinCausa.push(r)
+      }
+    })
+
+    if (causasCliente.length > 0) {
+      const result = causasCliente.map(ci => ({
+        causa_rit: ci.rit || null,
+        causaInfo: ci,
+        registros: byId[ci.id] || [],
+      }))
+      if (sinCausa.length > 0) {
+        result.push({ causa_rit: null, causaInfo: null, registros: sinCausa })
+      }
+      return result.sort((a, b) => (a.causa_rit || '').localeCompare(b.causa_rit || ''))
+    }
+
+    // Fallback: agrupar por causa_rit desde registros
     const map = {}
     registros.forEach(r => {
       const key = r.causa_rit || 'sin_causa'
       if (!map[key]) {
         const ci = allCausas.find(c => c.rit === r.causa_rit)
-        map[key] = {
-          causa_rit: r.causa_rit || null,
-          causaInfo: ci || null,
-          registros: [],
-        }
+        map[key] = { causa_rit: r.causa_rit || null, causaInfo: ci || null, registros: [] }
       }
       map[key].registros.push(r)
     })
     return Object.values(map).sort((a, b) => (a.causa_rit || '').localeCompare(b.causa_rit || ''))
-  }, [registros, allCausas])
+  }, [registros, allCausas, clienteNombre])
 
   const counts = {
     total:       registros.length,
@@ -663,7 +731,7 @@ export default function SIAU() {
   const fetchCausas = useCallback(async () => {
     const { data } = await supabase
       .from('causas')
-      .select('id, rit, cliente_nombre, cliente_id')
+      .select('id, rit, ruc, materia, fiscalia, tribunal, cliente_nombre, cliente_id')
       .order('rit')
     setAllCausas(data || [])
   }, [])
