@@ -1,9 +1,9 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import {
-  ChevronRight, Search, Plus, ExternalLink,
+  ChevronRight, ChevronDown, Search, Plus, ExternalLink,
   FileText, Clock, CheckCircle2,
   X, Check, Edit2, Gavel, Loader2, AlertCircle,
-  MinusCircle,
+  MinusCircle, Scale,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 
@@ -272,8 +272,86 @@ function RegistroRow({ reg, index, onUpdate }) {
   )
 }
 
-// ── ClienteCard ────────────────────────────────────────────────────────────────
-function ClienteCard({ clienteNombre, registros, onSelect }) {
+// ── ClienteCard — un cliente con resumen de causas ─────────────────────────────
+function ClienteCard({ clienteNombre, registros, allCausas, onSelect }) {
+  // Agrupar registros por causa para mostrar chips
+  const porCausa = useMemo(() => {
+    const map = {}
+    registros.forEach(r => {
+      const key = r.causa_rit || 'sin_causa'
+      if (!map[key]) {
+        const ci = allCausas.find(c => c.rit === r.causa_rit)
+        map[key] = { causa_rit: r.causa_rit, materia: ci?.materia || '', fiscalia: ci?.fiscalia || '', registros: [] }
+      }
+      map[key].registros.push(r)
+    })
+    return Object.values(map).sort((a, b) => (a.causa_rit || '').localeCompare(b.causa_rit || ''))
+  }, [registros, allCausas])
+
+  const urgentes   = registros.filter(r => r.estado === 'Urgente').length
+  const pendientes = registros.filter(r => r.estado === 'Pendiente' || r.estado === 'Sin respuesta' || r.estado === 'Urgente').length
+  const respondidas = registros.filter(r => r.estado === 'Respondida').length
+
+  return (
+    <div
+      onClick={() => onSelect(clienteNombre)}
+      className="border border-gray-100 rounded-xl px-4 py-4 cursor-pointer hover:shadow-sm hover:border-gray-200 transition-all group bg-white"
+    >
+      <div className="flex items-start gap-3">
+        <ChevronRight size={14} className="flex-shrink-0 mt-0.5 text-gray-300 group-hover:text-gray-500 transition-colors" />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap mb-3">
+            <p className="text-[14px] font-semibold text-gray-900 leading-none">{clienteNombre}</p>
+            {urgentes > 0 && (
+              <span className="flex items-center gap-1 text-[10px] font-bold text-red-600 bg-red-50 px-1.5 py-0.5 rounded-full animate-pulse">
+                <span className="w-1.5 h-1.5 rounded-full bg-red-500" /> Urgente
+              </span>
+            )}
+          </div>
+          {/* Causa chips */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {porCausa.map(g => {
+              const hasUrg  = g.registros.some(r => r.estado === 'Urgente')
+              const hasPend = g.registros.some(r => r.estado === 'Pendiente' || r.estado === 'Sin respuesta')
+              return (
+                <span key={g.causa_rit || 'sin'}
+                  className="inline-flex items-center gap-2 text-[11px] px-2.5 py-1.5 rounded-lg bg-gray-50 border border-gray-100 text-gray-700"
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                    hasUrg ? 'bg-red-400' : hasPend ? 'bg-amber-400' : 'bg-emerald-400'
+                  }`} />
+                  {g.causa_rit
+                    ? <span className="font-mono text-[10px] text-violet-700 font-semibold">{g.causa_rit}</span>
+                    : <span className="text-gray-400 text-[10px]">sin RIT</span>}
+                  {g.materia && (
+                    <span className="text-gray-500 text-[10px] max-w-[140px] truncate">· {g.materia}</span>
+                  )}
+                  <span className="text-[10px] text-gray-400 font-medium">{g.registros.length} sol.</span>
+                </span>
+              )
+            })}
+          </div>
+        </div>
+        <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
+          <span className="text-[10px] text-gray-400 border border-gray-100 px-1.5 py-0.5 rounded-full">
+            {porCausa.length} causa{porCausa.length !== 1 ? 's' : ''}
+          </span>
+          {urgentes > 0 && <span className="text-[10px] font-bold text-white bg-red-500 px-1.5 py-0.5 rounded-full">{urgentes} urg.</span>}
+          {pendientes > 0 && <span className="text-[10px] font-medium text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full">{pendientes} pend.</span>}
+          {respondidas > 0 && <span className="text-[10px] font-medium text-green-600 bg-green-50 px-1.5 py-0.5 rounded-full">{respondidas} resp.</span>}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── CausaBlockSIAU — bloque de una causa dentro del drawer ────────────────────
+function CausaBlockSIAU({ causaRit, causaInfo, registros, defaultOpen, onUpdate, onAdd, clienteNombre, allCausas, onAddRegistro }) {
+  const [open,     setOpen]     = useState(defaultOpen)
+  const [showForm, setShowForm] = useState(false)
+  const [form,     setForm]     = useState({ fecha: TODAY, folio: '', solicitud: '', respuesta: '', documentos: '', estado: 'Pendiente', notas: '' })
+  const [saving,   setSaving]   = useState(false)
+
   const counts = {
     total:       registros.length,
     pendientes:  registros.filter(r => r.estado === 'Pendiente' || r.estado === 'Sin respuesta' || r.estado === 'Urgente').length,
@@ -281,52 +359,17 @@ function ClienteCard({ clienteNombre, registros, onSelect }) {
     urgentes:    registros.filter(r => r.estado === 'Urgente').length,
   }
 
-  return (
-    <div
-      onClick={() => onSelect(clienteNombre)}
-      className="border border-gray-100 rounded-xl px-4 py-3.5 cursor-pointer hover:shadow-sm hover:border-gray-200 transition-all group bg-white"
-    >
-      <div className="flex items-center gap-3">
-        <ChevronRight size={14} className="flex-shrink-0 text-gray-300 group-hover:text-gray-500 transition-colors" />
-        <div className="flex-1 min-w-0">
-          <p className="text-[14px] font-semibold text-gray-900 leading-none">{clienteNombre}</p>
-          <p className="text-[11px] text-gray-400 mt-0.5">{counts.total} {counts.total === 1 ? 'solicitud' : 'solicitudes'}</p>
-        </div>
-        <div className="flex items-center gap-1.5 flex-shrink-0">
-          {counts.urgentes > 0 && <span className="text-[10px] font-bold text-white bg-red-500 px-1.5 py-0.5 rounded-full">{counts.urgentes} urg.</span>}
-          {counts.pendientes > 0 && <span className="text-[10px] font-medium text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full">{counts.pendientes} pend.</span>}
-          {counts.respondidas > 0 && <span className="text-[10px] font-medium text-green-600 bg-green-50 px-1.5 py-0.5 rounded-full">{counts.respondidas} resp.</span>}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ── ClienteDrawer ──────────────────────────────────────────────────────────────
-function ClienteDrawer({ clienteNombre, registros, onClose, onUpdate, onAdd, allCausas }) {
-  const [showForm, setShowForm] = useState(false)
-  const [form,     setForm]     = useState({ fecha: TODAY, folio: '', solicitud: '', respuesta: '', documentos: '', causa_rit: '', estado: 'Pendiente', notas: '' })
-  const [saving,   setSaving]   = useState(false)
-
-  const causasCliente = allCausas.filter(c => c.cliente_nombre === clienteNombre)
-
-  const counts = {
-    total:       registros.length,
-    pendientes:  registros.filter(r => r.estado === 'Pendiente' || r.estado === 'Sin respuesta' || r.estado === 'Urgente').length,
-    respondidas: registros.filter(r => r.estado === 'Respondida').length,
-  }
-
   const handleAdd = async () => {
     if (!form.folio.trim() || !form.fecha) return
     setSaving(true)
-    const causa = allCausas.find(c => c.rit === form.causa_rit)
+    const causa = allCausas.find(c => c.rit === causaRit)
     const payload = {
       fecha:          form.fecha,
       folio:          form.folio.trim(),
       solicitud:      form.solicitud.trim() || null,
       respuesta:      form.respuesta.trim() || null,
       documentos:     form.documentos.trim() || null,
-      causa_rit:      form.causa_rit || null,
+      causa_rit:      causaRit || null,
       estado:         form.estado,
       notas:          form.notas || null,
       cliente_nombre: clienteNombre,
@@ -337,99 +380,95 @@ function ClienteDrawer({ clienteNombre, registros, onClose, onUpdate, onAdd, all
     if (error) {
       alert('Error al guardar: ' + error.message)
     } else {
-      onAdd(mapRow(data))
-      setForm({ fecha: TODAY, folio: '', solicitud: '', respuesta: '', documentos: '', causa_rit: '', estado: 'Pendiente', notas: '' })
+      onAddRegistro(mapRow(data))
+      setForm({ fecha: TODAY, folio: '', solicitud: '', respuesta: '', documentos: '', estado: 'Pendiente', notas: '' })
       setShowForm(false)
     }
     setSaving(false)
   }
 
   return (
-    <div className="fixed inset-0 z-[100] flex">
-      {/* Backdrop */}
-      <div className="w-[18%] bg-black/25 backdrop-blur-[2px] cursor-pointer" onClick={onClose} />
-
-      {/* Panel */}
-      <div className="flex-1 bg-white flex flex-col shadow-2xl border-l border-gray-100 overflow-hidden">
-
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 flex-shrink-0">
-          <div>
-            <h2 className="text-[17px] font-bold text-gray-900">{clienteNombre}</h2>
-            <div className="flex items-center gap-3 mt-1">
-              <span className="text-[11px] text-gray-400">{counts.total} solicitudes SIAU</span>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <a href="https://siau.minjusticia.gob.cl/" target="_blank" rel="noopener noreferrer"
-              className="flex items-center gap-1.5 text-[12px] font-medium text-[#1a2e4a] border border-[#1a2e4a]/20 hover:border-[#1a2e4a]/40 hover:bg-[#1a2e4a]/5 px-3 py-1.5 rounded-lg transition-colors">
-              <Gavel size={12} /> Abrir SIAU <ExternalLink size={10} className="opacity-60" />
-            </a>
-            <button onClick={onClose} className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
-              <X size={16} />
-            </button>
-          </div>
-        </div>
-
-        {/* Mini stats */}
-        <div className="flex items-center gap-5 px-6 py-2.5 bg-gray-50/50 border-b border-gray-100 flex-shrink-0">
-          <div className="flex items-center gap-1.5">
-            <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Total</span>
-            <span className="text-[14px] font-bold text-gray-800 tabular-nums">{counts.total}</span>
-          </div>
-          <span className="text-gray-200">·</span>
-          <div className="flex items-center gap-1.5">
-            <span className="text-[10px] font-semibold text-green-600 uppercase tracking-wider">Respondidas</span>
-            <span className="text-[14px] font-bold text-green-700 tabular-nums">{counts.respondidas}</span>
-          </div>
-          <span className="text-gray-200">·</span>
-          <div className="flex items-center gap-1.5">
-            <span className="text-[10px] font-semibold text-amber-600 uppercase tracking-wider">Pendientes</span>
-            <span className="text-[14px] font-bold text-amber-700 tabular-nums">{counts.pendientes}</span>
-          </div>
-        </div>
-
-        {/* Table header */}
-        <div
-          className="grid px-6 py-2 bg-gray-50/60 border-b border-gray-100 flex-shrink-0 gap-2"
-          style={{ gridTemplateColumns: '80px 110px 1fr 1fr 100px 1fr 28px' }}
-        >
-          {['Fecha','Folio','Solicitud','Respuesta','Documentos','Notas',''].map((h, i) => (
-            <p key={i} className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider leading-none">{h}</p>
-          ))}
-        </div>
-
-        {/* Registros */}
-        <div className="flex-1 overflow-y-auto">
-          {registros.length === 0 ? (
-            <div className="flex items-center justify-center py-16 text-gray-400">
-              <p className="text-[13px]">Sin registros SIAU</p>
-            </div>
+    <div className="border border-gray-100 rounded-xl overflow-hidden bg-white">
+      {/* Header de causa */}
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between px-5 py-3.5 bg-gray-50/70 hover:bg-gray-50 transition-colors text-left gap-3"
+      >
+        <div className="flex items-center gap-2.5 flex-wrap flex-1 min-w-0">
+          {open
+            ? <ChevronDown size={13} className="text-gray-400 flex-shrink-0" />
+            : <ChevronRight size={13} className="text-gray-400 flex-shrink-0" />}
+          {causaRit ? (
+            <span className="font-mono text-[11px] bg-violet-100 text-violet-700 px-2 py-0.5 rounded font-semibold whitespace-nowrap">
+              RIT {causaRit}
+            </span>
           ) : (
-            registros.map((reg, i) => (
-              <RegistroRow key={reg.id} reg={reg} index={i} onUpdate={onUpdate} />
-            ))
+            <span className="text-[11px] text-gray-400">Sin causa vinculada</span>
+          )}
+          {causaInfo?.materia && (
+            <span className="text-[13px] font-semibold text-gray-800 truncate">{causaInfo.materia}</span>
+          )}
+          {causaInfo?.fiscalia && (
+            <span className="text-[11px] text-gray-400">· Fiscalía {causaInfo.fiscalia}</span>
           )}
         </div>
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          {counts.urgentes > 0 && (
+            <span className="text-[10px] font-bold text-white bg-red-500 px-1.5 py-0.5 rounded-full">{counts.urgentes} urg.</span>
+          )}
+          {counts.pendientes > 0 && (
+            <span className="text-[10px] font-medium text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full">{counts.pendientes} pend.</span>
+          )}
+          <span className="text-[11px] text-gray-400">{counts.total} sol.</span>
+        </div>
+      </button>
 
-        {/* Footer */}
-        <div className="px-6 py-3 border-t border-gray-100 flex-shrink-0 bg-gray-50/30">
-          {!showForm ? (
-            <div className="flex items-center justify-between">
-              <p className="text-[11px] text-gray-400">{counts.total} {counts.total === 1 ? 'solicitud' : 'solicitudes'}</p>
-              <button
-                onClick={() => setShowForm(true)}
-                className="flex items-center gap-1.5 text-[12px] font-medium text-[#1a2e4a] border border-[#1a2e4a]/20 hover:border-[#1a2e4a]/40 hover:bg-[#1a2e4a]/5 px-3 py-1.5 rounded-lg transition-colors"
-              >
-                <Plus size={13} /> Nueva solicitud SIAU
-              </button>
-            </div>
-          ) : (
-            <div className="space-y-3">
+      {open && (
+        <>
+          {/* Cabecera de tabla */}
+          <div
+            className="grid px-5 py-2 bg-gray-50/40 border-t border-b border-gray-100 gap-2"
+            style={{ gridTemplateColumns: '80px 100px 1fr 1fr 90px 1fr 28px' }}
+          >
+            {['Fecha','Folio','Solicitud','Respuesta','Documentos','Notas',''].map((h, i) => (
+              <p key={i} className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider leading-none">{h}</p>
+            ))}
+          </div>
+
+          {/* Registros */}
+          <div>
+            {registros.length === 0 ? (
+              <div className="flex items-center justify-center py-8 text-gray-400">
+                <p className="text-[12px]">Sin solicitudes SIAU para esta causa</p>
+              </div>
+            ) : (
+              registros.map((reg, i) => (
+                <RegistroRow key={reg.id} reg={reg} index={i} onUpdate={onUpdate} />
+              ))
+            )}
+          </div>
+
+          {/* Footer */}
+          <div className="px-5 py-2.5 border-t border-gray-100 bg-gray-50/30 flex items-center justify-between">
+            <p className="text-[11px] text-gray-400">
+              {counts.total} {counts.total === 1 ? 'solicitud' : 'solicitudes'} · {counts.respondidas} respondidas
+            </p>
+            <button
+              onClick={() => setShowForm(f => !f)}
+              className="flex items-center gap-1.5 text-[12px] font-medium text-[#1a2e4a] border border-[#1a2e4a]/20 hover:border-[#1a2e4a]/40 hover:bg-[#1a2e4a]/5 px-3 py-1.5 rounded-lg transition-colors"
+            >
+              <Plus size={12} /> Nueva solicitud
+            </button>
+          </div>
+
+          {/* Form nueva solicitud */}
+          {showForm && (
+            <div className="px-5 py-4 border-t border-gray-100 bg-gray-50/20 space-y-3">
               <p className="text-[12px] font-semibold text-gray-700 flex items-center gap-1.5">
-                <Plus size={11} className="text-[#1a2e4a]" /> Nueva solicitud — {clienteNombre.split(' ')[0]}
+                <Plus size={11} className="text-[#1a2e4a]" /> Nueva solicitud
+                {causaRit && <span className="font-mono text-[10px] text-violet-600">— {causaRit}</span>}
               </p>
-              <div className="grid grid-cols-4 gap-3">
+              <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Fecha *</label>
                   <input type="date" value={form.fecha}
@@ -442,14 +481,6 @@ function ClienteDrawer({ clienteNombre, registros, onClose, onUpdate, onAdd, all
                     onChange={e => setForm(f => ({ ...f, folio: e.target.value }))}
                     placeholder="Ej: SIAU-2026-001"
                     className="w-full text-[12px] font-mono border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white focus:outline-none focus:border-blue-400" />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Causa (RIT)</label>
-                  <select value={form.causa_rit} onChange={e => setForm(f => ({ ...f, causa_rit: e.target.value }))}
-                    className="w-full text-[12px] border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white focus:outline-none focus:border-blue-400">
-                    <option value="">Sin causa</option>
-                    {causasCliente.map(c => <option key={c.id} value={c.rit}>{c.rit}</option>)}
-                  </select>
                 </div>
                 <div>
                   <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Estado</label>
@@ -494,6 +525,109 @@ function ClienteDrawer({ clienteNombre, registros, onClose, onUpdate, onAdd, all
               </div>
             </div>
           )}
+        </>
+      )}
+    </div>
+  )
+}
+
+// ── ClienteDrawer — panel completo de un cliente con todas sus causas ────────
+function ClienteDrawer({ clienteNombre, registros, onClose, onUpdate, onAdd, allCausas }) {
+  // Agrupar registros por causa_rit
+  const porCausa = useMemo(() => {
+    const map = {}
+    registros.forEach(r => {
+      const key = r.causa_rit || 'sin_causa'
+      if (!map[key]) {
+        const ci = allCausas.find(c => c.rit === r.causa_rit)
+        map[key] = {
+          causa_rit: r.causa_rit || null,
+          causaInfo: ci || null,
+          registros: [],
+        }
+      }
+      map[key].registros.push(r)
+    })
+    return Object.values(map).sort((a, b) => (a.causa_rit || '').localeCompare(b.causa_rit || ''))
+  }, [registros, allCausas])
+
+  const counts = {
+    total:       registros.length,
+    pendientes:  registros.filter(r => r.estado === 'Pendiente' || r.estado === 'Sin respuesta' || r.estado === 'Urgente').length,
+    respondidas: registros.filter(r => r.estado === 'Respondida').length,
+    urgentes:    registros.filter(r => r.estado === 'Urgente').length,
+  }
+
+  return (
+    <div className="fixed inset-0 z-[100] flex">
+      {/* Backdrop */}
+      <div className="w-[8%] bg-black/25 backdrop-blur-[2px] cursor-pointer" onClick={onClose} />
+
+      {/* Panel */}
+      <div className="flex-1 bg-[#f8f9fb] flex flex-col shadow-2xl border-l border-gray-100 overflow-hidden">
+
+        {/* Header */}
+        <div className="flex items-start justify-between px-6 py-4 border-b border-gray-100 bg-white flex-shrink-0">
+          <div>
+            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-0.5">SIAU — Fiscalía de Chile</p>
+            <h2 className="text-[18px] font-bold text-gray-900 leading-tight">{clienteNombre}</h2>
+            <p className="text-[12px] text-gray-400 mt-1">
+              {porCausa.length} causa{porCausa.length !== 1 ? 's' : ''} · {registros.length} solicitudes totales
+            </p>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <a href="https://www.siau.fiscaliadechile.cl/" target="_blank" rel="noopener noreferrer"
+              className="flex items-center gap-1.5 text-[12px] font-medium text-[#1a2e4a] border border-[#1a2e4a]/20 hover:border-[#1a2e4a]/40 hover:bg-[#1a2e4a]/5 px-3 py-1.5 rounded-lg transition-colors">
+              <Gavel size={12} /> Abrir SIAU <ExternalLink size={10} className="opacity-60" />
+            </a>
+            <button onClick={onClose} className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+
+        {/* Stats globales */}
+        <div className="flex items-center gap-5 px-6 py-2.5 bg-white border-b border-gray-100 flex-shrink-0">
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Total</span>
+            <span className="text-[14px] font-bold text-gray-800 tabular-nums">{counts.total}</span>
+          </div>
+          <span className="text-gray-200">·</span>
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] font-semibold text-green-600 uppercase tracking-wider">Respondidas</span>
+            <span className="text-[14px] font-bold text-green-700 tabular-nums">{counts.respondidas}</span>
+          </div>
+          <span className="text-gray-200">·</span>
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] font-semibold text-amber-600 uppercase tracking-wider">Pendientes</span>
+            <span className="text-[14px] font-bold text-amber-700 tabular-nums">{counts.pendientes}</span>
+          </div>
+          {counts.urgentes > 0 && (
+            <>
+              <span className="text-gray-200">·</span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-semibold text-red-600 uppercase tracking-wider">Urgentes</span>
+                <span className="text-[14px] font-bold text-red-700 tabular-nums">{counts.urgentes}</span>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Bloques por causa */}
+        <div className="flex-1 overflow-y-auto p-5 space-y-3">
+          {porCausa.map((grupo, i) => (
+            <CausaBlockSIAU
+              key={grupo.causa_rit || 'sin'}
+              causaRit={grupo.causa_rit}
+              causaInfo={grupo.causaInfo}
+              registros={grupo.registros}
+              defaultOpen={porCausa.length === 1 || i === 0}
+              onUpdate={onUpdate}
+              onAddRegistro={onAdd}
+              clienteNombre={clienteNombre}
+              allCausas={allCausas}
+            />
+          ))}
         </div>
       </div>
     </div>
@@ -687,6 +821,7 @@ export default function SIAU() {
                   key={cliente}
                   clienteNombre={cliente}
                   registros={regs}
+                  allCausas={allCausas}
                   onSelect={setSelectedCliente}
                 />
               ))

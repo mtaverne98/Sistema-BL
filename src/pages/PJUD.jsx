@@ -715,83 +715,233 @@ function MovimientoRow({ causa, mov, index, onUpdateNota, onChangeEstado, addTar
   )
 }
 
-// ── ClienteCard ────────────────────────────────────────────────────────────────
-function ClienteCard({ causa, onSelect }) {
-  const movimientos = causa.movimientos
-  const counts = {
-    Respondida:      movimientos.filter(m => m.estado === 'Respondida').length,
-    Pendiente:       movimientos.filter(m => m.estado === 'Pendiente').length,
-    Urgente:         movimientos.filter(m => m.estado === 'Urgente').length,
-    'Sin respuesta': movimientos.filter(m => m.estado === 'Sin respuesta').length,
-  }
-  const hasUrgente = counts.Urgente > 0
-  const tipoCfg = TIPO_CAUSA_COLOR[causa.tipo_causa] || TIPO_CAUSA_COLOR.Civil
+// ── ClienteCard — un cliente con todas sus causas ─────────────────────────────
+function ClienteCard({ clienteData, onSelect }) {
+  const { cliente, causas } = clienteData
+  const allMovs = causas.flatMap(c => c.movimientos)
+  const urgentes   = allMovs.filter(m => m.estado === 'Urgente').length
+  const pendientes = allMovs.filter(m => m.estado === 'Pendiente' || m.estado === 'Sin respuesta').length
 
   return (
     <div
-      onClick={() => onSelect(causa)}
-      className="border border-gray-100 rounded-xl px-4 py-3.5 cursor-pointer hover:shadow-sm hover:border-gray-200 transition-all group bg-white"
+      onClick={() => onSelect(clienteData)}
+      className="border border-gray-100 rounded-xl px-4 py-4 cursor-pointer hover:shadow-sm hover:border-gray-200 transition-all group bg-white"
     >
       <div className="flex items-start gap-3">
-        <ChevronRight size={14} className="flex-shrink-0 mt-1 text-gray-300 group-hover:text-gray-500 transition-colors" />
+        <ChevronRight size={14} className="flex-shrink-0 mt-0.5 text-gray-300 group-hover:text-gray-500 transition-colors" />
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap mb-1">
-            <p className="text-[14px] font-semibold text-gray-900 leading-none">{causa.cliente}</p>
-            {hasUrgente && (
+          {/* Cliente name + urgente badge */}
+          <div className="flex items-center gap-2 flex-wrap mb-3">
+            <p className="text-[14px] font-semibold text-gray-900 leading-none">{cliente}</p>
+            {urgentes > 0 && (
               <span className="flex items-center gap-1 text-[10px] font-bold text-red-600 bg-red-50 px-1.5 py-0.5 rounded-full animate-pulse">
                 <span className="w-1.5 h-1.5 rounded-full bg-red-500" /> Urgente
               </span>
             )}
           </div>
+          {/* Causa chips — una por causa */}
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-full bg-violet-100 text-violet-700">RIT {causa.causa_rit}</span>
-            {causa.causa_ruc && <span className="inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-full bg-cyan-50 text-cyan-700">RUC {causa.causa_ruc}</span>}
-            <span className={`inline-flex items-center text-[10px] font-medium px-2 py-0.5 rounded-full ${tipoCfg.bg} ${tipoCfg.text}`}>{causa.tipo_causa}</span>
-            {causa.tribunal && <span className="text-[11px] text-gray-400">{causa.tribunal}</span>}
+            {causas.map(c => {
+              const hasUrg  = c.movimientos.some(m => m.estado === 'Urgente')
+              const hasPend = c.movimientos.some(m => m.estado === 'Pendiente' || m.estado === 'Sin respuesta')
+              const tipoCfg = TIPO_CAUSA_COLOR[c.tipo_causa] || TIPO_CAUSA_COLOR.Civil
+              return (
+                <span key={c.id}
+                  className="inline-flex items-center gap-2 text-[11px] px-2.5 py-1.5 rounded-lg bg-gray-50 border border-gray-100 text-gray-700"
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                    hasUrg ? 'bg-red-400' : hasPend ? 'bg-amber-400' : 'bg-emerald-400'
+                  }`} />
+                  {c.causa_rit
+                    ? <span className="font-mono text-[10px] text-violet-700 font-semibold">{c.causa_rit}</span>
+                    : <span className="text-gray-400 text-[10px]">sin RIT</span>}
+                  {c.materia && (
+                    <span className="text-gray-500 text-[10px] max-w-[160px] truncate">· {c.materia}</span>
+                  )}
+                  <span className={`text-[9px] font-medium px-1.5 py-0.5 rounded ${tipoCfg.bg} ${tipoCfg.text}`}>
+                    {c.tipo_causa}
+                  </span>
+                  <span className="text-[10px] text-gray-400 font-medium">{c.movimientos.length} mov.</span>
+                </span>
+              )
+            })}
           </div>
         </div>
-        <div className="flex items-center gap-1.5 flex-shrink-0">
-          {counts.Urgente > 0 && <span className="text-[10px] font-bold text-white bg-red-500 px-1.5 py-0.5 rounded-full">{counts.Urgente} urg.</span>}
-          {counts.Pendiente > 0 && <span className="text-[10px] font-medium text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full">{counts.Pendiente} pend.</span>}
-          {counts['Sin respuesta'] > 0 && <span className="text-[10px] font-medium text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded-full">{counts['Sin respuesta']} s/r.</span>}
-          <span className="text-[11px] text-gray-400 ml-1">{movimientos.length} mov.</span>
+        {/* Right counters */}
+        <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
+          <span className="text-[10px] text-gray-400 border border-gray-100 px-1.5 py-0.5 rounded-full">
+            {causas.length} causa{causas.length !== 1 ? 's' : ''}
+          </span>
+          {urgentes > 0 && (
+            <span className="text-[10px] font-bold text-white bg-red-500 px-1.5 py-0.5 rounded-full">{urgentes} urg.</span>
+          )}
+          {pendientes > 0 && (
+            <span className="text-[10px] font-medium text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full">{pendientes} pend.</span>
+          )}
+          <span className="text-[11px] text-gray-400">· {allMovs.length} mov.</span>
         </div>
       </div>
     </div>
   )
 }
 
-// ── CausaDrawer ────────────────────────────────────────────────────────────────
-function CausaDrawer({ causa, onClose, onUpdate, onAddMovimiento, addTarea, addPlazo }) {
+// ── CausaSection — bloque de una causa dentro del drawer de cliente ──────────
+function CausaSection({ causa, defaultOpen, onUpdate, onAddMovimiento, addTarea, addPlazo }) {
+  const [open,     setOpen]     = useState(defaultOpen)
   const [showForm, setShowForm] = useState(false)
   const movimientos = causa.movimientos
+  const tipoCfg = TIPO_CAUSA_COLOR[causa.tipo_causa] || TIPO_CAUSA_COLOR.Civil
   const counts = {
+    total:       movimientos.length,
     respondidas: movimientos.filter(m => m.estado === 'Respondida').length,
     pendientes:  movimientos.filter(m => m.estado === 'Pendiente' || m.estado === 'Sin respuesta').length,
+    urgentes:    movimientos.filter(m => m.estado === 'Urgente').length,
     conAccion:   movimientos.filter(m => m.accion_requerida?.trim()).length,
+  }
+
+  return (
+    <div className="border border-gray-100 rounded-xl overflow-hidden bg-white">
+
+      {/* Sección header — clickable toggle */}
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between px-5 py-3.5 bg-gray-50/70 hover:bg-gray-50 transition-colors text-left gap-4"
+      >
+        <div className="flex items-center gap-2.5 flex-wrap flex-1 min-w-0">
+          {open
+            ? <ChevronDown size={13} className="text-gray-400 flex-shrink-0" />
+            : <ChevronRight size={13} className="text-gray-400 flex-shrink-0" />}
+          {causa.causa_rit && (
+            <span className="font-mono text-[11px] bg-violet-100 text-violet-700 px-2 py-0.5 rounded font-semibold whitespace-nowrap">
+              RIT {causa.causa_rit}
+            </span>
+          )}
+          {causa.causa_ruc && (
+            <span className="font-mono text-[10px] bg-cyan-50 text-cyan-700 px-1.5 py-0.5 rounded font-semibold whitespace-nowrap">
+              RUC {causa.causa_ruc}
+            </span>
+          )}
+          {causa.tipo_causa && (
+            <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded whitespace-nowrap ${tipoCfg.bg} ${tipoCfg.text}`}>
+              {causa.tipo_causa}
+            </span>
+          )}
+          {causa.materia && (
+            <span className="text-[13px] font-semibold text-gray-800 truncate">{causa.materia}</span>
+          )}
+          {causa.tribunal && (
+            <span className="text-[11px] text-gray-400 truncate">{causa.tribunal}</span>
+          )}
+        </div>
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          {counts.urgentes > 0 && (
+            <span className="text-[10px] font-bold text-white bg-red-500 px-1.5 py-0.5 rounded-full">{counts.urgentes} urg.</span>
+          )}
+          {counts.pendientes > 0 && (
+            <span className="text-[10px] font-medium text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full">{counts.pendientes} pend.</span>
+          )}
+          <span className="text-[11px] text-gray-400">{counts.total} mov.</span>
+        </div>
+      </button>
+
+      {open && (
+        <>
+          {/* Cabecera de tabla */}
+          <div
+            className="grid px-5 py-2 border-t border-b border-gray-100 bg-gray-50/40"
+            style={{ gridTemplateColumns: '68px 128px 72px 1fr 1fr 90px 72px' }}
+          >
+            {['Fecha','Folio','Presenta','Solicitud / Movimiento','Respuesta del tribunal','Docs / Notas',''].map((h, i) => (
+              <p key={i} className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider leading-none">{h}</p>
+            ))}
+          </div>
+
+          {/* Movimientos */}
+          <div>
+            {movimientos.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-8 text-gray-400 gap-1">
+                <Scale size={20} strokeWidth={1.5} className="opacity-30" />
+                <p className="text-[12px]">Sin movimientos registrados en esta causa</p>
+              </div>
+            ) : (
+              movimientos.map((mov, i) => (
+                <MovimientoRow
+                  key={mov.id}
+                  causa={causa}
+                  mov={mov}
+                  index={i}
+                  onUpdateNota={nota => onUpdate(mov.id, { notas: nota })}
+                  onChangeEstado={estado => onUpdate(mov.id, { estado })}
+                  addTarea={addTarea}
+                  addPlazo={addPlazo}
+                />
+              ))
+            )}
+          </div>
+
+          {/* Footer de la sección */}
+          <div className="px-5 py-2.5 border-t border-gray-100 bg-gray-50/30 flex items-center justify-between">
+            <p className="text-[11px] text-gray-400">
+              {counts.total} mov. · {counts.respondidas} respondidos
+              {counts.conAccion > 0 && ` · ${counts.conAccion} con acción`}
+            </p>
+            <button
+              onClick={() => setShowForm(true)}
+              className="flex items-center gap-1.5 text-[12px] font-medium text-[#1a2e4a] border border-[#1a2e4a]/20 hover:border-[#1a2e4a]/40 hover:bg-[#1a2e4a]/5 px-3 py-1.5 rounded-lg transition-colors"
+            >
+              <Plus size={12} /> Nueva entrada
+            </button>
+          </div>
+        </>
+      )}
+
+      {showForm && (
+        <FormNuevaEntrada
+          causa={causa}
+          onSave={mov => { onAddMovimiento(causa.causa_rit, mov); setShowForm(false) }}
+          onClose={() => setShowForm(false)}
+        />
+      )}
+    </div>
+  )
+}
+
+// ── ClienteDrawer — panel completo de un cliente con todas sus causas ────────
+function ClienteDrawer({ clienteData, onClose, onUpdate, onAddMovimiento, addTarea, addPlazo }) {
+  const { cliente, causas } = clienteData
+  const allMovs = causas.flatMap(c => c.movimientos)
+  const counts = {
+    total:       allMovs.length,
+    respondidas: allMovs.filter(m => m.estado === 'Respondida').length,
+    pendientes:  allMovs.filter(m => m.estado === 'Pendiente' || m.estado === 'Sin respuesta').length,
+    urgentes:    allMovs.filter(m => m.estado === 'Urgente').length,
+    conAccion:   allMovs.filter(m => m.accion_requerida?.trim()).length,
   }
 
   return (
     <div className="fixed inset-0 z-[100] flex">
       {/* Backdrop */}
-      <div className="w-[18%] bg-black/25 backdrop-blur-[2px] cursor-pointer" onClick={onClose} />
+      <div className="w-[8%] bg-black/25 backdrop-blur-[2px] cursor-pointer" onClick={onClose} />
 
       {/* Panel */}
-      <div className="flex-1 bg-white flex flex-col shadow-2xl border-l border-gray-100 overflow-hidden">
+      <div className="flex-1 bg-[#f8f9fb] flex flex-col shadow-2xl border-l border-gray-100 overflow-hidden">
 
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 flex-shrink-0">
+        <div className="flex items-start justify-between px-6 py-4 border-b border-gray-100 bg-white flex-shrink-0">
           <div>
-            <h2 className="text-[17px] font-bold text-gray-900">{causa.cliente}</h2>
-            <div className="flex items-center gap-2 mt-1 flex-wrap">
-              <span className="font-mono text-[11px] bg-violet-50 text-violet-700 px-2 py-0.5 rounded font-semibold">RIT {causa.causa_rit}</span>
-              {causa.causa_ruc && <span className="font-mono text-[11px] bg-cyan-50 text-cyan-700 px-2 py-0.5 rounded font-semibold">RUC {causa.causa_ruc}</span>}
-              {causa.tribunal && <span className="text-[11px] text-gray-400">{causa.tribunal}</span>}
-            </div>
+            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-0.5">PJUD — Poder Judicial</p>
+            <h2 className="text-[18px] font-bold text-gray-900 leading-tight">{cliente}</h2>
+            <p className="text-[12px] text-gray-400 mt-1">
+              {causas.length} causa{causas.length !== 1 ? 's' : ''} · {allMovs.length} movimientos totales
+            </p>
           </div>
-          <div className="flex items-center gap-2">
-            <a href="https://oficinajudicialvirtual.pjud.cl/" target="_blank" rel="noopener noreferrer"
-              className="flex items-center gap-1.5 text-[12px] font-medium text-[#1a2e4a] border border-[#1a2e4a]/20 hover:border-[#1a2e4a]/40 hover:bg-[#1a2e4a]/5 px-3 py-1.5 rounded-lg transition-colors">
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <a
+              href="https://oficinajudicialvirtual.pjud.cl/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 text-[12px] font-medium text-[#1a2e4a] border border-[#1a2e4a]/20 hover:border-[#1a2e4a]/40 hover:bg-[#1a2e4a]/5 px-3 py-1.5 rounded-lg transition-colors"
+            >
               <Scale size={12} /> Abrir PJUD <ExternalLink size={10} className="opacity-60" />
             </a>
             <button onClick={onClose} className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
@@ -800,11 +950,11 @@ function CausaDrawer({ causa, onClose, onUpdate, onAddMovimiento, addTarea, addP
           </div>
         </div>
 
-        {/* Mini stats */}
-        <div className="flex items-center gap-5 px-6 py-2.5 bg-gray-50/50 border-b border-gray-100 flex-shrink-0">
+        {/* Stats globales del cliente */}
+        <div className="flex items-center gap-5 px-6 py-2.5 bg-white border-b border-gray-100 flex-shrink-0">
           <div className="flex items-center gap-1.5">
             <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Total</span>
-            <span className="text-[14px] font-bold text-gray-800 tabular-nums">{movimientos.length}</span>
+            <span className="text-[14px] font-bold text-gray-800 tabular-nums">{counts.total}</span>
           </div>
           <span className="text-gray-200">·</span>
           <div className="flex items-center gap-1.5">
@@ -816,70 +966,41 @@ function CausaDrawer({ causa, onClose, onUpdate, onAddMovimiento, addTarea, addP
             <span className="text-[10px] font-semibold text-amber-600 uppercase tracking-wider">Pendientes</span>
             <span className="text-[14px] font-bold text-amber-700 tabular-nums">{counts.pendientes}</span>
           </div>
+          {counts.urgentes > 0 && (
+            <>
+              <span className="text-gray-200">·</span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-semibold text-red-600 uppercase tracking-wider">Urgentes</span>
+                <span className="text-[14px] font-bold text-red-700 tabular-nums">{counts.urgentes}</span>
+              </div>
+            </>
+          )}
           {counts.conAccion > 0 && (
             <>
               <span className="text-gray-200">·</span>
               <div className="flex items-center gap-1.5">
-                <span className="text-[10px] font-semibold text-red-600 uppercase tracking-wider">Con acción</span>
-                <span className="text-[14px] font-bold text-red-700 tabular-nums">{counts.conAccion}</span>
+                <span className="text-[10px] font-semibold text-orange-600 uppercase tracking-wider">Con acción</span>
+                <span className="text-[14px] font-bold text-orange-700 tabular-nums">{counts.conAccion}</span>
               </div>
             </>
           )}
         </div>
 
-        {/* Table header */}
-        <div
-          className="grid px-6 py-2 bg-gray-50/60 border-b border-gray-100 flex-shrink-0"
-          style={{ gridTemplateColumns: '68px 140px 76px 1fr 1fr 96px 72px' }}
-        >
-          {['Fecha','Folio','Presenta','Solicitud / Movimiento','Respuesta del tribunal','Docs / Notas',''].map((h, i) => (
-            <p key={i} className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider leading-none">{h}</p>
+        {/* Bloques por causa */}
+        <div className="flex-1 overflow-y-auto p-5 space-y-3">
+          {causas.map((causa, i) => (
+            <CausaSection
+              key={causa.id}
+              causa={causa}
+              defaultOpen={causas.length === 1 || i === 0}
+              onUpdate={onUpdate}
+              onAddMovimiento={onAddMovimiento}
+              addTarea={addTarea}
+              addPlazo={addPlazo}
+            />
           ))}
         </div>
-
-        {/* Movements */}
-        <div className="flex-1 overflow-y-auto">
-          {movimientos.length === 0 ? (
-            <div className="flex items-center justify-center py-16 text-gray-400">
-              <p className="text-[13px]">Sin movimientos registrados</p>
-            </div>
-          ) : (
-            movimientos.map((mov, i) => (
-              <MovimientoRow
-                key={mov.id}
-                causa={causa}
-                mov={mov}
-                index={i}
-                onUpdateNota={nota => onUpdate(mov.id, { notas: nota })}
-                onChangeEstado={estado => onUpdate(mov.id, { estado })}
-                addTarea={addTarea}
-                addPlazo={addPlazo}
-              />
-            ))
-          )}
-        </div>
-
-        {/* Footer */}
-        <div className="px-6 py-3 border-t border-gray-100 flex-shrink-0 flex items-center justify-between bg-gray-50/30">
-          <p className="text-[11px] text-gray-400">
-            {movimientos.length} {movimientos.length === 1 ? 'movimiento' : 'movimientos'}
-          </p>
-          <button
-            onClick={() => setShowForm(true)}
-            className="flex items-center gap-1.5 text-[12px] font-medium text-[#1a2e4a] border border-[#1a2e4a]/20 hover:border-[#1a2e4a]/40 hover:bg-[#1a2e4a]/5 px-3 py-1.5 rounded-lg transition-colors"
-          >
-            <Plus size={13} /> Nueva entrada
-          </button>
-        </div>
       </div>
-
-      {showForm && (
-        <FormNuevaEntrada
-          causa={causa}
-          onSave={mov => { onAddMovimiento(causa.causa_rit, mov); setShowForm(false) }}
-          onClose={() => setShowForm(false)}
-        />
-      )}
     </div>
   )
 }
@@ -1109,7 +1230,7 @@ export default function PJUD() {
   const [filterCliente,   setFilterCliente]   = useState('Todos')
   const [filterPresenta,  setFilterPresenta]  = useState('Todos')
   const [filterDocumento, setFilterDocumento] = useState('Todos')
-  const [selectedCausa,   setSelectedCausa]   = useState(null)
+  const [selectedCliente, setSelectedCliente] = useState(null)
 
   // ── Fetch pjud rows ──
   const fetchRows = useCallback(async () => {
@@ -1131,7 +1252,7 @@ export default function PJUD() {
   const fetchCausas = useCallback(async () => {
     const { data } = await supabase
       .from('causas')
-      .select('id, rit, ruc, materia, tribunal, cliente_nombre, cliente_id')
+      .select('id, rit, ruc, materia, tribunal, area, cliente_nombre, cliente_id')
       .order('rit')
     setCausasInfo(data || [])
   }, [])
@@ -1141,32 +1262,52 @@ export default function PJUD() {
     fetchCausas()
   }, [fetchRows, fetchCausas])
 
-  // ── Build causa blocks from flat rows ──
-  const pjudCausas = useMemo(() => {
-    const map = {}
+  // ── Build cliente → causas → movimientos ──────────────────────────────────
+  const pjudClientes = useMemo(() => {
+    // 1. Agrupar filas por causa
+    const causaMap = {}
     rows.forEach(row => {
-      const key = row.causa_rit || row.cliente_nombre || 'sin_causa'
-      if (!map[key]) {
+      const causaKey = row.causa_rit || `${row.cliente_nombre || 'sin_cliente'}_sinrit`
+      if (!causaMap[causaKey]) {
         const ci = causasInfo.find(c => c.rit === row.causa_rit)
-        map[key] = {
-          id:         key,
-          causa_rit:  row.causa_rit,
-          cliente:    row.cliente_nombre || ci?.cliente_nombre || '',
-          causa_ruc:  ci?.ruc      || '',
-          tipo_causa: ci?.materia  || 'Civil',
-          tribunal:   ci?.tribunal || '',
-          responsable:'MT',
-          movimientos:[],
+        causaMap[causaKey] = {
+          id:          causaKey,
+          causa_rit:   row.causa_rit  || '',
+          cliente:     row.cliente_nombre || '',
+          causa_ruc:   ci?.ruc       || '',
+          tipo_causa:  ci?.area      || 'Civil',
+          materia:     ci?.materia   || '',
+          tribunal:    ci?.tribunal  || '',
+          responsable: 'MT',
+          movimientos: [],
         }
       }
-      map[key].movimientos.push(row)
+      causaMap[causaKey].movimientos.push(row)
     })
-    // Sort movimientos within each causa by date desc
-    Object.values(map).forEach(c => {
+    // Ordenar movimientos por fecha desc
+    Object.values(causaMap).forEach(c => {
       c.movimientos.sort((a, b) => b.fecha.localeCompare(a.fecha))
     })
-    return Object.values(map).sort((a, b) => (a.cliente || '').localeCompare(b.cliente || ''))
+
+    // 2. Agrupar causas por cliente
+    const clienteMap = {}
+    Object.values(causaMap).forEach(causa => {
+      const key = causa.cliente || '(sin cliente)'
+      if (!clienteMap[key]) {
+        clienteMap[key] = { id: key, cliente: key, causas: [] }
+      }
+      clienteMap[key].causas.push(causa)
+    })
+    // Ordenar causas dentro de cada cliente
+    Object.values(clienteMap).forEach(cl => {
+      cl.causas.sort((a, b) => (a.causa_rit || '').localeCompare(b.causa_rit || ''))
+    })
+
+    return Object.values(clienteMap).sort((a, b) => a.cliente.localeCompare(b.cliente))
   }, [rows, causasInfo])
+
+  // Listas planas para stats y AlertBanner
+  const allCausasFlat = useMemo(() => pjudClientes.flatMap(cl => cl.causas), [pjudClientes])
 
   // ── Update a movimiento ──
   const handleUpdate = useCallback(async (movId, cambios) => {
@@ -1239,45 +1380,47 @@ export default function PJUD() {
     if (err) console.error('Error creando plazo:', err.message)
   }, [])
 
-  const allMovs = useMemo(() => pjudCausas.flatMap(c => c.movimientos), [pjudCausas])
+  const allMovsFlat = useMemo(() => allCausasFlat.flatMap(c => c.movimientos), [allCausasFlat])
 
   const stats = useMemo(() => ({
-    total:       allMovs.length,
-    pendientes:  allMovs.filter(m => m.estado === 'Pendiente' || m.estado === 'Sin respuesta').length,
-    respondidas: allMovs.filter(m => m.estado === 'Respondida').length,
-    conAccion:   allMovs.filter(m => m.accion_requerida?.trim()).length,
-  }), [allMovs])
+    total:       allMovsFlat.length,
+    pendientes:  allMovsFlat.filter(m => m.estado === 'Pendiente' || m.estado === 'Sin respuesta').length,
+    respondidas: allMovsFlat.filter(m => m.estado === 'Respondida').length,
+    conAccion:   allMovsFlat.filter(m => m.accion_requerida?.trim()).length,
+  }), [allMovsFlat])
 
-  const filteredCausas = useMemo(() => {
-    return pjudCausas
-      .filter(c => filterCliente === 'Todos' || c.cliente === filterCliente)
-      .map(c => ({
-        ...c,
-        movimientos: c.movimientos.filter(m => {
-          const q = search.toLowerCase()
-          const matchSearch = !q ||
-            (m.folio        || '').toLowerCase().includes(q) ||
-            (m.solicitud    || '').toLowerCase().includes(q) ||
-            (m.respuesta    || '').toLowerCase().includes(q) ||
-            (c.cliente      || '').toLowerCase().includes(q) ||
-            (c.causa_rit    || '').toLowerCase().includes(q)
-          const matchEstado   = filterEstado   === 'Todos' || m.estado   === filterEstado
-          const matchPresenta = filterPresenta === 'Todos' || m.presenta === filterPresenta
-          const matchDoc =
-            filterDocumento === 'Todos' ||
-            (filterDocumento === 'Con documento' &&  m.tiene_documento) ||
-            (filterDocumento === 'Sin documento' && !m.tiene_documento)
-          return matchSearch && matchEstado && matchPresenta && matchDoc
-        }),
+  const filteredClientes = useMemo(() => {
+    const noFilters = !search && filterEstado === 'Todos' && filterPresenta === 'Todos' && filterDocumento === 'Todos'
+    return pjudClientes
+      .filter(cl => filterCliente === 'Todos' || cl.cliente === filterCliente)
+      .map(cl => ({
+        ...cl,
+        causas: cl.causas.map(c => ({
+          ...c,
+          movimientos: c.movimientos.filter(m => {
+            const q = search.toLowerCase()
+            const matchSearch = !q ||
+              (m.folio     || '').toLowerCase().includes(q) ||
+              (m.solicitud || '').toLowerCase().includes(q) ||
+              (m.respuesta || '').toLowerCase().includes(q) ||
+              (cl.cliente  || '').toLowerCase().includes(q) ||
+              (c.causa_rit || '').toLowerCase().includes(q) ||
+              (c.materia   || '').toLowerCase().includes(q)
+            const matchEstado   = filterEstado   === 'Todos' || m.estado   === filterEstado
+            const matchPresenta = filterPresenta === 'Todos' || m.presenta === filterPresenta
+            const matchDoc =
+              filterDocumento === 'Todos' ||
+              (filterDocumento === 'Con documento' &&  m.tiene_documento) ||
+              (filterDocumento === 'Sin documento' && !m.tiene_documento)
+            return matchSearch && matchEstado && matchPresenta && matchDoc
+          }),
+        })).filter(c => c.movimientos.length > 0 || noFilters),
       }))
-      .filter(c =>
-        c.movimientos.length > 0 ||
-        (!search && filterEstado === 'Todos' && filterPresenta === 'Todos' && filterDocumento === 'Todos')
-      )
-  }, [pjudCausas, search, filterEstado, filterCliente, filterPresenta, filterDocumento])
+      .filter(cl => cl.causas.length > 0)
+  }, [pjudClientes, search, filterEstado, filterCliente, filterPresenta, filterDocumento])
 
-  const clientes    = useMemo(() => [...new Set(pjudCausas.map(c => c.cliente).filter(Boolean))], [pjudCausas])
-  const hasFilters  = search || filterEstado !== 'Todos' || filterCliente !== 'Todos' || filterPresenta !== 'Todos' || filterDocumento !== 'Todos'
+  const clientes   = useMemo(() => pjudClientes.map(cl => cl.cliente), [pjudClientes])
+  const hasFilters = search || filterEstado !== 'Todos' || filterCliente !== 'Todos' || filterPresenta !== 'Todos' || filterDocumento !== 'Todos'
 
   return (
     <div className="flex flex-col h-screen bg-white overflow-hidden">
@@ -1290,7 +1433,7 @@ export default function PJUD() {
             <p className="text-[12px] text-gray-400 mt-1">
               {cargando
                 ? 'Cargando...'
-                : `Poder Judicial de Chile · ${pjudCausas.length} causas · ${allMovs.length} movimientos`
+                : `Poder Judicial de Chile · ${pjudClientes.length} clientes · ${allCausasFlat.length} causas · ${allMovsFlat.length} movimientos`
               }
             </p>
           </div>
@@ -1334,7 +1477,7 @@ export default function PJUD() {
           </div>
 
           {/* ── Alerts ── */}
-          <AlertBanner causas={pjudCausas} />
+          <AlertBanner causas={allCausasFlat} />
 
           {/* ── Filters ── */}
           <div className="flex-shrink-0 px-6 pb-3 flex items-center gap-2 flex-wrap">
@@ -1390,15 +1533,15 @@ export default function PJUD() {
 
           {/* ── Blocks list ── */}
           <div className="flex-1 overflow-y-auto px-6 pb-6">
-            {filteredCausas.length === 0 ? (
+            {filteredClientes.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-48 text-gray-400">
                 <Scale size={28} strokeWidth={1.5} className="mb-2 opacity-30" />
-                <p className="text-[13px]">No se encontraron causas con los filtros actuales</p>
+                <p className="text-[13px]">No se encontraron registros con los filtros actuales</p>
               </div>
             ) : (
               <div className="space-y-3">
-                {filteredCausas.map(c => (
-                  <ClienteCard key={c.id} causa={c} onSelect={setSelectedCausa} />
+                {filteredClientes.map(cl => (
+                  <ClienteCard key={cl.id} clienteData={cl} onSelect={setSelectedCliente} />
                 ))}
               </div>
             )}
@@ -1406,10 +1549,10 @@ export default function PJUD() {
         </>
       )}
 
-      {selectedCausa && (
-        <CausaDrawer
-          causa={pjudCausas.find(c => c.id === selectedCausa.id) || selectedCausa}
-          onClose={() => setSelectedCausa(null)}
+      {selectedCliente && (
+        <ClienteDrawer
+          clienteData={pjudClientes.find(cl => cl.id === selectedCliente.id) || selectedCliente}
+          onClose={() => setSelectedCliente(null)}
           onUpdate={handleUpdate}
           onAddMovimiento={handleAddMovimiento}
           addTarea={handleAddTarea}
