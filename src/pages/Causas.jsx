@@ -28,8 +28,8 @@ const TIMELINE_CAT = {
 const ESTADO_STYLES = {
   'En tramitación': { badge: 'bg-blue-50 text-blue-600',      dot: 'bg-blue-400'    },
   'Abierta':        { badge: 'bg-emerald-50 text-emerald-600', dot: 'bg-emerald-400' },
-  'Terminada':      { badge: 'bg-slate-100 text-slate-500',    dot: 'bg-slate-400'   },
-  'Archivada':      { badge: 'bg-gray-100 text-gray-400',      dot: 'bg-gray-300'    },
+  'Terminada':      { badge: 'bg-red-50 text-red-600',          dot: 'bg-red-500'     },
+  'Archivada':      { badge: 'bg-red-100 text-red-500',         dot: 'bg-red-400'     },
   'Suspendida':     { badge: 'bg-amber-50 text-amber-600',     dot: 'bg-amber-400'   },
 }
 const AREA_STYLES = {
@@ -42,7 +42,8 @@ const AREA_STYLES = {
   'Societario':   'bg-indigo-50 text-indigo-600',
 }
 
-const ESTADOS = ['En tramitación', 'Abierta', 'Terminada', 'Archivada', 'Suspendida']
+const ESTADOS  = ['En tramitación', 'Abierta', 'Terminada', 'Archivada', 'Suspendida']
+const CERRADAS = new Set(['Terminada', 'Archivada'])
 const AREAS   = ['Laboral', 'Civil', 'Familia', 'Penal', 'Comercial', 'Inmobiliario', 'Societario']
 
 const TODAY_C = new Date().toISOString().slice(0, 10)
@@ -1530,7 +1531,7 @@ function GrupoCliente({ nombre, lista, seleccionada, onSelect }) {
               onClick={() => onSelect(seleccionada?.id === c.id ? null : c)}
               className={`flex items-center gap-4 px-5 py-2.5 cursor-pointer transition-colors border-b border-gray-50 last:border-0 ${
                 seleccionada?.id === c.id ? 'bg-blue-50/50' : 'hover:bg-gray-50'
-              }`}>
+              } ${CERRADAS.has(c.estado) ? 'opacity-55' : ''}`}>
               <div className="flex-1 min-w-0">
                 <p className="text-xs text-gray-800 truncate">{c.materia}</p>
                 <p className="text-[11px] font-mono text-gray-400 mt-0.5">{c.rit ?? '—'}</p>
@@ -1628,7 +1629,8 @@ export default function Causas() {
         c.materia.toLowerCase().includes(q) ||
         c.tribunal.toLowerCase().includes(q) ||
         (c.rit ?? '').toLowerCase().includes(q)
-      const matchEstado = !filtroEstado || c.estado === filtroEstado
+      const matchEstado = !filtroEstado ||
+        (filtroEstado === 'Cerradas' ? CERRADAS.has(c.estado) : c.estado === filtroEstado)
       const matchArea   = !filtroArea   || c.area   === filtroArea
       return matchCliente && matchQ && matchEstado && matchArea
     })
@@ -1683,8 +1685,11 @@ export default function Causas() {
                 <div>
                   <h1 className="text-xl font-semibold text-gray-900">{tituloVista}</h1>
                   <p className="mt-0.5 text-xs text-gray-400">
-                    {loading ? 'Cargando…'
-                      : `${ordenadas.filter(c => c.estado === 'En tramitación' || c.estado === 'Abierta').length} activas · ${ordenadas.length} ${clienteActivo ? 'causas' : 'total'}`}
+                    {loading ? 'Cargando…' : (() => {
+                      const activas  = ordenadas.filter(c => !CERRADAS.has(c.estado)).length
+                      const cerradas = ordenadas.filter(c =>  CERRADAS.has(c.estado)).length
+                      return `${activas} activa${activas !== 1 ? 's' : ''}${cerradas ? ` · ${cerradas} cerrada${cerradas !== 1 ? 's' : ''}` : ''}`
+                    })()}
                   </p>
                 </div>
                 <button
@@ -1725,6 +1730,7 @@ export default function Causas() {
                   <select value={filtroEstado} onChange={e => setEstado(e.target.value)}
                     className="px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg outline-none focus:border-[#2570ba] text-gray-600 bg-white">
                     <option value="">Todos los estados</option>
+                    <option value="Cerradas">— Cerradas (Terminada + Archivada)</option>
                     {ESTADOS.map(e => <option key={e}>{e}</option>)}
                   </select>
                   <select value={filtroArea} onChange={e => setArea(e.target.value)}
@@ -1789,7 +1795,7 @@ export default function Causas() {
                         onClick={() => { setSeleccionada(seleccionada?.id === c.id ? null : c); setFormulario(null) }}
                         className={`border-b border-gray-50 cursor-pointer transition-colors ${
                           seleccionada?.id === c.id ? 'bg-blue-50/40' : 'hover:bg-gray-50/60'
-                        }`}>
+                        } ${CERRADAS.has(c.estado) ? 'opacity-55' : ''}`}>
                         {!clienteActivo && (
                           <td className="pl-7 pr-3 py-2.5">
                             <div className="flex items-center gap-2">
