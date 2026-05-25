@@ -715,11 +715,8 @@ function MovimientoRow({ causa, mov, index, onUpdateNota, onChangeEstado, addTar
   )
 }
 
-// ── ClienteBlock ───────────────────────────────────────────────────────────────
-function ClienteBlock({ causa, defaultOpen, onUpdate, onAddMovimiento, addTarea, addPlazo }) {
-  const [open,     setOpen]     = useState(defaultOpen)
-  const [showForm, setShowForm] = useState(false)
-
+// ── ClienteCard ────────────────────────────────────────────────────────────────
+function ClienteCard({ causa, onSelect }) {
   const movimientos = causa.movimientos
   const counts = {
     Respondida:      movimientos.filter(m => m.estado === 'Respondida').length,
@@ -728,88 +725,122 @@ function ClienteBlock({ causa, defaultOpen, onUpdate, onAddMovimiento, addTarea,
     'Sin respuesta': movimientos.filter(m => m.estado === 'Sin respuesta').length,
   }
   const hasUrgente = counts.Urgente > 0
-  const tipoCfg    = TIPO_CAUSA_COLOR[causa.tipo_causa] || TIPO_CAUSA_COLOR.Civil
+  const tipoCfg = TIPO_CAUSA_COLOR[causa.tipo_causa] || TIPO_CAUSA_COLOR.Civil
 
   return (
-    <div className={`border border-gray-100 rounded-xl overflow-hidden transition-shadow ${open ? 'shadow-sm' : ''}`}>
-      {/* Header */}
-      <div
-        onClick={() => setOpen(o => !o)}
-        className={`flex items-start gap-3 px-4 py-3.5 cursor-pointer transition-colors ${
-          open ? 'bg-white border-b border-gray-100' : 'bg-white hover:bg-gray-50/60'
-        }`}
-      >
-        <ChevronRight
-          size={14}
-          className={`flex-shrink-0 mt-0.5 text-gray-400 transition-transform duration-150 ${open ? 'rotate-90' : ''}`}
-        />
-
+    <div
+      onClick={() => onSelect(causa)}
+      className="border border-gray-100 rounded-xl px-4 py-3.5 cursor-pointer hover:shadow-sm hover:border-gray-200 transition-all group bg-white"
+    >
+      <div className="flex items-start gap-3">
+        <ChevronRight size={14} className="flex-shrink-0 mt-1 text-gray-300 group-hover:text-gray-500 transition-colors" />
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap mb-1.5">
+          <div className="flex items-center gap-2 flex-wrap mb-1">
             <p className="text-[14px] font-semibold text-gray-900 leading-none">{causa.cliente}</p>
             {hasUrgente && (
               <span className="flex items-center gap-1 text-[10px] font-bold text-red-600 bg-red-50 px-1.5 py-0.5 rounded-full animate-pulse">
-                <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
-                Urgente
+                <span className="w-1.5 h-1.5 rounded-full bg-red-500" /> Urgente
               </span>
             )}
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-full bg-violet-100 text-violet-700">
-              RIT {causa.causa_rit}
-            </span>
-            <span className="inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-full bg-cyan-50 text-cyan-700">
-              RUC {causa.causa_ruc}
-            </span>
-            <span className={`inline-flex items-center text-[10px] font-medium px-2 py-0.5 rounded-full ${tipoCfg.bg} ${tipoCfg.text}`}>
-              {causa.tipo_causa}
-            </span>
-            <span className="text-[11px] text-gray-400">{causa.tribunal}</span>
+            <span className="inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-full bg-violet-100 text-violet-700">RIT {causa.causa_rit}</span>
+            {causa.causa_ruc && <span className="inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-full bg-cyan-50 text-cyan-700">RUC {causa.causa_ruc}</span>}
+            <span className={`inline-flex items-center text-[10px] font-medium px-2 py-0.5 rounded-full ${tipoCfg.bg} ${tipoCfg.text}`}>{causa.tipo_causa}</span>
+            {causa.tribunal && <span className="text-[11px] text-gray-400">{causa.tribunal}</span>}
           </div>
         </div>
-
-        <div className="flex items-center gap-2 flex-shrink-0" onClick={e => e.stopPropagation()}>
-          <div className="flex items-center gap-1">
-            {counts.Urgente > 0 && (
-              <span className="text-[10px] font-bold text-white bg-red-500 px-1.5 py-0.5 rounded-full">{counts.Urgente} urgente</span>
-            )}
-            {counts.Pendiente > 0 && (
-              <span className="text-[10px] font-medium text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full">{counts.Pendiente} pend.</span>
-            )}
-            {counts['Sin respuesta'] > 0 && (
-              <span className="text-[10px] font-medium text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded-full">{counts['Sin respuesta']} s/resp.</span>
-            )}
-          </div>
-          <a
-            href="https://oficinajudicialvirtual.pjud.cl/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1.5 text-[11px] font-medium text-[#1a2e4a] border border-[#1a2e4a]/20 hover:border-[#1a2e4a]/40 hover:bg-[#1a2e4a]/5 px-2.5 py-1 rounded-lg transition-colors"
-          >
-            <Scale size={11} />
-            Abrir PJUD
-            <ExternalLink size={9} className="opacity-60" />
-          </a>
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          {counts.Urgente > 0 && <span className="text-[10px] font-bold text-white bg-red-500 px-1.5 py-0.5 rounded-full">{counts.Urgente} urg.</span>}
+          {counts.Pendiente > 0 && <span className="text-[10px] font-medium text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full">{counts.Pendiente} pend.</span>}
+          {counts['Sin respuesta'] > 0 && <span className="text-[10px] font-medium text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded-full">{counts['Sin respuesta']} s/r.</span>}
+          <span className="text-[11px] text-gray-400 ml-1">{movimientos.length} mov.</span>
         </div>
       </div>
+    </div>
+  )
+}
 
-      {/* Table */}
-      {open && (
-        <div>
-          {/* Table header — 7 cols */}
-          <div
-            className="grid px-4 py-2 bg-gray-50/60 border-b border-gray-100"
-            style={{ gridTemplateColumns: '68px 128px 72px 1fr 1fr 90px 72px' }}
-          >
-            {['Fecha', 'Folio', 'Presenta', 'Solicitud / Movimiento', 'Respuesta del tribunal', 'Documentos / Notas', ''].map((h, i) => (
-              <p key={i} className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider leading-none">
-                {h}
-              </p>
-            ))}
+// ── CausaDrawer ────────────────────────────────────────────────────────────────
+function CausaDrawer({ causa, onClose, onUpdate, onAddMovimiento, addTarea, addPlazo }) {
+  const [showForm, setShowForm] = useState(false)
+  const movimientos = causa.movimientos
+  const counts = {
+    respondidas: movimientos.filter(m => m.estado === 'Respondida').length,
+    pendientes:  movimientos.filter(m => m.estado === 'Pendiente' || m.estado === 'Sin respuesta').length,
+    conAccion:   movimientos.filter(m => m.accion_requerida?.trim()).length,
+  }
+
+  return (
+    <div className="fixed inset-0 z-[100] flex">
+      {/* Backdrop */}
+      <div className="w-[18%] bg-black/25 backdrop-blur-[2px] cursor-pointer" onClick={onClose} />
+
+      {/* Panel */}
+      <div className="flex-1 bg-white flex flex-col shadow-2xl border-l border-gray-100 overflow-hidden">
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 flex-shrink-0">
+          <div>
+            <h2 className="text-[17px] font-bold text-gray-900">{causa.cliente}</h2>
+            <div className="flex items-center gap-2 mt-1 flex-wrap">
+              <span className="font-mono text-[11px] bg-violet-50 text-violet-700 px-2 py-0.5 rounded font-semibold">RIT {causa.causa_rit}</span>
+              {causa.causa_ruc && <span className="font-mono text-[11px] bg-cyan-50 text-cyan-700 px-2 py-0.5 rounded font-semibold">RUC {causa.causa_ruc}</span>}
+              {causa.tribunal && <span className="text-[11px] text-gray-400">{causa.tribunal}</span>}
+            </div>
           </div>
+          <div className="flex items-center gap-2">
+            <a href="https://oficinajudicialvirtual.pjud.cl/" target="_blank" rel="noopener noreferrer"
+              className="flex items-center gap-1.5 text-[12px] font-medium text-[#1a2e4a] border border-[#1a2e4a]/20 hover:border-[#1a2e4a]/40 hover:bg-[#1a2e4a]/5 px-3 py-1.5 rounded-lg transition-colors">
+              <Scale size={12} /> Abrir PJUD <ExternalLink size={10} className="opacity-60" />
+            </a>
+            <button onClick={onClose} className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
+              <X size={16} />
+            </button>
+          </div>
+        </div>
 
+        {/* Mini stats */}
+        <div className="flex items-center gap-5 px-6 py-2.5 bg-gray-50/50 border-b border-gray-100 flex-shrink-0">
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Total</span>
+            <span className="text-[14px] font-bold text-gray-800 tabular-nums">{movimientos.length}</span>
+          </div>
+          <span className="text-gray-200">·</span>
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] font-semibold text-green-600 uppercase tracking-wider">Respondidas</span>
+            <span className="text-[14px] font-bold text-green-700 tabular-nums">{counts.respondidas}</span>
+          </div>
+          <span className="text-gray-200">·</span>
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] font-semibold text-amber-600 uppercase tracking-wider">Pendientes</span>
+            <span className="text-[14px] font-bold text-amber-700 tabular-nums">{counts.pendientes}</span>
+          </div>
+          {counts.conAccion > 0 && (
+            <>
+              <span className="text-gray-200">·</span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-semibold text-red-600 uppercase tracking-wider">Con acción</span>
+                <span className="text-[14px] font-bold text-red-700 tabular-nums">{counts.conAccion}</span>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Table header */}
+        <div
+          className="grid px-6 py-2 bg-gray-50/60 border-b border-gray-100 flex-shrink-0"
+          style={{ gridTemplateColumns: '68px 140px 76px 1fr 1fr 96px 72px' }}
+        >
+          {['Fecha','Folio','Presenta','Solicitud / Movimiento','Respuesta del tribunal','Docs / Notas',''].map((h, i) => (
+            <p key={i} className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider leading-none">{h}</p>
+          ))}
+        </div>
+
+        {/* Movements */}
+        <div className="flex-1 overflow-y-auto">
           {movimientos.length === 0 ? (
-            <div className="flex items-center justify-center py-8 text-gray-400">
+            <div className="flex items-center justify-center py-16 text-gray-400">
               <p className="text-[13px]">Sin movimientos registrados</p>
             </div>
           ) : (
@@ -826,21 +857,21 @@ function ClienteBlock({ causa, defaultOpen, onUpdate, onAddMovimiento, addTarea,
               />
             ))
           )}
-
-          <div className="px-4 py-2.5 bg-gray-50/40 border-t border-gray-100 flex items-center justify-between">
-            <p className="text-[11px] text-gray-400">
-              {movimientos.length} {movimientos.length === 1 ? 'movimiento' : 'movimientos'}
-            </p>
-            <button
-              onClick={() => setShowForm(true)}
-              className="flex items-center gap-1.5 text-[11px] font-medium text-[#1a2e4a] hover:text-[#243d5e] transition-colors"
-            >
-              <Plus size={12} />
-              Nueva entrada
-            </button>
-          </div>
         </div>
-      )}
+
+        {/* Footer */}
+        <div className="px-6 py-3 border-t border-gray-100 flex-shrink-0 flex items-center justify-between bg-gray-50/30">
+          <p className="text-[11px] text-gray-400">
+            {movimientos.length} {movimientos.length === 1 ? 'movimiento' : 'movimientos'}
+          </p>
+          <button
+            onClick={() => setShowForm(true)}
+            className="flex items-center gap-1.5 text-[12px] font-medium text-[#1a2e4a] border border-[#1a2e4a]/20 hover:border-[#1a2e4a]/40 hover:bg-[#1a2e4a]/5 px-3 py-1.5 rounded-lg transition-colors"
+          >
+            <Plus size={13} /> Nueva entrada
+          </button>
+        </div>
+      </div>
 
       {showForm && (
         <FormNuevaEntrada
@@ -1078,6 +1109,7 @@ export default function PJUD() {
   const [filterCliente,   setFilterCliente]   = useState('Todos')
   const [filterPresenta,  setFilterPresenta]  = useState('Todos')
   const [filterDocumento, setFilterDocumento] = useState('Todos')
+  const [selectedCausa,   setSelectedCausa]   = useState(null)
 
   // ── Fetch pjud rows ──
   const fetchRows = useCallback(async () => {
@@ -1365,21 +1397,24 @@ export default function PJUD() {
               </div>
             ) : (
               <div className="space-y-3">
-                {filteredCausas.map((c, i) => (
-                  <ClienteBlock
-                    key={c.id}
-                    causa={c}
-                    defaultOpen={i === 0}
-                    onUpdate={handleUpdate}
-                    onAddMovimiento={handleAddMovimiento}
-                    addTarea={handleAddTarea}
-                    addPlazo={handleAddPlazo}
-                  />
+                {filteredCausas.map(c => (
+                  <ClienteCard key={c.id} causa={c} onSelect={setSelectedCausa} />
                 ))}
               </div>
             )}
           </div>
         </>
+      )}
+
+      {selectedCausa && (
+        <CausaDrawer
+          causa={pjudCausas.find(c => c.id === selectedCausa.id) || selectedCausa}
+          onClose={() => setSelectedCausa(null)}
+          onUpdate={handleUpdate}
+          onAddMovimiento={handleAddMovimiento}
+          addTarea={handleAddTarea}
+          addPlazo={handleAddPlazo}
+        />
       )}
     </div>
   )

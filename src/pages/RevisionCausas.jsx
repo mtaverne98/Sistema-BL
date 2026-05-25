@@ -268,6 +268,301 @@ function ModalCrearTarea({ causa, semanaKey, onSave, onClose }) {
   )
 }
 
+// ── CausaModal ─────────────────────────────────────────────────────────────────
+function CausaModal({ causa, semanaKey, revisionData, allRevisiones, onMarcar, onDesmarcar, onCrearTarea, onClose }) {
+  const revisada = revisionData?.revisada || false
+  const [editing,  setEditing]  = useState(!revisada)
+  const [showNota, setShowNota] = useState(revisada)
+  const [showModal, setShowModal] = useState(false)
+  const [draft, setDraft] = useState({
+    nota: revisionData?.nota || '',
+    proxima_accion: revisionData?.proxima_accion || 'Esperar resolución',
+    responsable: revisionData?.responsable || 'MT',
+  })
+
+  function handleGuardar() {
+    onMarcar(semanaKey, causa.id, {
+      nota: draft.nota.trim(),
+      proxima_accion: draft.proxima_accion,
+      responsable: draft.responsable,
+      fecha: new Date().toISOString().slice(0, 10),
+    })
+    setEditing(false)
+    setShowNota(true)
+  }
+
+  const histCount = Object.entries(allRevisiones).filter(([k, d]) => d[causa.id]?.revisada && k !== semanaKey).length
+
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/30 backdrop-blur-[3px]" onClick={onClose} />
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col" style={{ maxHeight: '88vh' }}>
+
+        {/* Header */}
+        <div className="flex items-start justify-between px-6 pt-5 pb-4 border-b border-gray-100 flex-shrink-0">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1 flex-wrap">
+              <AreaBadge area={causa.area} />
+              {causa.rit && <span className="font-mono text-[11px] text-gray-500">{causa.rit}</span>}
+            </div>
+            <h2 className="text-[16px] font-bold text-gray-900 leading-snug">{causa.materia}</h2>
+            {causa.tribunal && <p className="text-[11px] text-gray-400 mt-0.5">{causa.tribunal}</p>}
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors ml-3 flex-shrink-0">
+            <X size={15} />
+          </button>
+        </div>
+
+        {/* Tab bar */}
+        <div className="flex px-6 border-b border-gray-100 flex-shrink-0">
+          <div className="flex items-center gap-1 py-2.5">
+            <button className="text-[12px] font-semibold text-[#1a2e4a] border-b-2 border-[#1a2e4a] pb-0.5 px-1">
+              Revisión semanal
+            </button>
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+
+          {/* Estado revisión */}
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => {
+                if (revisada) { onDesmarcar(semanaKey, causa.id); setShowNota(false); setEditing(true) }
+                else { setEditing(true) }
+              }}
+              className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all flex-shrink-0 ${
+                revisada ? 'bg-green-500 border-green-500 hover:bg-green-600' : 'border-gray-300 hover:border-[#1a2e4a]'
+              }`}
+            >
+              {revisada && <Check size={12} className="text-white" strokeWidth={2.5} />}
+            </button>
+            <p className={`text-[14px] font-medium ${revisada ? 'text-green-700' : 'text-gray-500'}`}>
+              {revisada ? 'Revisada esta semana' : 'Sin revisar esta semana'}
+            </p>
+            {revisada && revisionData?.proxima_accion && <AccionBadge accion={revisionData.proxima_accion} />}
+          </div>
+
+          {/* Editing form */}
+          {!revisada || editing ? (
+            <div className="space-y-3.5 bg-gray-50/50 rounded-xl p-4 border border-gray-100">
+              <div>
+                <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">
+                  ¿Qué se vio en esta causa?
+                </label>
+                <textarea
+                  value={draft.nota}
+                  onChange={e => setDraft(d => ({ ...d, nota: e.target.value }))}
+                  rows={4}
+                  autoFocus
+                  placeholder="Estado actual, novedades, pendientes, decisiones tomadas..."
+                  className="w-full text-[12px] border border-gray-200 rounded-xl px-3 py-2.5 resize-none focus:outline-none focus:border-blue-400 bg-white transition-colors leading-relaxed"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Próxima acción</label>
+                  <select value={draft.proxima_accion}
+                    onChange={e => setDraft(d => ({ ...d, proxima_accion: e.target.value }))}
+                    className="w-full text-[12px] border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white focus:outline-none focus:border-blue-400">
+                    {PROXIMAS_ACCIONES.map(a => <option key={a} value={a}>{a}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Revisado por</label>
+                  <select value={draft.responsable}
+                    onChange={e => setDraft(d => ({ ...d, responsable: e.target.value }))}
+                    className="w-full text-[12px] border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white focus:outline-none focus:border-blue-400">
+                    {Object.entries(RESPONSABLE_INFO).map(([k, v]) => (
+                      <option key={k} value={k}>{v.nombre}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button onClick={handleGuardar}
+                  className="text-[12px] px-4 py-2 bg-[#1a2e4a] text-white rounded-lg hover:bg-[#243d5e] flex items-center gap-1.5 font-medium transition-colors">
+                  <Check size={12} /> Guardar revisión
+                </button>
+                {revisada && (
+                  <button onClick={() => setEditing(false)}
+                    className="text-[12px] px-3 py-2 border border-gray-200 text-gray-500 rounded-lg hover:bg-gray-50 transition-colors">
+                    Cancelar
+                  </button>
+                )}
+                <button onClick={() => setShowModal(true)}
+                  className="ml-auto text-[11px] px-2.5 py-2 border border-dashed border-gray-200 text-gray-400 rounded-lg hover:border-gray-300 hover:text-gray-600 flex items-center gap-1.5 transition-colors">
+                  <Plus size={11} /> Crear tarea
+                </button>
+              </div>
+            </div>
+          ) : (
+            /* Show saved note */
+            revisionData?.nota && (
+              <div className="rounded-xl bg-green-50/40 border border-green-100 px-4 py-3.5">
+                <p className="text-[12px] text-gray-700 leading-relaxed">{revisionData.nota}</p>
+                <div className="flex items-center justify-between mt-3 pt-2.5 border-t border-green-100">
+                  <div className="flex items-center gap-2">
+                    {revisionData.proxima_accion && <AccionBadge accion={revisionData.proxima_accion} />}
+                    {revisionData.responsable && <RespAvatar resp={revisionData.responsable} />}
+                  </div>
+                  <button onClick={() => {
+                    setDraft({ nota: revisionData.nota || '', proxima_accion: revisionData.proxima_accion || 'Esperar resolución', responsable: revisionData.responsable || 'MT' })
+                    setEditing(true)
+                  }}
+                    className="text-[10px] text-gray-400 hover:text-gray-600 flex items-center gap-1 transition-colors">
+                    <Edit2 size={10} /> Editar
+                  </button>
+                </div>
+              </div>
+            )
+          )}
+
+          {/* Historial */}
+          {histCount > 0 && (
+            <div className="pt-1">
+              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-3">
+                Historial de revisiones anteriores ({histCount})
+              </p>
+              <TimelineRevisions causaId={causa.id} allRevisiones={allRevisiones} currentKey={semanaKey} />
+            </div>
+          )}
+        </div>
+      </div>
+
+      {showModal && (
+        <ModalCrearTarea
+          causa={causa}
+          semanaKey={semanaKey}
+          onSave={tarea => { onCrearTarea(tarea); setShowModal(false) }}
+          onClose={() => setShowModal(false)}
+        />
+      )}
+    </div>
+  )
+}
+
+// ── ClienteDrawer ──────────────────────────────────────────────────────────────
+function ClienteDrawer({ clienteNombre, rut, causas, semanaKey, semanaData, onMarcar, onDesmarcar, onCrearTarea, allRevisiones, onClose }) {
+  const [selectedCausa, setSelectedCausa] = useState(null)
+
+  const total    = causas.length
+  const revisadas = causas.filter(c => semanaData?.[c.id]?.revisada).length
+  const pct      = total > 0 ? (revisadas / total) * 100 : 0
+  const allDone  = revisadas === total && total > 0
+
+  const sortedCausas = useMemo(() =>
+    [...causas].sort((a, b) => {
+      const ra = semanaData?.[a.id]?.revisada ? 1 : 0
+      const rb = semanaData?.[b.id]?.revisada ? 1 : 0
+      return ra - rb
+    }),
+    [causas, semanaData]
+  )
+
+  return (
+    <>
+      <div className="fixed inset-0 z-[100] flex">
+        {/* Backdrop */}
+        <div className="w-[22%] bg-black/25 backdrop-blur-[2px] cursor-pointer" onClick={onClose} />
+
+        {/* Panel */}
+        <div className="flex-1 bg-white flex flex-col shadow-2xl border-l border-gray-100 overflow-hidden">
+
+          {/* Header */}
+          <div className="flex items-start justify-between px-6 py-4 border-b border-gray-100 flex-shrink-0">
+            <div>
+              <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-widest mb-0.5">Cliente</p>
+              <h2 className="text-[18px] font-bold text-gray-900">{clienteNombre}</h2>
+              {rut && <p className="text-[11px] text-gray-400 font-mono mt-0.5">{rut}</p>}
+            </div>
+            <button onClick={onClose} className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
+              <X size={16} />
+            </button>
+          </div>
+
+          {/* Progress */}
+          <div className="px-6 py-3 border-b border-gray-100 flex-shrink-0">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[11px] text-gray-400">{revisadas} de {total} causas revisadas</span>
+              <span className={`text-[12px] font-bold tabular-nums ${allDone ? 'text-green-600' : revisadas > 0 ? 'text-[#1a2e4a]' : 'text-gray-400'}`}>
+                {Math.round(pct)}%
+              </span>
+            </div>
+            <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+              <div className={`h-full rounded-full transition-all duration-700 ${allDone ? 'bg-green-500' : 'bg-[#1a2e4a]'}`}
+                style={{ width: `${pct}%` }} />
+            </div>
+          </div>
+
+          {/* Causes list */}
+          <div className="flex-1 overflow-y-auto px-6 py-4 space-y-2">
+            {sortedCausas.map(causa => {
+              const rev = semanaData?.[causa.id]
+              const revisada = rev?.revisada || false
+              return (
+                <div
+                  key={causa.id}
+                  className={`rounded-xl border transition-all ${revisada ? 'border-green-100 bg-green-50/20' : 'border-gray-100 bg-white'}`}
+                >
+                  <div className="flex items-start gap-3 px-4 py-3.5">
+                    {/* Check circle */}
+                    <div className={`mt-0.5 flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${
+                      revisada ? 'bg-green-500 border-green-500' : 'border-gray-300'
+                    }`}>
+                      {revisada && <Check size={11} className="text-white" strokeWidth={2.5} />}
+                    </div>
+
+                    {/* Content */}
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-[13px] font-medium leading-snug ${revisada ? 'text-gray-400 line-through' : 'text-gray-800'}`}>
+                        {causa.materia}
+                      </p>
+                      <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                        <AreaBadge area={causa.area} />
+                        {causa.rit && <span className="text-[10px] font-mono text-gray-400">{causa.rit}</span>}
+                        {causa.tribunal && <span className="text-[10px] text-gray-400 truncate max-w-[180px]">{causa.tribunal}</span>}
+                      </div>
+                      {revisada && rev?.proxima_accion && (
+                        <div className="mt-1.5 flex items-center gap-2">
+                          <AccionBadge accion={rev.proxima_accion} />
+                          <RespAvatar resp={rev.responsable} />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Ver detalle button */}
+                    <button
+                      onClick={() => setSelectedCausa(causa)}
+                      className="flex-shrink-0 flex items-center gap-1 text-[11px] font-medium text-[#1a2e4a] border border-[#1a2e4a]/20 hover:border-[#1a2e4a]/40 hover:bg-[#1a2e4a]/5 px-2.5 py-1 rounded-lg transition-colors"
+                    >
+                      Revisar <ChevronRight size={11} />
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      </div>
+
+      {selectedCausa && (
+        <CausaModal
+          causa={selectedCausa}
+          semanaKey={semanaKey}
+          revisionData={semanaData?.[selectedCausa.id]}
+          allRevisiones={allRevisiones}
+          onMarcar={onMarcar}
+          onDesmarcar={onDesmarcar}
+          onCrearTarea={onCrearTarea}
+          onClose={() => setSelectedCausa(null)}
+        />
+      )}
+    </>
+  )
+}
+
 // ── TimelineRevisions ──────────────────────────────────────────────────────────
 function TimelineRevisions({ causaId, allRevisiones, currentKey }) {
   const history = useMemo(() => {
@@ -561,8 +856,8 @@ function CausaRow({ causa, semanaKey, revisionData, onMarcar, onDesmarcar, onCre
 }
 
 // ── ClienteBlock ───────────────────────────────────────────────────────────────
-function ClienteBlock({ clienteNombre, rut, causas, semanaKey, semanaData, onMarcar, onDesmarcar, onCrearTarea, allRevisiones }) {
-  const [open, setOpen] = useState(true)
+function ClienteBlock({ clienteNombre, rut, causas, semanaKey, semanaData, onMarcar, onDesmarcar, onCrearTarea, allRevisiones, onOpenPanel }) {
+  const [open, setOpen] = useState(false)
 
   const total    = causas.length
   const revisadas = causas.filter(c => semanaData?.[c.id]?.revisada).length
@@ -583,7 +878,7 @@ function ClienteBlock({ clienteNombre, rut, causas, semanaKey, semanaData, onMar
 
       {/* Header */}
       <div
-        onClick={() => setOpen(o => !o)}
+        onClick={() => onOpenPanel ? onOpenPanel() : setOpen(o => !o)}
         className={`flex items-center gap-3 px-4 py-3.5 cursor-pointer select-none transition-colors ${
           open ? 'bg-white border-b border-gray-100' : allDone ? 'bg-green-50/20' : 'bg-white hover:bg-gray-50/60'
         }`}
@@ -640,6 +935,7 @@ export default function RevisionCausas() {
   const [cargando,   setCargando]   = useState(true)
   const [semanaKey,  setSemanaKey]  = useState(CURRENT_WEEK_KEY)
   const [search,     setSearch]     = useState('')
+  const [selectedCliente, setSelectedCliente] = useState(null)
 
   useEffect(() => {
     async function fetchAll() {
@@ -891,11 +1187,27 @@ export default function RevisionCausas() {
                 onDesmarcar={desmarcarRevision}
                 onCrearTarea={addTarea}
                 allRevisiones={revisionesSemana}
+                onOpenPanel={() => setSelectedCliente({ clienteNombre, rut, causas })}
               />
             ))}
           </div>
         )}
       </div>
+
+      {selectedCliente && (
+        <ClienteDrawer
+          clienteNombre={selectedCliente.clienteNombre}
+          rut={selectedCliente.rut}
+          causas={selectedCliente.causas}
+          semanaKey={semanaKey}
+          semanaData={semanaData}
+          onMarcar={marcarRevision}
+          onDesmarcar={desmarcarRevision}
+          onCrearTarea={addTarea}
+          allRevisiones={revisionesSemana}
+          onClose={() => setSelectedCliente(null)}
+        />
+      )}
     </div>
   )
 }

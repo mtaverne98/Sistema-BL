@@ -272,20 +272,49 @@ function RegistroRow({ reg, index, onUpdate }) {
   )
 }
 
-// ── ClienteBlock ───────────────────────────────────────────────────────────────
-function ClienteBlock({ clienteNombre, registros, onUpdate, onAdd, allCausas }) {
-  const [open,     setOpen]     = useState(false)
+// ── ClienteCard ────────────────────────────────────────────────────────────────
+function ClienteCard({ clienteNombre, registros, onSelect }) {
+  const counts = {
+    total:       registros.length,
+    pendientes:  registros.filter(r => r.estado === 'Pendiente' || r.estado === 'Sin respuesta' || r.estado === 'Urgente').length,
+    respondidas: registros.filter(r => r.estado === 'Respondida').length,
+    urgentes:    registros.filter(r => r.estado === 'Urgente').length,
+  }
+
+  return (
+    <div
+      onClick={() => onSelect(clienteNombre)}
+      className="border border-gray-100 rounded-xl px-4 py-3.5 cursor-pointer hover:shadow-sm hover:border-gray-200 transition-all group bg-white"
+    >
+      <div className="flex items-center gap-3">
+        <ChevronRight size={14} className="flex-shrink-0 text-gray-300 group-hover:text-gray-500 transition-colors" />
+        <div className="flex-1 min-w-0">
+          <p className="text-[14px] font-semibold text-gray-900 leading-none">{clienteNombre}</p>
+          <p className="text-[11px] text-gray-400 mt-0.5">{counts.total} {counts.total === 1 ? 'solicitud' : 'solicitudes'}</p>
+        </div>
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          {counts.urgentes > 0 && <span className="text-[10px] font-bold text-white bg-red-500 px-1.5 py-0.5 rounded-full">{counts.urgentes} urg.</span>}
+          {counts.pendientes > 0 && <span className="text-[10px] font-medium text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full">{counts.pendientes} pend.</span>}
+          {counts.respondidas > 0 && <span className="text-[10px] font-medium text-green-600 bg-green-50 px-1.5 py-0.5 rounded-full">{counts.respondidas} resp.</span>}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── ClienteDrawer ──────────────────────────────────────────────────────────────
+function ClienteDrawer({ clienteNombre, registros, onClose, onUpdate, onAdd, allCausas }) {
   const [showForm, setShowForm] = useState(false)
   const [form,     setForm]     = useState({ fecha: TODAY, folio: '', solicitud: '', respuesta: '', documentos: '', causa_rit: '', estado: 'Pendiente', notas: '' })
   const [saving,   setSaving]   = useState(false)
 
   const causasCliente = allCausas.filter(c => c.cliente_nombre === clienteNombre)
 
-  const counts = useMemo(() => ({
-    total:      registros.length,
-    pendientes: registros.filter(r => r.estado === 'Pendiente' || r.estado === 'Sin respuesta' || r.estado === 'Urgente').length,
-    respondidas:registros.filter(r => r.estado === 'Respondida').length,
-  }), [registros])
+  const counts = {
+    total:       registros.length,
+    pendientes:  registros.filter(r => r.estado === 'Pendiente' || r.estado === 'Sin respuesta' || r.estado === 'Urgente').length,
+    respondidas: registros.filter(r => r.estado === 'Respondida').length,
+  }
 
   const handleAdd = async () => {
     if (!form.folio.trim() || !form.fecha) return
@@ -316,151 +345,157 @@ function ClienteBlock({ clienteNombre, registros, onUpdate, onAdd, allCausas }) 
   }
 
   return (
-    <div className={`border border-gray-100 rounded-xl overflow-hidden transition-shadow ${open ? 'shadow-sm' : ''}`}>
-      {/* Header */}
-      <div
-        onClick={() => setOpen(o => !o)}
-        className={`flex items-center gap-3 px-4 py-3.5 cursor-pointer transition-colors ${
-          open ? 'bg-white border-b border-gray-100' : 'bg-white hover:bg-gray-50/60'
-        }`}
-      >
-        <ChevronRight
-          size={14}
-          className={`flex-shrink-0 text-gray-400 transition-transform duration-150 ${open ? 'rotate-90' : ''}`}
-        />
-        <div className="flex-1 min-w-0">
-          <p className="text-[14px] font-semibold text-gray-900 leading-none">{clienteNombre}</p>
-          <p className="text-[11px] text-gray-400 mt-0.5">
-            {counts.total} {counts.total === 1 ? 'solicitud' : 'solicitudes'}
-          </p>
-        </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
-          {counts.pendientes > 0 && (
-            <span className="text-[10px] text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full font-medium">
-              {counts.pendientes} pend.
-            </span>
-          )}
-          {counts.respondidas > 0 && (
-            <span className="text-[10px] text-green-600 bg-green-50 px-2 py-0.5 rounded-full font-medium">
-              {counts.respondidas} resp.
-            </span>
-          )}
-        </div>
-      </div>
+    <div className="fixed inset-0 z-[100] flex">
+      {/* Backdrop */}
+      <div className="w-[18%] bg-black/25 backdrop-blur-[2px] cursor-pointer" onClick={onClose} />
 
-      {/* Table */}
-      {open && (
-        <div>
-          {/* Header */}
-          <div
-            className="grid px-4 py-2 bg-gray-50/60 border-b border-gray-100 gap-2"
-            style={{ gridTemplateColumns: '80px 100px 1fr 1fr 90px 1fr 28px' }}
-          >
-            {['Fecha','Folio','Solicitud','Respuesta','Documentos','Notas',''].map((h, i) => (
-              <p key={i} className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider leading-none">{h}</p>
-            ))}
+      {/* Panel */}
+      <div className="flex-1 bg-white flex flex-col shadow-2xl border-l border-gray-100 overflow-hidden">
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 flex-shrink-0">
+          <div>
+            <h2 className="text-[17px] font-bold text-gray-900">{clienteNombre}</h2>
+            <div className="flex items-center gap-3 mt-1">
+              <span className="text-[11px] text-gray-400">{counts.total} solicitudes SIAU</span>
+            </div>
           </div>
+          <div className="flex items-center gap-2">
+            <a href="https://siau.minjusticia.gob.cl/" target="_blank" rel="noopener noreferrer"
+              className="flex items-center gap-1.5 text-[12px] font-medium text-[#1a2e4a] border border-[#1a2e4a]/20 hover:border-[#1a2e4a]/40 hover:bg-[#1a2e4a]/5 px-3 py-1.5 rounded-lg transition-colors">
+              <Gavel size={12} /> Abrir SIAU <ExternalLink size={10} className="opacity-60" />
+            </a>
+            <button onClick={onClose} className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
+              <X size={16} />
+            </button>
+          </div>
+        </div>
 
-          {/* Rows */}
+        {/* Mini stats */}
+        <div className="flex items-center gap-5 px-6 py-2.5 bg-gray-50/50 border-b border-gray-100 flex-shrink-0">
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Total</span>
+            <span className="text-[14px] font-bold text-gray-800 tabular-nums">{counts.total}</span>
+          </div>
+          <span className="text-gray-200">·</span>
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] font-semibold text-green-600 uppercase tracking-wider">Respondidas</span>
+            <span className="text-[14px] font-bold text-green-700 tabular-nums">{counts.respondidas}</span>
+          </div>
+          <span className="text-gray-200">·</span>
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] font-semibold text-amber-600 uppercase tracking-wider">Pendientes</span>
+            <span className="text-[14px] font-bold text-amber-700 tabular-nums">{counts.pendientes}</span>
+          </div>
+        </div>
+
+        {/* Table header */}
+        <div
+          className="grid px-6 py-2 bg-gray-50/60 border-b border-gray-100 flex-shrink-0 gap-2"
+          style={{ gridTemplateColumns: '80px 110px 1fr 1fr 100px 1fr 28px' }}
+        >
+          {['Fecha','Folio','Solicitud','Respuesta','Documentos','Notas',''].map((h, i) => (
+            <p key={i} className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider leading-none">{h}</p>
+          ))}
+        </div>
+
+        {/* Registros */}
+        <div className="flex-1 overflow-y-auto">
           {registros.length === 0 ? (
-            <div className="flex items-center justify-center py-8 text-gray-400">
-              <p className="text-[13px]">Sin registros</p>
+            <div className="flex items-center justify-center py-16 text-gray-400">
+              <p className="text-[13px]">Sin registros SIAU</p>
             </div>
           ) : (
             registros.map((reg, i) => (
               <RegistroRow key={reg.id} reg={reg} index={i} onUpdate={onUpdate} />
             ))
           )}
+        </div>
 
-          {/* Footer + form */}
-          <div className="px-4 py-2.5 bg-gray-50/40 border-t border-gray-100">
-            {!showForm ? (
+        {/* Footer */}
+        <div className="px-6 py-3 border-t border-gray-100 flex-shrink-0 bg-gray-50/30">
+          {!showForm ? (
+            <div className="flex items-center justify-between">
+              <p className="text-[11px] text-gray-400">{counts.total} {counts.total === 1 ? 'solicitud' : 'solicitudes'}</p>
               <button
                 onClick={() => setShowForm(true)}
-                className="flex items-center gap-1.5 text-[11px] font-medium text-[#1a2e4a] hover:text-[#243d5e] transition-colors"
+                className="flex items-center gap-1.5 text-[12px] font-medium text-[#1a2e4a] border border-[#1a2e4a]/20 hover:border-[#1a2e4a]/40 hover:bg-[#1a2e4a]/5 px-3 py-1.5 rounded-lg transition-colors"
               >
-                <Plus size={12} /> Nueva solicitud SIAU
+                <Plus size={13} /> Nueva solicitud SIAU
               </button>
-            ) : (
-              <div className="space-y-3 pt-1">
-                <p className="text-[11px] font-semibold text-gray-700 flex items-center gap-1.5">
-                  <Plus size={11} className="text-[#1a2e4a]" /> Nueva solicitud — {clienteNombre.split(' ')[0]}
-                </p>
-                <div className="grid grid-cols-4 gap-3">
-                  <div>
-                    <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Fecha *</label>
-                    <input type="date" value={form.fecha}
-                      onChange={e => setForm(f => ({ ...f, fecha: e.target.value }))}
-                      className="w-full text-[12px] border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white focus:outline-none focus:border-blue-400" />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Folio SIAU *</label>
-                    <input type="text" value={form.folio}
-                      onChange={e => setForm(f => ({ ...f, folio: e.target.value }))}
-                      placeholder="Ej: SIAU-2026-001"
-                      className="w-full text-[12px] font-mono border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white focus:outline-none focus:border-blue-400" />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Causa (RIT)</label>
-                    <select value={form.causa_rit} onChange={e => setForm(f => ({ ...f, causa_rit: e.target.value }))}
-                      className="w-full text-[12px] border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white focus:outline-none focus:border-blue-400">
-                      <option value="">Sin causa</option>
-                      {causasCliente.map(c => <option key={c.id} value={c.rit}>{c.rit}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Estado</label>
-                    <select value={form.estado} onChange={e => setForm(f => ({ ...f, estado: e.target.value }))}
-                      className="w-full text-[12px] border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white focus:outline-none focus:border-blue-400">
-                      {Object.keys(ESTADO_CONFIG).map(e => <option key={e} value={e}>{e}</option>)}
-                    </select>
-                  </div>
-                </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-[12px] font-semibold text-gray-700 flex items-center gap-1.5">
+                <Plus size={11} className="text-[#1a2e4a]" /> Nueva solicitud — {clienteNombre.split(' ')[0]}
+              </p>
+              <div className="grid grid-cols-4 gap-3">
                 <div>
-                  <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Solicitud</label>
-                  <input type="text" value={form.solicitud}
-                    onChange={e => setForm(f => ({ ...f, solicitud: e.target.value }))}
-                    placeholder="Descripción de la solicitud..."
+                  <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Fecha *</label>
+                  <input type="date" value={form.fecha}
+                    onChange={e => setForm(f => ({ ...f, fecha: e.target.value }))}
                     className="w-full text-[12px] border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white focus:outline-none focus:border-blue-400" />
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Respuesta</label>
-                    <input type="text" value={form.respuesta}
-                      onChange={e => setForm(f => ({ ...f, respuesta: e.target.value }))}
-                      placeholder="Respuesta recibida..."
-                      className="w-full text-[12px] border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white focus:outline-none focus:border-blue-400" />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Documentos</label>
-                    <input type="text" value={form.documentos}
-                      onChange={e => setForm(f => ({ ...f, documentos: e.target.value }))}
-                      placeholder="Documentos adjuntos..."
-                      className="w-full text-[12px] border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white focus:outline-none focus:border-blue-400" />
-                  </div>
+                <div>
+                  <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Folio SIAU *</label>
+                  <input type="text" value={form.folio}
+                    onChange={e => setForm(f => ({ ...f, folio: e.target.value }))}
+                    placeholder="Ej: SIAU-2026-001"
+                    className="w-full text-[12px] font-mono border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white focus:outline-none focus:border-blue-400" />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Notas</label>
-                  <input type="text" value={form.notas}
-                    onChange={e => setForm(f => ({ ...f, notas: e.target.value }))}
-                    placeholder="Observaciones..."
-                    className="w-full text-[12px] border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white focus:outline-none focus:border-blue-400" />
+                  <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Causa (RIT)</label>
+                  <select value={form.causa_rit} onChange={e => setForm(f => ({ ...f, causa_rit: e.target.value }))}
+                    className="w-full text-[12px] border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white focus:outline-none focus:border-blue-400">
+                    <option value="">Sin causa</option>
+                    {causasCliente.map(c => <option key={c.id} value={c.rit}>{c.rit}</option>)}
+                  </select>
                 </div>
-                <div className="flex items-center gap-2">
-                  <button onClick={handleAdd} disabled={!form.folio.trim() || saving}
-                    className="text-[11px] px-3 py-1.5 bg-[#1a2e4a] text-white rounded-lg hover:bg-[#243d5e] disabled:opacity-50 flex items-center gap-1.5">
-                    {saving ? <Loader2 size={10} className="animate-spin" /> : <Check size={10} />} Guardar
-                  </button>
-                  <button onClick={() => setShowForm(false)}
-                    className="text-[11px] px-3 py-1.5 border border-gray-200 text-gray-500 rounded-lg hover:bg-gray-50">
-                    Cancelar
-                  </button>
+                <div>
+                  <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Estado</label>
+                  <select value={form.estado} onChange={e => setForm(f => ({ ...f, estado: e.target.value }))}
+                    className="w-full text-[12px] border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white focus:outline-none focus:border-blue-400">
+                    {Object.keys(ESTADO_CONFIG).map(e => <option key={e} value={e}>{e}</option>)}
+                  </select>
                 </div>
               </div>
-            )}
-          </div>
+              <div>
+                <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Solicitud</label>
+                <input type="text" value={form.solicitud}
+                  onChange={e => setForm(f => ({ ...f, solicitud: e.target.value }))}
+                  placeholder="Descripción de la solicitud..."
+                  className="w-full text-[12px] border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white focus:outline-none focus:border-blue-400" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Respuesta</label>
+                  <input type="text" value={form.respuesta}
+                    onChange={e => setForm(f => ({ ...f, respuesta: e.target.value }))}
+                    placeholder="Respuesta recibida..."
+                    className="w-full text-[12px] border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white focus:outline-none focus:border-blue-400" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Documentos</label>
+                  <input type="text" value={form.documentos}
+                    onChange={e => setForm(f => ({ ...f, documentos: e.target.value }))}
+                    placeholder="Documentos adjuntos..."
+                    className="w-full text-[12px] border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white focus:outline-none focus:border-blue-400" />
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button onClick={handleAdd} disabled={!form.folio.trim() || saving}
+                  className="text-[11px] px-3 py-1.5 bg-[#1a2e4a] text-white rounded-lg hover:bg-[#243d5e] disabled:opacity-50 flex items-center gap-1.5">
+                  {saving ? <Loader2 size={10} className="animate-spin" /> : <Check size={10} />} Guardar
+                </button>
+                <button onClick={() => setShowForm(false)}
+                  className="text-[11px] px-3 py-1.5 border border-gray-200 text-gray-500 rounded-lg hover:bg-gray-50">
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   )
 }
@@ -474,6 +509,7 @@ export default function SIAU() {
   const [search,         setSearch]         = useState('')
   const [filterEstado,   setFilterEstado]   = useState('Todos')
   const [filterCliente,  setFilterCliente]  = useState('Todos')
+  const [selectedCliente, setSelectedCliente] = useState(null)
 
   const fetchRegistros = useCallback(async () => {
     setCargando(true)
@@ -647,19 +683,31 @@ export default function SIAU() {
               </div>
             ) : (
               filteredAndGrouped.map(([cliente, regs]) => (
-                <ClienteBlock
+                <ClienteCard
                   key={cliente}
                   clienteNombre={cliente}
                   registros={regs}
-                  onUpdate={handleUpdate}
-                  onAdd={handleAdd}
-                  allCausas={allCausas}
+                  onSelect={setSelectedCliente}
                 />
               ))
             )}
           </div>
         </>
       )}
+
+      {selectedCliente && (() => {
+        const regsCliente = registros.filter(r => r.cliente_nombre === selectedCliente)
+        return (
+          <ClienteDrawer
+            clienteNombre={selectedCliente}
+            registros={regsCliente}
+            onClose={() => setSelectedCliente(null)}
+            onUpdate={handleUpdate}
+            onAdd={reg => { handleAdd(reg) }}
+            allCausas={allCausas}
+          />
+        )
+      })()}
     </div>
   )
 }
