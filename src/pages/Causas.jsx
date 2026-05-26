@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import {
   Search, Plus, X, Scale, Gavel, FileText,
   CheckSquare, BookOpen, Clock, Filter,
@@ -163,7 +163,8 @@ function mapCausa(row) {
 /** Convierte formulario → payload Supabase */
 function mapToDb(form) {
   return {
-    cliente_nombre:  form.cliente_nombre.trim(),
+    cliente_id:      form.cliente_id      || null,
+    cliente_nombre:  (form.cliente_nombre || '').trim(),
     rit:             form.rit.trim()             || null,
     ruc:             form.ruc.trim()             || null,
     tribunal:        form.tribunal.trim(),
@@ -188,9 +189,119 @@ function LoadingState() {
   )
 }
 
+// ── Selector de cliente con búsqueda ─────────────────────────────────────
+function ClienteSelector({ clientes, value, onChange, onCrearCliente }) {
+  const [open,  setOpen]  = useState(false)
+  const [query, setQuery] = useState('')
+  const ref = useRef(null)
+
+  useEffect(() => {
+    const handler = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  const filtrados = useMemo(() => {
+    if (!query.trim()) return clientes
+    const q = query.toLowerCase()
+    return clientes.filter(c =>
+      (c.nombre || '').toLowerCase().includes(q) ||
+      (c.rut    || '').toLowerCase().includes(q)
+    )
+  }, [clientes, query])
+
+  return (
+    <div ref={ref} className="relative">
+      {/* Trigger */}
+      <button
+        type="button"
+        onClick={() => { setOpen(o => !o); setQuery('') }}
+        className={`w-full flex items-center justify-between px-3 py-2 text-xs border rounded-lg transition-all bg-white ${
+          open
+            ? 'border-[#2570ba] ring-1 ring-[#2570ba]/20'
+            : 'border-gray-200 hover:border-gray-300'
+        }`}
+      >
+        {value ? (
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-5 h-5 rounded-full bg-[#1a2e4a]/10 flex items-center justify-center flex-shrink-0">
+              <span className="text-[9px] font-bold text-[#1a2e4a]">{initials(value.nombre)}</span>
+            </div>
+            <span className="text-xs text-gray-800 truncate font-medium">{value.nombre}</span>
+          </div>
+        ) : (
+          <span className="text-xs text-gray-300">Seleccionar cliente…</span>
+        )}
+        <ChevronDown
+          size={11}
+          className={`flex-shrink-0 text-gray-400 transition-transform duration-150 ${open ? 'rotate-180' : ''}`}
+        />
+      </button>
+
+      {/* Dropdown */}
+      {open && (
+        <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-100 rounded-xl shadow-xl shadow-black/5 z-50 overflow-hidden">
+          {/* Búsqueda */}
+          <div className="p-2 border-b border-gray-50">
+            <div className="relative">
+              <Search size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-300 pointer-events-none" />
+              <input
+                autoFocus
+                value={query}
+                onChange={e => setQuery(e.target.value)}
+                placeholder="Buscar por nombre o RUT…"
+                className="w-full pl-7 pr-3 py-1.5 text-xs bg-gray-50 rounded-lg outline-none focus:bg-white border border-transparent focus:border-[#2570ba]/30 transition-all placeholder:text-gray-300"
+              />
+            </div>
+          </div>
+
+          {/* Lista */}
+          <div className="max-h-52 overflow-y-auto py-1">
+            {clientes.length === 0 ? (
+              <div className="px-4 py-6 text-center space-y-2.5">
+                <p className="text-xs text-gray-400">No existen clientes creados todavía</p>
+                <button
+                  type="button"
+                  onClick={onCrearCliente}
+                  className="text-xs font-semibold text-[#2570ba] hover:underline flex items-center gap-1 mx-auto"
+                >
+                  <Plus size={11} /> Crear cliente
+                </button>
+              </div>
+            ) : filtrados.length === 0 ? (
+              <div className="px-4 py-4 text-center">
+                <p className="text-xs text-gray-400">Sin resultados para "{query}"</p>
+              </div>
+            ) : (
+              filtrados.map(c => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => { onChange(c); setOpen(false); setQuery('') }}
+                  className={`w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors ${
+                    value?.id === c.id ? 'bg-blue-50/60' : 'hover:bg-gray-50'
+                  }`}
+                >
+                  <div className="w-6 h-6 rounded-full bg-[#1a2e4a]/10 flex items-center justify-center flex-shrink-0">
+                    <span className="text-[9px] font-bold text-[#1a2e4a]">{initials(c.nombre)}</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-gray-800 truncate font-medium">{c.nombre}</p>
+                    {c.rut && <p className="text-[10px] text-gray-400 font-mono mt-0.5">{c.rut}</p>}
+                  </div>
+                  {value?.id === c.id && <Check size={11} className="text-[#2570ba] flex-shrink-0" />}
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Formulario nueva / editar causa ──────────────────────────────────────
 const FORM_FIELDS_CAUSA = [
-  { key: 'cliente_nombre', label: 'Cliente *',       placeholder: 'Nombre del cliente' },
   { key: 'materia',        label: 'Materia *',       placeholder: 'Ej: Despido injustificado' },
   { key: 'tribunal',       label: 'Tribunal *',      placeholder: 'Ej: Juzgado del Trabajo N°1' },
   { key: 'rit',            label: 'RIT',             placeholder: 'Ej: O-1234-2025' },
@@ -200,10 +311,10 @@ const FORM_FIELDS_CAUSA = [
   { key: 'etapa_procesal', label: 'Etapa procesal',  placeholder: 'Ej: Preparación de juicio oral' },
 ]
 
-function FormCausa({ inicial, onClose, onGuardar, guardando }) {
+function FormCausa({ inicial, onClose, onGuardar, guardando, clientes = [], onCrearCliente }) {
   const esEdicion = !!inicial?.id
   const [form, setForm] = useState({
-    cliente_nombre: '', materia: '', tribunal: '',
+    cliente_id: null, cliente_nombre: '', materia: '', tribunal: '',
     rit: '', ruc: '', fiscalia: '', fiscal: '',
     etapa_procesal: '',
     area: 'Laboral', parte: 'Demandante',
@@ -211,6 +322,26 @@ function FormCausa({ inicial, onClose, onGuardar, guardando }) {
     ...inicial,
   })
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  // Cliente seleccionado en el dropdown
+  const [clienteObj, setClienteObj] = useState(() => {
+    if (!inicial) return null
+    return clientes.find(c => c.id === inicial.cliente_id) ||
+           (inicial.cliente_nombre ? { id: inicial.cliente_id || null, nombre: inicial.cliente_nombre, rut: '' } : null)
+  })
+
+  // Sincronizar si la lista de clientes llega después del montaje (edición)
+  useEffect(() => {
+    if (inicial?.cliente_id && !clienteObj?.rut) {
+      const c = clientes.find(c => c.id === inicial.cliente_id)
+      if (c) setClienteObj(c)
+    }
+  }, [clientes]) // eslint-disable-line
+
+  const handleSelectCliente = (c) => {
+    setClienteObj(c)
+    setForm(f => ({ ...f, cliente_id: c.id, cliente_nombre: c.nombre }))
+  }
 
   return (
     <div className="w-[340px] flex-shrink-0 border-l border-gray-100 flex flex-col bg-white">
@@ -222,6 +353,21 @@ function FormCausa({ inicial, onClose, onGuardar, guardando }) {
       </div>
 
       <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
+
+        {/* ── Selector de cliente ── */}
+        <div>
+          <label className="block text-[11px] font-medium text-gray-500 mb-1">Cliente *</label>
+          <ClienteSelector
+            clientes={clientes}
+            value={clienteObj}
+            onChange={handleSelectCliente}
+            onCrearCliente={onCrearCliente}
+          />
+          {!clienteObj && (
+            <p className="mt-1 text-[10px] text-gray-300">Selecciona un cliente para continuar</p>
+          )}
+        </div>
+
         {FORM_FIELDS_CAUSA.map(f => (
           <div key={f.key}>
             <label className="block text-[11px] font-medium text-gray-500 mb-1">{f.label}</label>
@@ -282,7 +428,7 @@ function FormCausa({ inicial, onClose, onGuardar, guardando }) {
           Cancelar
         </button>
         <button onClick={() => onGuardar(form)}
-          disabled={guardando || !form.cliente_nombre.trim() || !form.materia.trim() || !form.tribunal.trim()}
+          disabled={guardando || !clienteObj || !form.materia.trim() || !form.tribunal.trim()}
           className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium text-white rounded-lg transition-colors disabled:opacity-50"
           style={{ backgroundColor: '#1a2e4a' }}>
           {guardando && <Loader2 size={11} className="animate-spin" />}
@@ -1549,6 +1695,7 @@ function GrupoCliente({ nombre, lista, seleccionada, onSelect }) {
 // ── Componente principal ──────────────────────────────────────────────────
 export default function Causas() {
   const [causas, setCausas]           = useState([])
+  const [listaClientes, setListaClientes] = useState([])
   const [loading, setLoading]         = useState(true)
   const [error, setError]             = useState(null)
   const [guardando, setGuardando]     = useState(false)
@@ -1579,7 +1726,15 @@ export default function Causas() {
     setLoading(false)
   }, [])
 
-  useEffect(() => { fetchCausas() }, [fetchCausas])
+  const fetchListaClientes = useCallback(async () => {
+    const { data } = await supabase
+      .from('clientes')
+      .select('id, nombre, rut')
+      .order('nombre', { ascending: true })
+    setListaClientes(data || [])
+  }, [])
+
+  useEffect(() => { fetchCausas(); fetchListaClientes() }, [fetchCausas, fetchListaClientes])
 
   // ── Guardar (crear / editar) ─────────────────────────────────────────────
   const handleGuardar = async (form) => {
@@ -1672,6 +1827,8 @@ export default function Causas() {
               onClose={() => setFormulario(null)}
               onGuardar={handleGuardar}
               guardando={guardando}
+              clientes={listaClientes}
+              onCrearCliente={() => { setFormulario(null); window.location.href = '/clientes' }}
             />
           )}
         </div>
@@ -1843,6 +2000,8 @@ export default function Causas() {
               onClose={() => setFormulario(null)}
               onGuardar={handleGuardar}
               guardando={guardando}
+              clientes={listaClientes}
+              onCrearCliente={() => { setFormulario(null); window.location.href = '/clientes' }}
             />
           )}
         </div>
