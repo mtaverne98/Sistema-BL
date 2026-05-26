@@ -7,9 +7,10 @@ import {
   Mail, Target, Send, Briefcase, AlignLeft,
   Loader2, AlertTriangle, RefreshCw, Trash2, Check,
   Calendar, Activity, Flame, PlusSquare,
-  UserCheck,
+  UserCheck, Upload,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
+import SegCargaHistorialModal from '../components/SegCargaHistorialModal'
 
 // ── Exportación vacía para compatibilidad con CMD+K en MainLayout ──────────
 export const CAUSAS = []
@@ -698,8 +699,9 @@ function CausaView({ causa, onClose, onEdit, onDelete }) {
   const [toastMsg,      setToastMsg]      = useState(null)
 
   // Seguimiento personal
-  const [segDraft,   setSegDraft]   = useState({ por_hacer: '', que_se_hizo: '', estado_seg: 'Pendiente', proxima_accion: '', notas: '', responsable: 'MT' })
-  const [savingSeg,  setSavingSeg]  = useState(false)
+  const [segDraft,        setSegDraft]        = useState({ por_hacer: '', que_se_hizo: '', estado_seg: 'Pendiente', proxima_accion: '', notas: '', responsable: 'MT' })
+  const [savingSeg,       setSavingSeg]       = useState(false)
+  const [showSegCarga,    setShowSegCarga]    = useState(false)
 
   function showToast(msg) {
     setToastMsg(msg)
@@ -888,6 +890,7 @@ function CausaView({ causa, onClose, onEdit, onDelete }) {
   const tareasPend = tareas.filter(t => t.estado !== 'Completada').length
 
   return (
+    <>
     <div className="flex-1 min-w-0 flex flex-col h-full bg-white overflow-hidden">
 
       {/* Toast */}
@@ -1890,14 +1893,23 @@ function CausaView({ causa, onClose, onEdit, onDelete }) {
                   </h3>
                   <p className="text-[12px] text-gray-400 mt-0.5 ml-5">{weekHeader}</p>
                 </div>
-                <button
-                  onClick={handleSaveSeg}
-                  disabled={savingSeg}
-                  className="flex items-center gap-1.5 text-[12px] font-medium bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-3 py-1.5 rounded-lg transition-colors"
-                >
-                  {savingSeg ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
-                  Guardar semana
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setShowSegCarga(true)}
+                    className="flex items-center gap-1.5 text-[12px] font-medium border border-indigo-200 text-indigo-600 hover:bg-indigo-50 px-3 py-1.5 rounded-lg transition-colors"
+                  >
+                    <Upload size={13} />
+                    Cargar historial
+                  </button>
+                  <button
+                    onClick={handleSaveSeg}
+                    disabled={savingSeg}
+                    className="flex items-center gap-1.5 text-[12px] font-medium bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-3 py-1.5 rounded-lg transition-colors"
+                  >
+                    {savingSeg ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+                    Guardar semana
+                  </button>
+                </div>
               </div>
 
               {/* Form */}
@@ -2041,6 +2053,26 @@ function CausaView({ causa, onClose, onEdit, onDelete }) {
 
       </div>
     </div>
+
+    {/* Carga historial seguimiento */}
+    {showSegCarga && (
+      <SegCargaHistorialModal
+        causa={causa}
+        onClose={() => setShowSegCarga(false)}
+        onSuccess={inserted => {
+          setRevisiones(prev => {
+            const updated = [...prev]
+            inserted.forEach(r => {
+              const idx = updated.findIndex(x => x.semana_key === r.semana_key)
+              if (idx >= 0) updated[idx] = r
+              else updated.unshift(r)
+            })
+            return updated.sort((a, b) => (b.semana_key ?? '').localeCompare(a.semana_key ?? ''))
+          })
+        }}
+      />
+    )}
+    </>
   )
 }
 
