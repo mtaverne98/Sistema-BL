@@ -137,6 +137,7 @@ const CAUSA_TABS = [
   { key: 'pjud',             label: 'PJUD',             Icon: Scale         },
   { key: 'siau',             label: 'SIAU',             Icon: MessageSquare },
   { key: 'documentos',       label: 'Documentos',       Icon: FileText      },
+  { key: 'seguimiento',      label: 'Seguimiento',      Icon: Target        },
 ]
 
 // ── Helpers ───────────────────────────────────────────────────────────────
@@ -696,6 +697,10 @@ function CausaView({ causa, onClose, onEdit, onDelete }) {
   const [savingTarea,   setSavingTarea]   = useState(false)
   const [toastMsg,      setToastMsg]      = useState(null)
 
+  // Seguimiento personal
+  const [segDraft,   setSegDraft]   = useState({ por_hacer: '', que_se_hizo: '', estado_seg: 'Pendiente', proxima_accion: '', notas: '', responsable: 'MT' })
+  const [savingSeg,  setSavingSeg]  = useState(false)
+
   function showToast(msg) {
     setToastMsg(msg)
     setTimeout(() => setToastMsg(null), 2500)
@@ -735,12 +740,33 @@ function CausaView({ causa, onClose, onEdit, onDelete }) {
 
   // Load revisiones when tab opens (or on mount for timeline)
   useEffect(() => {
-    if ((tab !== 'revision_semanal' && tab !== 'timeline') || !causa?.id) return
+    if ((tab !== 'revision_semanal' && tab !== 'timeline' && tab !== 'seguimiento') || !causa?.id) return
     if (revisiones.length > 0) return // already loaded
     setLoadingRev(true)
     supabase.from('revisiones').select('*').eq('causa_id', causa.id).order('fecha', { ascending: false })
       .then(({ data }) => { setRevisiones(data ?? []); setLoadingRev(false) })
   }, [tab, causa?.id])
+
+  // Pre-fill segDraft with current week's seguimiento entry
+  useEffect(() => {
+    if (tab !== 'seguimiento') return
+    const weekNum = getISOWeek_C(TODAY_C)
+    const year = new Date().getFullYear()
+    const semana_key = `SEG-${year}-W${String(weekNum).padStart(2, '0')}`
+    const current = revisiones.find(r => r.semana_key === semana_key)
+    if (current) {
+      setSegDraft({
+        por_hacer:      current.por_hacer      || '',
+        que_se_hizo:    current.que_se_hizo    || '',
+        estado_seg:     current.estado_seg     || 'Pendiente',
+        proxima_accion: current.proxima_accion || '',
+        notas:          current.nota           || '',
+        responsable:    current.responsable    || 'MT',
+      })
+    } else {
+      setSegDraft({ por_hacer: '', que_se_hizo: '', estado_seg: 'Pendiente', proxima_accion: '', notas: '', responsable: 'MT' })
+    }
+  }, [tab, revisiones])
 
   // Save new revision
   async function handleSaveRevision() {
@@ -770,6 +796,35 @@ function CausaView({ causa, onClose, onEdit, onDelete }) {
     setShowRevForm(false)
     setRevDraft({ nota: '', proxima_accion: 'Esperar resolución', responsable: 'MT', urgente: false })
     setSavingRev(false)
+  }
+
+  // Save seguimiento personal
+  async function handleSaveSeg() {
+    setSavingSeg(true)
+    const today = TODAY_C
+    const weekNum = getISOWeek_C(today)
+    const year = new Date().getFullYear()
+    const semana_key = `SEG-${year}-W${String(weekNum).padStart(2, '0')}`
+    const payload = {
+      causa_id:       causa.id,
+      semana_key,
+      fecha:          today,
+      por_hacer:      segDraft.por_hacer.trim(),
+      que_se_hizo:    segDraft.que_se_hizo.trim(),
+      estado_seg:     segDraft.estado_seg,
+      proxima_accion: segDraft.proxima_accion.trim(),
+      nota:           segDraft.notas.trim(),
+      responsable:    segDraft.responsable,
+      revisada:       false,
+    }
+    const { data, error } = await supabase.from('revisiones')
+      .upsert(payload, { onConflict: 'semana_key,causa_id' })
+      .select().single()
+    if (!error && data) {
+      setRevisiones(prev => [data, ...prev.filter(r => r.semana_key !== semana_key)])
+      showToast('Seguimiento guardado ✓')
+    }
+    setSavingSeg(false)
   }
 
   // Save edited revision
@@ -1802,6 +1857,187 @@ function CausaView({ causa, onClose, onEdit, onDelete }) {
             </p>
           </div>
         )}
+
+        {/* SEGUIMIENTO PERSONAL */}
+        {tab === 'seguimiento' && (() => {
+          const weekNum = getISOWeek_C(TODAY_C)
+          const d = new Date(TODAY_C + 'T12:00:00')
+          const dow = d.getDay() === 0 ? 7 : d.getDay()
+          const monday = new Date(d); monday.setDate(d.getDate() - (dow - 1))
+          const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6)
+          const mesNombre = monday.toLocaleDateString('es-CL', { month: 'long' })
+          const weekHeader = `Semana ${weekNum} · ${monday.getDate()}–${sunday.getDate()} de ${mesNombre} ${monday.getFullYear()}`
+          const semana_key = `SEG-${monday.getFullYear()}-W${String(weekNum).padStart(2, '0')}`
+          const segHistory = revisiones.filter(r => r.semana_key?.startsWith('SEG-') && r.semana_key !== semana_key)
+            .sort((a, b) => (b.semana_key ?? '').localeCompare(a.semana_key ?? ''))
+
+          const estadoColors = {
+            'Pendiente':     'border-amber-300 bg-amber-50 text-amber-700',
+            'En progreso':   'border-blue-300 bg-blue-50 text-blue-700',
+            'Listo':         'border-emerald-300 bg-emerald-50 text-emerald-700',
+            'Sin novedades': 'border-gray-300 bg-gray-50 text-gray-500',
+          }
+          const estadoInactive = 'border-gray-200 bg-white text-gray-400 hover:border-gray-300'
+
+          return (
+            <div className="p-6 max-w-2xl mx-auto space-y-6">
+              {/* Header */}
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-[15px] font-semibold text-gray-800 flex items-center gap-2">
+                    <Target size={15} className="text-indigo-500" />
+                    Seguimiento personal
+                  </h3>
+                  <p className="text-[12px] text-gray-400 mt-0.5 ml-5">{weekHeader}</p>
+                </div>
+                <button
+                  onClick={handleSaveSeg}
+                  disabled={savingSeg}
+                  className="flex items-center gap-1.5 text-[12px] font-medium bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-3 py-1.5 rounded-lg transition-colors"
+                >
+                  {savingSeg ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+                  Guardar semana
+                </button>
+              </div>
+
+              {/* Form */}
+              <div className="bg-white border border-gray-100 rounded-xl p-5 space-y-5 shadow-sm">
+
+                {/* ¿Qué hay que hacer? */}
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">¿Qué hay que hacer?</label>
+                  <textarea
+                    value={segDraft.por_hacer}
+                    onChange={e => setSegDraft(d => ({ ...d, por_hacer: e.target.value }))}
+                    placeholder="Tareas pendientes, gestiones, escritos…"
+                    rows={3}
+                    className="w-full text-[13px] text-gray-700 border border-gray-200 rounded-lg px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 placeholder-gray-300"
+                  />
+                </div>
+
+                {/* ¿Qué se hizo? */}
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">¿Qué se hizo esta semana?</label>
+                  <textarea
+                    value={segDraft.que_se_hizo}
+                    onChange={e => setSegDraft(d => ({ ...d, que_se_hizo: e.target.value }))}
+                    placeholder="Avances, reuniones, escritos enviados…"
+                    rows={3}
+                    className="w-full text-[13px] text-gray-700 border border-gray-200 rounded-lg px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 placeholder-gray-300"
+                  />
+                </div>
+
+                {/* Estado */}
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Estado</label>
+                  <div className="flex flex-wrap gap-2">
+                    {['Pendiente', 'En progreso', 'Listo', 'Sin novedades'].map(e => (
+                      <button
+                        key={e}
+                        onClick={() => setSegDraft(d => ({ ...d, estado_seg: e }))}
+                        className={`text-[12px] font-medium px-3 py-1.5 rounded-lg border transition-all ${segDraft.estado_seg === e ? estadoColors[e] : estadoInactive}`}
+                      >
+                        {e}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Próxima acción */}
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Próxima acción</label>
+                  <input
+                    value={segDraft.proxima_accion}
+                    onChange={e => setSegDraft(d => ({ ...d, proxima_accion: e.target.value }))}
+                    placeholder="¿Qué sigue?"
+                    className="w-full text-[13px] text-gray-700 border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 placeholder-gray-300"
+                  />
+                </div>
+
+                {/* Notas */}
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Notas</label>
+                  <textarea
+                    value={segDraft.notas}
+                    onChange={e => setSegDraft(d => ({ ...d, notas: e.target.value }))}
+                    placeholder="Observaciones, recordatorios…"
+                    rows={2}
+                    className="w-full text-[13px] text-gray-700 border border-gray-200 rounded-lg px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 placeholder-gray-300"
+                  />
+                </div>
+
+                {/* Responsable */}
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Responsable</label>
+                  <div className="flex gap-2">
+                    {['MT', 'AB', 'CL'].map(r => (
+                      <button
+                        key={r}
+                        onClick={() => setSegDraft(d => ({ ...d, responsable: r }))}
+                        className={`text-[12px] font-semibold w-10 h-8 rounded-lg border transition-all ${
+                          segDraft.responsable === r
+                            ? 'bg-indigo-600 border-indigo-600 text-white'
+                            : 'bg-white border-gray-200 text-gray-400 hover:border-gray-300'
+                        }`}
+                      >
+                        {r}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Historial */}
+              {segHistory.length > 0 && (
+                <div className="space-y-3">
+                  <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Historial</h4>
+                  <div className="space-y-3">
+                    {segHistory.map(r => {
+                      const wk = r.semana_key?.replace('SEG-', '') ?? ''
+                      const estColor = estadoColors[r.estado_seg] ?? 'border-gray-200 bg-gray-50 text-gray-500'
+                      return (
+                        <div key={r.id} className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm space-y-3">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[12px] font-semibold text-gray-500">{wk}</span>
+                            <div className="flex items-center gap-2">
+                              {r.responsable && (
+                                <span className="text-[11px] font-semibold bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full">{r.responsable}</span>
+                              )}
+                              {r.estado_seg && (
+                                <span className={`text-[11px] font-medium px-2 py-0.5 rounded-lg border ${estColor}`}>{r.estado_seg}</span>
+                              )}
+                            </div>
+                          </div>
+                          {r.por_hacer && (
+                            <div>
+                              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">Por hacer</p>
+                              <p className="text-[12px] text-gray-600 whitespace-pre-wrap">{r.por_hacer}</p>
+                            </div>
+                          )}
+                          {r.que_se_hizo && (
+                            <div>
+                              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">Se hizo</p>
+                              <p className="text-[12px] text-gray-600 whitespace-pre-wrap">{r.que_se_hizo}</p>
+                            </div>
+                          )}
+                          {r.proxima_accion && (
+                            <div className="flex items-start gap-1.5">
+                              <ChevronRight size={12} className="text-indigo-400 mt-0.5 flex-shrink-0" />
+                              <p className="text-[12px] text-indigo-600 font-medium">{r.proxima_accion}</p>
+                            </div>
+                          )}
+                          {r.nota && (
+                            <p className="text-[11px] text-gray-400 italic">{r.nota}</p>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )
+        })()}
 
       </div>
     </div>
