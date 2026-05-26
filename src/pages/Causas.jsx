@@ -605,16 +605,17 @@ function FormCausa({ inicial, onClose, onGuardar, guardando, clientes = [], onCr
             <FormInput label="RUC" value={form.ruc} onChange={v => set('ruc', v)} placeholder="0-1234-2025-0" mono />
             <FormInput label="RIT" value={form.rit} onChange={v => set('rit', v)} placeholder="O-1234-2025" mono />
           </div>
+          <FormInput label="Materia / Delito" value={form.materia} onChange={v => set('materia', v)} placeholder="Robo con violencia, lesiones, etc." />
           <FormInput label="Fiscal" value={form.fiscal} onChange={v => set('fiscal', v)} placeholder="Nombre del fiscal a cargo" />
           <SectionDivider label="Tribunal" />
-          <FormInput label="Tribunal *" value={form.tribunal} onChange={v => set('tribunal', v)} placeholder="Tribunal de Garantía de Santiago" />
+          <FormInput label="Tribunal" value={form.tribunal} onChange={v => set('tribunal', v)} placeholder="Tribunal de Garantía de Santiago" />
           <FormInput label="Fiscalía" value={form.fiscalia} onChange={v => set('fiscalia', v)} placeholder="Fiscalía Centro Norte" />
         </>)}
 
         {/* ── Campos GENERAL (Familia / Laboral / Civil / JPL / Administrativo) ── */}
         {areaGroup === 'general' && (<>
           <SectionDivider label="Identificación" />
-          <FormInput label="Tribunal *" value={form.tribunal} onChange={v => set('tribunal', v)} placeholder="Juzgado de Letras del Trabajo N°1" />
+          <FormInput label="Tribunal" value={form.tribunal} onChange={v => set('tribunal', v)} placeholder="Juzgado de Letras del Trabajo N°1" />
           <FormInput label="Rol" value={form.rit} onChange={v => set('rit', v)} placeholder="O-1234-2025" mono />
           <FormInput label="Caratulado" value={form.materia} onChange={v => set('materia', v)} placeholder="González con Empresa S.A." />
         </>)}
@@ -622,7 +623,7 @@ function FormCausa({ inicial, onClose, onGuardar, guardando, clientes = [], onCr
         {/* ── Campos CORTE (Corte de Apelaciones / Corte Suprema) ── */}
         {areaGroup === 'corte' && (<>
           <SectionDivider label="Identificación" />
-          <FormInput label="Tribunal *" value={form.tribunal} onChange={v => set('tribunal', v)} placeholder="Corte de Apelaciones de Santiago" />
+          <FormInput label="Tribunal" value={form.tribunal} onChange={v => set('tribunal', v)} placeholder="Corte de Apelaciones de Santiago" />
           <FormInput label="Rol Corte" value={form.rit} onChange={v => set('rit', v)} placeholder="123-2025" mono />
           <FormInput label="Caratulado" value={form.materia} onChange={v => set('materia', v)} placeholder="González con Empresa S.A." />
           <SelectDropdown label="Tipo de recurso" value={form.tipo_recurso} onChange={v => set('tipo_recurso', v)} options={TIPOS_RECURSO} placeholder="Seleccionar tipo…" clearable />
@@ -657,7 +658,7 @@ function FormCausa({ inicial, onClose, onGuardar, guardando, clientes = [], onCr
           Cancelar
         </button>
         <button onClick={() => onGuardar(form)}
-          disabled={guardando || !clienteObj || !form.tribunal.trim()}
+          disabled={guardando || !clienteObj}
           className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium text-white rounded-lg transition-colors disabled:opacity-50"
           style={{ backgroundColor: '#1a2e4a' }}>
           {guardando && <Loader2 size={11} className="animate-spin" />}
