@@ -4,9 +4,10 @@ import {
   FileText, AlertTriangle, Clock, CheckCircle2,
   X, Check, Edit2, AlertCircle, Scale, Gavel, Bell,
   User, Users, Briefcase, Landmark, MoreHorizontal,
-  CalendarPlus, ListTodo, ChevronDown, Loader2,
+  CalendarPlus, ListTodo, ChevronDown, Loader2, Table2,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
+import CargaMasivaModal from '../components/CargaMasivaModal'
 
 // ── Today ──────────────────────────────────────────────────────────────────────
 const TODAY = new Date().toISOString().slice(0, 10)
@@ -1230,7 +1231,8 @@ export default function PJUD() {
   const [filterCliente,   setFilterCliente]   = useState('Todos')
   const [filterPresenta,  setFilterPresenta]  = useState('Todos')
   const [filterDocumento, setFilterDocumento] = useState('Todos')
-  const [selectedCliente, setSelectedCliente] = useState(null)
+  const [selectedCliente,  setSelectedCliente]  = useState(null)
+  const [showCargaMasiva,  setShowCargaMasiva]  = useState(false)
 
   // ── Fetch pjud rows ──
   const fetchRows = useCallback(async () => {
@@ -1437,16 +1439,25 @@ export default function PJUD() {
               }
             </p>
           </div>
-          <a
-            href="https://oficinajudicialvirtual.pjud.cl/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-2 px-3.5 py-2 border border-[#1a2e4a]/20 text-[#1a2e4a] text-[13px] font-medium rounded-lg hover:bg-[#1a2e4a]/5 hover:border-[#1a2e4a]/40 transition-colors"
-          >
-            <Scale size={14} />
-            Portal PJUD
-            <ExternalLink size={11} className="opacity-60" />
-          </a>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowCargaMasiva(true)}
+              className="flex items-center gap-2 px-3.5 py-2 border border-gray-200 text-gray-600 text-[13px] font-medium rounded-lg hover:bg-gray-50 hover:border-gray-300 transition-colors"
+            >
+              <Table2 size={14} />
+              Carga masiva
+            </button>
+            <a
+              href="https://oficinajudicialvirtual.pjud.cl/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 px-3.5 py-2 border border-[#1a2e4a]/20 text-[#1a2e4a] text-[13px] font-medium rounded-lg hover:bg-[#1a2e4a]/5 hover:border-[#1a2e4a]/40 transition-colors"
+            >
+              <Scale size={14} />
+              Portal PJUD
+              <ExternalLink size={11} className="opacity-60" />
+            </a>
+          </div>
         </div>
       </div>
 
@@ -1557,6 +1568,17 @@ export default function PJUD() {
           onAddMovimiento={handleAddMovimiento}
           addTarea={handleAddTarea}
           addPlazo={handleAddPlazo}
+        />
+      )}
+
+      {showCargaMasiva && (
+        <CargaMasivaModal
+          modulo="pjud"
+          allCausas={causasInfo}
+          onClose={() => setShowCargaMasiva(false)}
+          onSuccess={insertedRows => {
+            setRows(prev => [...insertedRows.map(mapPjudRow), ...prev])
+          }}
         />
       )}
     </div>

@@ -3,9 +3,10 @@ import {
   ChevronRight, ChevronDown, Search, Plus, ExternalLink,
   FileText, Clock, CheckCircle2,
   X, Check, Edit2, Gavel, Loader2, AlertCircle,
-  MinusCircle, Scale,
+  MinusCircle, Scale, Table2,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
+import CargaMasivaModal from '../components/CargaMasivaModal'
 
 const TODAY = new Date().toISOString().slice(0, 10)
 
@@ -712,6 +713,7 @@ export default function SIAU() {
   const [filterEstado,   setFilterEstado]   = useState('Todos')
   const [filterCliente,  setFilterCliente]  = useState('Todos')
   const [selectedCliente, setSelectedCliente] = useState(null)
+  const [showCargaMasiva, setShowCargaMasiva] = useState(false)
 
   const fetchRegistros = useCallback(async () => {
     setCargando(true)
@@ -809,12 +811,21 @@ export default function SIAU() {
               {cargando ? 'Cargando...' : `Fiscalía de Chile · ${clientes.length} clientes · ${registros.length} solicitudes`}
             </p>
           </div>
-          <a href="https://www.siau.fiscaliadechile.cl/" target="_blank" rel="noopener noreferrer"
-            className="flex items-center gap-2 px-3.5 py-2 border border-[#1a2e4a]/20 text-[#1a2e4a] text-[13px] font-medium rounded-lg hover:bg-[#1a2e4a]/5 hover:border-[#1a2e4a]/40 transition-colors">
-            <Gavel size={14} />
-            Portal SIAU
-            <ExternalLink size={11} className="opacity-60" />
-          </a>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowCargaMasiva(true)}
+              className="flex items-center gap-2 px-3.5 py-2 border border-gray-200 text-gray-600 text-[13px] font-medium rounded-lg hover:bg-gray-50 hover:border-gray-300 transition-colors"
+            >
+              <Table2 size={14} />
+              Carga masiva
+            </button>
+            <a href="https://www.siau.fiscaliadechile.cl/" target="_blank" rel="noopener noreferrer"
+              className="flex items-center gap-2 px-3.5 py-2 border border-[#1a2e4a]/20 text-[#1a2e4a] text-[13px] font-medium rounded-lg hover:bg-[#1a2e4a]/5 hover:border-[#1a2e4a]/40 transition-colors">
+              <Gavel size={14} />
+              Portal SIAU
+              <ExternalLink size={11} className="opacity-60" />
+            </a>
+          </div>
         </div>
       </div>
 
@@ -911,6 +922,17 @@ export default function SIAU() {
           />
         )
       })()}
+
+      {showCargaMasiva && (
+        <CargaMasivaModal
+          modulo="siau"
+          allCausas={allCausas}
+          onClose={() => setShowCargaMasiva(false)}
+          onSuccess={insertedRows => {
+            setRegistros(prev => [...insertedRows.map(r => ({ ...r, estado: r.estado || 'Pendiente' })), ...prev])
+          }}
+        />
+      )}
     </div>
   )
 }
