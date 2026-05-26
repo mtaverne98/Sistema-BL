@@ -33,18 +33,55 @@ const ESTADO_STYLES = {
   'Suspendida':     { badge: 'bg-amber-50 text-amber-600',     dot: 'bg-amber-400'   },
 }
 const AREA_STYLES = {
-  'Laboral':      'bg-violet-50 text-violet-600',
-  'Civil':        'bg-sky-50 text-sky-600',
-  'Familia':      'bg-rose-50 text-rose-500',
-  'Penal':        'bg-red-50 text-red-600',
-  'Comercial':    'bg-orange-50 text-orange-600',
-  'Inmobiliario': 'bg-teal-50 text-teal-600',
-  'Societario':   'bg-indigo-50 text-indigo-600',
+  'Penal':                'bg-red-50 text-red-600',
+  'Familia':              'bg-rose-50 text-rose-500',
+  'Laboral':              'bg-violet-50 text-violet-600',
+  'Civil':                'bg-sky-50 text-sky-600',
+  'JPL':                  'bg-orange-50 text-orange-600',
+  'Administrativo':       'bg-teal-50 text-teal-600',
+  'Corte de Apelaciones': 'bg-indigo-50 text-indigo-600',
+  'Corte Suprema':        'bg-purple-50 text-purple-600',
 }
 
 const ESTADOS  = ['En tramitación', 'Abierta', 'Terminada', 'Archivada', 'Suspendida']
 const CERRADAS = new Set(['Terminada', 'Archivada'])
-const AREAS   = ['Laboral', 'Civil', 'Familia', 'Penal', 'Comercial', 'Inmobiliario', 'Societario']
+const AREAS    = ['Penal', 'Familia', 'Laboral', 'Civil', 'JPL', 'Administrativo', 'Corte de Apelaciones', 'Corte Suprema']
+
+// ── Lógica de área jurídica ────────────────────────────────────────────────
+function getAreaGroup(area) {
+  if (area === 'Penal') return 'penal'
+  if (area === 'Corte de Apelaciones' || area === 'Corte Suprema') return 'corte'
+  return 'general'
+}
+
+const ETAPAS = {
+  penal: [
+    'Investigación desformalizada', 'Investigación formalizada',
+    'Audiencia de control detención', 'Audiencia de formalización',
+    'Investigación vigente', 'Preparación juicio oral',
+    'Juicio oral', 'Suspensión condicional', 'Procedimiento abreviado',
+    'Sentencia', 'Cumplimiento', 'Archivada', 'Sobreseimiento', 'Recurso pendiente',
+  ],
+  general: [
+    'En tramitación', 'Contestación pendiente', 'Prueba',
+    'Audiencia preparatoria', 'Audiencia juicio', 'Sentencia pendiente',
+    'Cumplimiento', 'Archivada', 'Apelada',
+  ],
+  corte: [
+    'Admitida a tramitación', 'En tabla', 'Vista de la causa',
+    'Acuerdo pendiente', 'Fallo pendiente', 'Fallada', 'Ejecutoriada',
+  ],
+}
+
+const TIPOS_RECURSO = [
+  'Apelación', 'Protección', 'Amparo', 'Nulidad', 'Queja', 'Casación', 'Reposición', 'Otro',
+]
+
+const PARTE_OPCIONES = {
+  penal:   ['Imputado', 'Querellante'],
+  general: ['Demandante', 'Demandado'],
+  corte:   ['Recurrente', 'Recurrido'],
+}
 
 const TODAY_C = new Date().toISOString().slice(0, 10)
 const MESES_C = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic']
@@ -134,22 +171,24 @@ function formatFecha(iso) {
 /** Convierte fila Supabase → objeto UI */
 function mapCausa(row) {
   return {
-    id:              row.id,
-    cliente_id:      row.cliente_id      ?? null,
-    cliente_nombre:  row.cliente_nombre  ?? '',
-    parte:           row.parte           ?? 'Demandante',
-    rit:             row.rit             ?? null,
-    ruc:             row.ruc             ?? null,
-    tribunal:        row.tribunal        ?? '',
-    fiscalia:        row.fiscalia        ?? null,
-    fiscal:          row.fiscal          ?? null,
-    area:            row.area            ?? '',
-    materia:         row.materia         ?? '',
-    estado:          row.estado          ?? 'Abierta',
-    etapa_procesal:  row.etapa_procesal  ?? null,
-    observaciones:   row.observaciones   ?? '',
-    fecha_inicio:    row.fecha_inicio    ?? null,
-    created_at:      row.created_at      ?? null,
+    id:               row.id,
+    cliente_id:       row.cliente_id       ?? null,
+    cliente_nombre:   row.cliente_nombre   ?? '',
+    parte:            row.parte            ?? 'Imputado',
+    rit:              row.rit              ?? null,
+    ruc:              row.ruc              ?? null,
+    tribunal:         row.tribunal         ?? '',
+    fiscalia:         row.fiscalia         ?? null,
+    fiscal:           row.fiscal           ?? null,
+    area:             row.area             ?? 'Penal',
+    materia:          row.materia          ?? '',
+    estado:           row.estado           ?? 'Abierta',
+    etapa_procesal:   row.etapa_procesal   ?? null,
+    tipo_recurso:     row.tipo_recurso     ?? null,
+    causa_origen_rit: row.causa_origen_rit ?? null,
+    observaciones:    row.observaciones    ?? '',
+    fecha_inicio:     row.fecha_inicio     ?? null,
+    created_at:       row.created_at       ?? null,
     // Campos derivados (sin columna en DB)
     historial:       [],
     tareas:          [],
@@ -163,19 +202,21 @@ function mapCausa(row) {
 /** Convierte formulario → payload Supabase */
 function mapToDb(form) {
   return {
-    cliente_id:      form.cliente_id      || null,
-    cliente_nombre:  (form.cliente_nombre || '').trim(),
-    rit:             form.rit.trim()             || null,
-    ruc:             form.ruc.trim()             || null,
-    tribunal:        form.tribunal.trim(),
-    fiscalia:        form.fiscalia.trim()        || null,
-    fiscal:          (form.fiscal || '').trim()  || null,
-    area:            form.area,
-    materia:         form.materia.trim(),
-    parte:           form.parte,
-    estado:          form.estado,
-    etapa_procesal:  (form.etapa_procesal || '').trim() || null,
-    observaciones:   form.observaciones.trim()   || null,
+    cliente_id:       form.cliente_id                         || null,
+    cliente_nombre:   (form.cliente_nombre   || '').trim(),
+    area:             form.area,
+    parte:            form.parte,
+    rit:              (form.rit              || '').trim()    || null,
+    ruc:              (form.ruc              || '').trim()    || null,
+    materia:          (form.materia          || '').trim()    || null,
+    tribunal:         (form.tribunal         || '').trim(),
+    fiscalia:         (form.fiscalia         || '').trim()    || null,
+    fiscal:           (form.fiscal           || '').trim()    || null,
+    etapa_procesal:   (form.etapa_procesal   || '').trim()    || null,
+    tipo_recurso:     (form.tipo_recurso     || '').trim()    || null,
+    causa_origen_rit: (form.causa_origen_rit || '').trim()    || null,
+    estado:           form.estado,
+    observaciones:    (form.observaciones    || '').trim()    || null,
   }
 }
 
@@ -300,37 +341,215 @@ function ClienteSelector({ clientes, value, onChange, onCrearCliente }) {
   )
 }
 
-// ── Formulario nueva / editar causa ──────────────────────────────────────
-const FORM_FIELDS_CAUSA = [
-  { key: 'materia',        label: 'Materia *',       placeholder: 'Ej: Despido injustificado' },
-  { key: 'tribunal',       label: 'Tribunal *',      placeholder: 'Ej: Juzgado del Trabajo N°1' },
-  { key: 'rit',            label: 'RIT',             placeholder: 'Ej: O-1234-2025' },
-  { key: 'ruc',            label: 'RUC',             placeholder: 'Ej: 0-1234-2025-0' },
-  { key: 'fiscalia',       label: 'Fiscalía',        placeholder: 'Fiscalía correspondiente' },
-  { key: 'fiscal',         label: 'Fiscal',          placeholder: 'Nombre del fiscal a cargo' },
-  { key: 'etapa_procesal', label: 'Etapa procesal',  placeholder: 'Ej: Preparación de juicio oral' },
-]
+// ── Helpers de formulario ─────────────────────────────────────────────────
+function SectionDivider({ label }) {
+  return (
+    <div className="flex items-center gap-2 pt-0.5">
+      <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest whitespace-nowrap">{label}</p>
+      <div className="flex-1 h-px bg-gray-100" />
+    </div>
+  )
+}
 
-function FormCausa({ inicial, onClose, onGuardar, guardando, clientes = [], onCrearCliente }) {
+function FormInput({ label, value, onChange, placeholder, mono }) {
+  return (
+    <div>
+      {label && <label className="block text-[11px] font-medium text-gray-500 mb-1">{label}</label>}
+      <input value={value || ''} onChange={e => onChange(e.target.value)} placeholder={placeholder}
+        className={`w-full px-3 py-2 text-xs border border-gray-200 rounded-lg outline-none focus:border-[#2570ba] focus:ring-1 focus:ring-[#2570ba]/20 transition-all placeholder:text-gray-300 ${mono ? 'font-mono' : ''}`} />
+    </div>
+  )
+}
+
+function PillSelector({ label, value, onChange, options }) {
+  return (
+    <div>
+      {label && <label className="block text-[11px] font-medium text-gray-500 mb-1">{label}</label>}
+      <div className="flex gap-1.5">
+        {options.map(opt => (
+          <button key={opt} type="button" onClick={() => onChange(opt)}
+            className={`flex-1 py-1.5 px-2 text-xs font-medium rounded-lg border transition-all ${
+              value === opt ? 'border-[#1a2e4a] bg-[#1a2e4a] text-white' : 'border-gray-200 text-gray-500 hover:border-gray-300 hover:bg-gray-50'
+            }`}>
+            {opt}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function SelectDropdown({ label, value, onChange, options, placeholder = 'Seleccionar…', clearable }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+  useEffect(() => {
+    const h = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [])
+  return (
+    <div>
+      {label && <label className="block text-[11px] font-medium text-gray-500 mb-1">{label}</label>}
+      <div ref={ref} className="relative">
+        <button type="button" onClick={() => setOpen(o => !o)}
+          className={`w-full flex items-center justify-between px-3 py-2 text-xs border rounded-lg transition-all bg-white ${
+            open ? 'border-[#2570ba] ring-1 ring-[#2570ba]/20' : 'border-gray-200 hover:border-gray-300'
+          }`}>
+          <span className={value ? 'text-gray-800' : 'text-gray-300'}>{value || placeholder}</span>
+          <ChevronDown size={11} className={`text-gray-400 transition-transform duration-150 ${open ? 'rotate-180' : ''}`} />
+        </button>
+        {open && (
+          <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-100 rounded-xl shadow-xl shadow-black/5 z-50 overflow-hidden">
+            <div className="max-h-52 overflow-y-auto py-1">
+              {clearable && value && (
+                <button type="button" onClick={() => { onChange(''); setOpen(false) }}
+                  className="w-full px-3 py-2 text-left text-xs text-gray-400 hover:bg-gray-50 flex items-center gap-1.5">
+                  <X size={10} /> Ninguno
+                </button>
+              )}
+              {options.map(opt => (
+                <button key={opt} type="button" onClick={() => { onChange(opt); setOpen(false) }}
+                  className={`w-full flex items-center justify-between px-3 py-2 text-left text-xs transition-colors ${
+                    value === opt ? 'bg-blue-50/60 text-[#1a2e4a] font-medium' : 'text-gray-700 hover:bg-gray-50'
+                  }`}>
+                  {opt}
+                  {value === opt && <Check size={11} className="text-[#2570ba] flex-shrink-0" />}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function AreaSelector({ value, onChange }) {
+  return (
+    <div>
+      <label className="block text-[11px] font-medium text-gray-500 mb-1.5">Área jurídica *</label>
+      <div className="grid grid-cols-2 gap-1.5">
+        {AREAS.map(area => {
+          const sel   = value === area
+          const group = getAreaGroup(area)
+          const cls   = sel
+            ? group === 'penal'  ? 'border-red-500 bg-red-500 text-white'
+            : group === 'corte'  ? 'border-indigo-500 bg-indigo-500 text-white'
+            : 'border-[#1a2e4a] bg-[#1a2e4a] text-white'
+            : 'border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50/80'
+          return (
+            <button key={area} type="button" onClick={() => onChange(area)}
+              className={`py-1.5 px-2.5 text-xs font-medium rounded-lg border transition-all text-left ${cls}`}>
+              {area}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function CausaOrigenSelector({ value, onChange, causas }) {
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const ref = useRef(null)
+  useEffect(() => {
+    const h = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [])
+  const filtradas = useMemo(() => {
+    const q = query.toLowerCase()
+    if (!q) return causas.slice(0, 20)
+    return causas.filter(c =>
+      (c.rit || '').toLowerCase().includes(q) ||
+      (c.materia || '').toLowerCase().includes(q) ||
+      c.cliente_nombre.toLowerCase().includes(q)
+    ).slice(0, 20)
+  }, [causas, query])
+  const selected = causas.find(c => (c.rit || c.id) === value)
+  return (
+    <div>
+      <label className="block text-[11px] font-medium text-gray-500 mb-1">Causa de origen vinculada</label>
+      <div ref={ref} className="relative">
+        <button type="button" onClick={() => { setOpen(o => !o); setQuery('') }}
+          className={`w-full flex items-center justify-between px-3 py-2 text-xs border rounded-lg transition-all bg-white ${
+            open ? 'border-[#2570ba] ring-1 ring-[#2570ba]/20' : 'border-gray-200 hover:border-gray-300'
+          }`}>
+          {selected ? (
+            <div className="flex-1 min-w-0 text-left flex items-center gap-2">
+              <span className="text-xs text-gray-800 font-medium truncate">{selected.cliente_nombre}</span>
+              {selected.rit && <span className="font-mono text-[10px] text-violet-500">{selected.rit}</span>}
+              <span className={`text-[9px] px-1.5 py-0.5 rounded flex-shrink-0 ${AREA_STYLES[selected.area] ?? 'bg-gray-100 text-gray-500'}`}>{selected.area}</span>
+            </div>
+          ) : (
+            <span className="text-xs text-gray-300">Vincular causa de origen (opcional)…</span>
+          )}
+          <ChevronDown size={11} className={`text-gray-400 flex-shrink-0 ml-1 transition-transform ${open ? 'rotate-180' : ''}`} />
+        </button>
+        {open && (
+          <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-100 rounded-xl shadow-xl z-50 overflow-hidden">
+            <div className="p-2 border-b border-gray-50">
+              <div className="relative">
+                <Search size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-300 pointer-events-none" />
+                <input autoFocus value={query} onChange={e => setQuery(e.target.value)}
+                  placeholder="Buscar por cliente, RIT o materia…"
+                  className="w-full pl-7 pr-3 py-1.5 text-xs bg-gray-50 rounded-lg outline-none border border-transparent focus:border-[#2570ba]/30 transition-all placeholder:text-gray-300" />
+              </div>
+            </div>
+            <div className="max-h-48 overflow-y-auto py-1">
+              {value && (
+                <button type="button" onClick={() => { onChange(''); setOpen(false) }}
+                  className="w-full px-3 py-2 text-left text-xs text-gray-400 hover:bg-gray-50 flex items-center gap-1.5 border-b border-gray-50">
+                  <X size={10} /> Quitar vínculo
+                </button>
+              )}
+              {filtradas.length === 0 ? (
+                <p className="px-3 py-3 text-xs text-gray-400 text-center">Sin causas encontradas</p>
+              ) : filtradas.map(c => (
+                <button key={c.id} type="button"
+                  onClick={() => { onChange(c.rit || c.id); setOpen(false); setQuery('') }}
+                  className={`w-full flex items-start gap-2.5 px-3 py-2 text-left transition-colors ${
+                    value === (c.rit || c.id) ? 'bg-blue-50/60' : 'hover:bg-gray-50'
+                  }`}>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-gray-800 font-medium truncate">{c.cliente_nombre}</p>
+                    <p className="text-[10px] text-gray-400 truncate mt-0.5">
+                      {c.materia}
+                      {c.rit && <span className="font-mono ml-1.5 text-violet-500">{c.rit}</span>}
+                    </p>
+                  </div>
+                  <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium flex-shrink-0 mt-0.5 ${AREA_STYLES[c.area] ?? 'bg-gray-100 text-gray-500'}`}>{c.area}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── Formulario nueva / editar causa (dinámico por área) ───────────────────
+function FormCausa({ inicial, onClose, onGuardar, guardando, clientes = [], onCrearCliente, causas = [] }) {
   const esEdicion = !!inicial?.id
   const [form, setForm] = useState({
-    cliente_id: null, cliente_nombre: '', materia: '', tribunal: '',
-    rit: '', ruc: '', fiscalia: '', fiscal: '',
-    etapa_procesal: '',
-    area: 'Laboral', parte: 'Demandante',
+    cliente_id: null, cliente_nombre: '',
+    area: 'Penal', parte: 'Imputado',
+    rit: '', ruc: '', materia: '', tribunal: '', fiscalia: '', fiscal: '',
+    etapa_procesal: '', tipo_recurso: '', causa_origen_rit: '',
     estado: 'Abierta', observaciones: '',
     ...inicial,
   })
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+  const areaGroup = getAreaGroup(form.area)
 
-  // Cliente seleccionado en el dropdown
+  // Cliente seleccionado
   const [clienteObj, setClienteObj] = useState(() => {
     if (!inicial) return null
     return clientes.find(c => c.id === inicial.cliente_id) ||
            (inicial.cliente_nombre ? { id: inicial.cliente_id || null, nombre: inicial.cliente_nombre, rut: '' } : null)
   })
-
-  // Sincronizar si la lista de clientes llega después del montaje (edición)
   useEffect(() => {
     if (inicial?.cliente_id && !clienteObj?.rut) {
       const c = clientes.find(c => c.id === inicial.cliente_id)
@@ -338,9 +557,22 @@ function FormCausa({ inicial, onClose, onGuardar, guardando, clientes = [], onCr
     }
   }, [clientes]) // eslint-disable-line
 
-  const handleSelectCliente = (c) => {
+  const handleSelectCliente = c => {
     setClienteObj(c)
     setForm(f => ({ ...f, cliente_id: c.id, cliente_nombre: c.nombre }))
+  }
+
+  const handleAreaChange = newArea => {
+    const newGroup = getAreaGroup(newArea)
+    const oldGroup = getAreaGroup(form.area)
+    setForm(f => ({
+      ...f,
+      area:           newArea,
+      etapa_procesal: oldGroup !== newGroup ? '' : f.etapa_procesal,
+      parte: PARTE_OPCIONES[newGroup].includes(f.parte) ? f.parte : PARTE_OPCIONES[newGroup][0],
+      ...(newGroup !== 'penal'  ? { ruc: '', fiscal: '', fiscalia: '' } : {}),
+      ...(newGroup !== 'corte'  ? { tipo_recurso: '', causa_origen_rit: '' } : {}),
+    }))
   }
 
   return (
@@ -354,66 +586,61 @@ function FormCausa({ inicial, onClose, onGuardar, guardando, clientes = [], onCr
 
       <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
 
-        {/* ── Selector de cliente ── */}
+        {/* ── Cliente ── */}
         <div>
           <label className="block text-[11px] font-medium text-gray-500 mb-1">Cliente *</label>
-          <ClienteSelector
-            clientes={clientes}
-            value={clienteObj}
-            onChange={handleSelectCliente}
-            onCrearCliente={onCrearCliente}
-          />
-          {!clienteObj && (
-            <p className="mt-1 text-[10px] text-gray-300">Selecciona un cliente para continuar</p>
-          )}
+          <ClienteSelector clientes={clientes} value={clienteObj} onChange={handleSelectCliente} onCrearCliente={onCrearCliente} />
+          {!clienteObj && <p className="mt-1 text-[10px] text-gray-300">Selecciona un cliente para continuar</p>}
         </div>
 
-        {FORM_FIELDS_CAUSA.map(f => (
-          <div key={f.key}>
-            <label className="block text-[11px] font-medium text-gray-500 mb-1">{f.label}</label>
-            <input
-              value={form[f.key]}
-              onChange={e => set(f.key, e.target.value)}
-              placeholder={f.placeholder}
-              className="w-full px-3 py-2 text-xs border border-gray-200 rounded-lg outline-none focus:border-[#2570ba] focus:ring-1 focus:ring-[#2570ba]/20 transition-all placeholder:text-gray-300"
-            />
+        {/* ── Área jurídica ── */}
+        <AreaSelector value={form.area} onChange={handleAreaChange} />
+
+        {/* ── Campos PENAL ── */}
+        {areaGroup === 'penal' && (<>
+          <SectionDivider label="Identificación" />
+          <div className="grid grid-cols-2 gap-2">
+            <FormInput label="RUC" value={form.ruc} onChange={v => set('ruc', v)} placeholder="0-1234-2025-0" mono />
+            <FormInput label="RIT" value={form.rit} onChange={v => set('rit', v)} placeholder="O-1234-2025" mono />
           </div>
-        ))}
+          <FormInput label="Fiscal" value={form.fiscal} onChange={v => set('fiscal', v)} placeholder="Nombre del fiscal a cargo" />
+          <SectionDivider label="Tribunal" />
+          <FormInput label="Tribunal *" value={form.tribunal} onChange={v => set('tribunal', v)} placeholder="Tribunal de Garantía de Santiago" />
+          <FormInput label="Fiscalía" value={form.fiscalia} onChange={v => set('fiscalia', v)} placeholder="Fiscalía Centro Norte" />
+        </>)}
 
-        {/* Área */}
-        <div>
-          <label className="block text-[11px] font-medium text-gray-500 mb-1">Área</label>
-          <select value={form.area} onChange={e => set('area', e.target.value)}
-            className="w-full px-3 py-2 text-xs border border-gray-200 rounded-lg outline-none focus:border-[#2570ba] bg-white text-gray-700">
-            {AREAS.map(a => <option key={a}>{a}</option>)}
-          </select>
-        </div>
+        {/* ── Campos GENERAL (Familia / Laboral / Civil / JPL / Administrativo) ── */}
+        {areaGroup === 'general' && (<>
+          <SectionDivider label="Identificación" />
+          <FormInput label="Tribunal *" value={form.tribunal} onChange={v => set('tribunal', v)} placeholder="Juzgado de Letras del Trabajo N°1" />
+          <FormInput label="Rol" value={form.rit} onChange={v => set('rit', v)} placeholder="O-1234-2025" mono />
+          <FormInput label="Caratulado" value={form.materia} onChange={v => set('materia', v)} placeholder="González con Empresa S.A." />
+        </>)}
 
-        {/* Parte */}
-        <div>
-          <label className="block text-[11px] font-medium text-gray-500 mb-1">Parte</label>
-          <div className="flex gap-2">
-            {parteOpciones(form.area).map(p => (
-              <button key={p} onClick={() => set('parte', p)}
-                className={`flex-1 py-1.5 text-xs font-medium rounded-lg border transition-all ${
-                  form.parte === p ? 'border-[#1a2e4a] bg-[#1a2e4a] text-white' : 'border-gray-200 text-gray-500'
-                }`}>
-                {p}
-              </button>
-            ))}
-          </div>
-        </div>
+        {/* ── Campos CORTE (Corte de Apelaciones / Corte Suprema) ── */}
+        {areaGroup === 'corte' && (<>
+          <SectionDivider label="Identificación" />
+          <FormInput label="Tribunal *" value={form.tribunal} onChange={v => set('tribunal', v)} placeholder="Corte de Apelaciones de Santiago" />
+          <FormInput label="Rol Corte" value={form.rit} onChange={v => set('rit', v)} placeholder="123-2025" mono />
+          <FormInput label="Caratulado" value={form.materia} onChange={v => set('materia', v)} placeholder="González con Empresa S.A." />
+          <SelectDropdown label="Tipo de recurso" value={form.tipo_recurso} onChange={v => set('tipo_recurso', v)} options={TIPOS_RECURSO} placeholder="Seleccionar tipo…" clearable />
+          <SectionDivider label="Causa de origen" />
+          <CausaOrigenSelector value={form.causa_origen_rit} onChange={v => set('causa_origen_rit', v)}
+            causas={causas.filter(c => getAreaGroup(c.area) !== 'corte')} />
+        </>)}
 
-        {/* Estado */}
-        <div>
-          <label className="block text-[11px] font-medium text-gray-500 mb-1">Estado</label>
-          <select value={form.estado} onChange={e => set('estado', e.target.value)}
-            className="w-full px-3 py-2 text-xs border border-gray-200 rounded-lg outline-none focus:border-[#2570ba] bg-white text-gray-700">
-            {ESTADOS.map(e => <option key={e}>{e}</option>)}
-          </select>
-        </div>
+        {/* ── Proceso (todas las áreas) ── */}
+        <SectionDivider label="Proceso" />
+        <SelectDropdown label="Etapa procesal" value={form.etapa_procesal}
+          onChange={v => set('etapa_procesal', v)} options={ETAPAS[areaGroup]}
+          placeholder="Seleccionar etapa…" clearable />
+        <PillSelector label="Parte" value={form.parte} onChange={v => set('parte', v)} options={PARTE_OPCIONES[areaGroup]} />
 
-        {/* Observaciones */}
+        {/* ── Estado ── */}
+        <SectionDivider label="Estado" />
+        <SelectDropdown value={form.estado} onChange={v => set('estado', v)} options={ESTADOS} />
+
+        {/* ── Observaciones ── */}
         <div>
           <label className="block text-[11px] font-medium text-gray-500 mb-1">Observaciones</label>
           <textarea value={form.observaciones} onChange={e => set('observaciones', e.target.value)}
@@ -428,7 +655,7 @@ function FormCausa({ inicial, onClose, onGuardar, guardando, clientes = [], onCr
           Cancelar
         </button>
         <button onClick={() => onGuardar(form)}
-          disabled={guardando || !clienteObj || !form.materia.trim() || !form.tribunal.trim()}
+          disabled={guardando || !clienteObj || !form.tribunal.trim()}
           className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium text-white rounded-lg transition-colors disabled:opacity-50"
           style={{ backgroundColor: '#1a2e4a' }}>
           {guardando && <Loader2 size={11} className="animate-spin" />}
@@ -1828,6 +2055,7 @@ export default function Causas() {
               onGuardar={handleGuardar}
               guardando={guardando}
               clientes={listaClientes}
+              causas={causas}
               onCrearCliente={() => { setFormulario(null); window.location.href = '/clientes' }}
             />
           )}
@@ -2001,6 +2229,7 @@ export default function Causas() {
               onGuardar={handleGuardar}
               guardando={guardando}
               clientes={listaClientes}
+              causas={causas}
               onCrearCliente={() => { setFormulario(null); window.location.href = '/clientes' }}
             />
           )}
