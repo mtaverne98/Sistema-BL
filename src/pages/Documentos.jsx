@@ -5,7 +5,8 @@ import {
   AlertCircle, RotateCcw, ClipboardList, BookOpen, Mail,
   File, Layout, Lock, Tag, MessageSquare, History, Info,
   Copy, X, FolderOpen, Layers, Gavel, CheckSquare,
-  ArrowUp, ArrowDown,
+  ArrowUp, ArrowDown, Shield, Database, Link2, Flame,
+  ExternalLink,
 } from 'lucide-react'
 import { PLANTILLAS_INIT } from '../context/SistemaContext'
 import { supabase } from '../lib/supabase'
@@ -34,6 +35,12 @@ const CAT_META = Object.fromEntries(CATEGORIAS.map(c => [c.id, c]))
 const TIPOS_DOC = [
   'Escrito judicial','Demanda','Querella','Recurso','Minuta',
   'Contrato','Informe','Correo','PDF','Interno','Otro',
+]
+
+const ORIGENES_DOC = [
+  'Generado en estudio','Escrito judicial','Resolución judicial',
+  'PJUD','SIAU','Fiscalía','Peritaje','Cliente','Tribunal',
+  'Correo','Carpeta investigativa','Evidencia','Otro',
 ]
 
 const TIPO_META = {
@@ -98,11 +105,19 @@ function mapRow(row) {
     tribunal:           row.tribunal                     || '',
     responsable:        row.responsable                  || 'MT',
     favorito:           !!row.favorito,
+    critico:            !!row.critico,
     contenido:          row.contenido                    || '',
+    origen:             row.origen                       || null,
+    descripcion:        row.descripcion                  || '',
+    url:                row.url                          || null,
+    pjud_id:            row.pjud_id                      || null,
+    siau_id:            row.siau_id                      || null,
+    tarea_id:           row.tarea_id                     || null,
+    audiencia_id:       row.audiencia_id                 || null,
     etiquetas:          Array.isArray(row.etiquetas)     ? row.etiquetas   : [],
     versiones:          Array.isArray(row.versiones)     ? row.versiones   : [],
     comentarios:        Array.isArray(row.comentarios)   ? row.comentarios : [],
-    relaciones:         row.relaciones || { reunion_ids: [], tarea_ids: [], audiencia_ids: [] },
+    relaciones:         row.relaciones || { reunion_ids: [], tarea_ids: [], audiencia_ids: [], pjud_ids: [], siau_ids: [] },
     categoria:          row.categoria                    || null,
   }
 }
@@ -246,10 +261,11 @@ function LeftSidebar({
 
       {/* Vistas */}
       <div className="space-y-0.5 mb-4">
-        <NavBtn id="all"        icon={FolderOpen} label="Todos"      count={docs.length} />
-        <NavBtn id="recientes"  icon={Clock}      label="Recientes"  count={0} />
-        <NavBtn id="favoritos"  icon={Star}       label="Favoritos"  count={docs.filter(d => d.favorito).length} />
-        <NavBtn id="plantillas" icon={Layout}     label="Plantillas" count={PLANTILLAS_INIT.length} />
+        <NavBtn id="all"        icon={FolderOpen}  label="Todos"      count={docs.length} />
+        <NavBtn id="recientes"  icon={Clock}       label="Recientes"  count={0} />
+        <NavBtn id="favoritos"  icon={Star}        label="Favoritos"  count={docs.filter(d => d.favorito).length} />
+        <NavBtn id="criticos"   icon={Flame}       label="Críticos"   count={docs.filter(d => d.critico).length} />
+        <NavBtn id="plantillas" icon={Layout}      label="Plantillas" count={PLANTILLAS_INIT.length} />
       </div>
 
       {/* Clientes tree */}
@@ -327,7 +343,7 @@ function LeftSidebar({
 
       {/* Estado */}
       <p className="text-[9px] font-bold text-gray-300 uppercase tracking-widest px-2.5 mb-1.5">Estado</p>
-      <div className="space-y-0.5">
+      <div className="space-y-0.5 mb-4">
         {Object.entries(estadoCounts).map(([estado, count]) => {
           const s = ESTADO_STYLES[estado]
           const active = selectedEstado === estado
@@ -344,6 +360,38 @@ function LeftSidebar({
           )
         })}
       </div>
+
+      {/* Origen */}
+      {(() => {
+        const origenCounts = {}
+        docs.forEach(d => { if (d.origen) origenCounts[d.origen] = (origenCounts[d.origen] || 0) + 1 })
+        const items = Object.entries(origenCounts)
+        if (items.length === 0) return null
+        return (
+          <>
+            <p className="text-[9px] font-bold text-gray-300 uppercase tracking-widest px-2.5 mb-1.5">Origen</p>
+            <div className="space-y-0.5">
+              {items.map(([origen, count]) => {
+                const active = selectedCategoria === `origen:${origen}`
+                return (
+                  <button key={origen}
+                    onClick={() => {
+                      onCategoria(active ? null : `origen:${origen}`)
+                      onView('all'); onCliente(null); onCausa(null); onEstado(null)
+                    }}
+                    className={`w-full flex items-center gap-2 px-2.5 py-1 rounded-md text-[11.5px] transition-all ${
+                      active ? 'bg-amber-50 text-amber-700 font-medium' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'
+                    }`}>
+                    <Link2 size={10} className="flex-shrink-0 text-gray-300" />
+                    <span className="flex-1 text-left truncate">{origen}</span>
+                    <span className="text-[10px] text-gray-300 font-semibold">{count}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </>
+        )
+      })()}
     </aside>
   )
 }
@@ -460,7 +508,8 @@ function TableView({ docs, onSelect, onToggleFav, sortBy, sortDir, onSort }) {
                 <span className="text-[12.5px] font-medium text-gray-800 truncate group-hover:text-[#1a2e4a] transition-colors leading-snug">
                   {doc.nombre}
                 </span>
-                {doc.favorito && <Star size={10} className="text-amber-400 flex-shrink-0" fill="currentColor" />}
+                {doc.critico  && <Flame size={10} className="text-red-400 flex-shrink-0" fill="currentColor" title="Crítico" />}
+                {doc.favorito && <Star  size={10} className="text-amber-400 flex-shrink-0" fill="currentColor" />}
               </div>
 
               {/* Categoría */}
@@ -518,12 +567,21 @@ function MainContent({
       list = [...docs].sort((a, b) => b.fecha_modificacion.localeCompare(a.fecha_modificacion)).slice(0, 10)
     } else if (view === 'favoritos') {
       list = docs.filter(d => d.favorito)
+    } else if (view === 'criticos') {
+      list = docs.filter(d => d.critico)
     }
 
     if (selectedCliente)   list = list.filter(d => d.cliente === selectedCliente)
     if (selectedCausa)     list = list.filter(d => d.causa_rit === selectedCausa)
-    if (selectedCategoria) list = list.filter(d => deriveCategoria(d) === selectedCategoria)
     if (selectedEstado)    list = list.filter(d => d.estado === selectedEstado)
+    if (selectedCategoria) {
+      if (selectedCategoria.startsWith('origen:')) {
+        const origenFiltro = selectedCategoria.slice(7)
+        list = list.filter(d => d.origen === origenFiltro)
+      } else {
+        list = list.filter(d => deriveCategoria(d) === selectedCategoria)
+      }
+    }
 
     if (query.trim()) {
       const q = query.toLowerCase()
@@ -531,8 +589,12 @@ function MainContent({
         d.nombre?.toLowerCase().includes(q) ||
         d.cliente?.toLowerCase().includes(q) ||
         d.causa_rit?.toLowerCase().includes(q) ||
+        d.causa_ruc?.toLowerCase().includes(q) ||
+        d.tribunal?.toLowerCase().includes(q) ||
         d.tipo?.toLowerCase().includes(q) ||
-        d.etiquetas?.some(t => t.includes(q)) ||
+        d.origen?.toLowerCase().includes(q) ||
+        d.descripcion?.toLowerCase().includes(q) ||
+        d.etiquetas?.some(t => t.toLowerCase().includes(q)) ||
         d.contenido?.toLowerCase().includes(q)
       )
     }
@@ -703,6 +765,23 @@ function MetadataPanel({ doc, activeTab, onTabChange, onUpdate, onAddComentario,
         {/* INFO */}
         {activeTab === 'info' && (
           <div className="space-y-4">
+            {/* Acciones rápidas */}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <button onClick={() => onUpdate(doc.id, { critico: !doc.critico })}
+                className={`flex items-center gap-1 text-[10px] px-2 py-1 rounded-full border transition-all ${
+                  doc.critico ? 'bg-red-50 text-red-600 border-red-200 font-semibold' : 'text-gray-400 border-gray-200 hover:border-red-200 hover:text-red-500'
+                }`}>
+                <Flame size={9} /> {doc.critico ? 'Crítico' : 'Marcar crítico'}
+              </button>
+              {doc.url && (
+                <a href={doc.url} target="_blank" rel="noreferrer"
+                  className="flex items-center gap-1 text-[10px] px-2 py-1 rounded-full border border-blue-200 text-blue-600 hover:bg-blue-50 transition-all">
+                  <ExternalLink size={9} /> Abrir archivo
+                </a>
+              )}
+            </div>
+
+            {/* Estado */}
             <div>
               <p className="text-[9px] font-bold text-gray-300 uppercase tracking-widest mb-1.5">Estado</p>
               <div className="relative inline-block">
@@ -723,13 +802,46 @@ function MetadataPanel({ doc, activeTab, onTabChange, onUpdate, onAddComentario,
               </div>
             </div>
 
+            {/* Contexto jurídico */}
+            {(doc.causa_rit || doc.cliente) && (
+              <div>
+                <p className="text-[9px] font-bold text-gray-300 uppercase tracking-widest mb-1.5">Contexto jurídico</p>
+                <div className="bg-[#1a2e4a]/[0.03] border border-[#1a2e4a]/10 rounded-xl p-3 space-y-1.5">
+                  {doc.causa_rit && (
+                    <p className="text-[11px] font-mono font-bold text-[#2570ba] flex items-center gap-1.5">
+                      <Scale size={10} className="text-[#1a2e4a]/40" />
+                      {doc.causa_rit}
+                    </p>
+                  )}
+                  {doc.causa_ruc && (
+                    <p className="text-[10px] text-gray-400">RUC: {doc.causa_ruc}</p>
+                  )}
+                  {doc.cliente && (
+                    <p className="text-[11px] text-gray-700">{doc.cliente}</p>
+                  )}
+                  {doc.tribunal && (
+                    <p className="text-[10px] text-gray-400 flex items-center gap-1">
+                      <Gavel size={8} className="flex-shrink-0" /> {doc.tribunal}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Origen */}
+            {doc.origen && (
+              <div>
+                <p className="text-[9px] font-bold text-gray-300 uppercase tracking-widest mb-1">Origen</p>
+                <span className="inline-flex items-center gap-1 text-[11px] bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full">
+                  <Link2 size={9} /> {doc.origen}
+                </span>
+              </div>
+            )}
+
             {[
               ['Categoría',  deriveCategoria(doc)],
               ['Tipo',       doc.tipo],
               ['Responsable',RESPONSABLE_INFO[doc.responsable]?.nombre],
-              ['Cliente',    doc.cliente],
-              ['RIT',        doc.causa_rit],
-              ['Tribunal',   doc.tribunal],
               ['Creado',     formatFecha(doc.fecha_creacion)],
               ['Modificado', formatFecha(doc.fecha_modificacion)],
             ].filter(([, v]) => v).map(([k, v]) => (
@@ -738,6 +850,27 @@ function MetadataPanel({ doc, activeTab, onTabChange, onUpdate, onAddComentario,
                 <p className="text-[12px] text-gray-700">{v}</p>
               </div>
             ))}
+
+            {/* Vínculos PJUD / SIAU */}
+            {(doc.pjud_id || doc.siau_id) && (
+              <div>
+                <p className="text-[9px] font-bold text-gray-300 uppercase tracking-widest mb-1.5">Módulos vinculados</p>
+                <div className="space-y-1.5">
+                  {doc.pjud_id && (
+                    <div className="flex items-center gap-2 text-[11px] text-indigo-600 bg-indigo-50 rounded-lg px-2.5 py-1.5">
+                      <Shield size={10} className="flex-shrink-0" />
+                      <span>Movimiento PJUD vinculado</span>
+                    </div>
+                  )}
+                  {doc.siau_id && (
+                    <div className="flex items-center gap-2 text-[11px] text-teal-600 bg-teal-50 rounded-lg px-2.5 py-1.5">
+                      <Database size={10} className="flex-shrink-0" />
+                      <span>Solicitud SIAU vinculada</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             <div>
               <p className="text-[9px] font-bold text-gray-300 uppercase tracking-widest mb-1.5">Etiquetas</p>
@@ -932,6 +1065,40 @@ function DetailView({ doc, onBack, onUpdate, onAddComentario, onAddVersion, onTo
         </div>
       </div>
 
+      {/* Context ribbon */}
+      {(doc.critico || doc.causa_rit || doc.cliente || doc.origen) && (
+        <div className="flex-shrink-0 flex items-center gap-2 px-5 py-2 border-b border-gray-50 bg-gray-50/40 flex-wrap">
+          {doc.critico && (
+            <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-50 text-red-600 border border-red-100">
+              <Flame size={9} /> Crítico
+            </span>
+          )}
+          {doc.causa_rit && (
+            <span className="text-[10px] font-mono font-bold text-[#2570ba] bg-blue-50 px-2 py-0.5 rounded-full border border-blue-100">
+              {doc.causa_rit}
+            </span>
+          )}
+          {doc.causa_ruc && (
+            <span className="text-[10px] text-gray-400 bg-gray-50 px-2 py-0.5 rounded-full border border-gray-100">
+              RUC {doc.causa_ruc}
+            </span>
+          )}
+          {doc.cliente && (
+            <span className="text-[10px] text-gray-600">{doc.cliente}</span>
+          )}
+          {doc.tribunal && (
+            <span className="text-[10px] text-gray-400 flex items-center gap-1">
+              <Gavel size={8} /> {doc.tribunal}
+            </span>
+          )}
+          {doc.origen && (
+            <span className="ml-auto text-[10px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-100 flex items-center gap-1">
+              <Link2 size={8} /> {doc.origen}
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Body: editor + metadata */}
       <div className="flex flex-1 overflow-hidden">
         {/* Editor */}
@@ -1014,6 +1181,8 @@ function ModalCrearDoc({ plantilla, onSave, onClose }) {
   const [responsable, setResponsable] = useState('MT')
   const [cliente,     setCliente]     = useState('')
   const [causaRit,    setCausaRit]    = useState('')
+  const [origen,      setOrigen]      = useState('')
+  const [critico,     setCritico]     = useState(false)
   const [contenido,   setContenido]   = useState(plantilla?.contenido || '')
 
   function handleSave() {
@@ -1022,11 +1191,12 @@ function ModalCrearDoc({ plantilla, onSave, onClose }) {
       id: genId('doc'),
       nombre: nombre.trim(), tipo, categoria, responsable, cliente,
       causa_rit: causaRit, causa_ruc: '', tribunal: '',
+      origen: origen || null, critico,
       fecha_creacion: TODAY, fecha_modificacion: TODAY,
       estado: 'borrador', etiquetas: [], favorito: false, contenido,
       versiones: [{ id: genId('v'), numero: 1, fecha: TODAY, autor: responsable, nota: 'Versión inicial', contenido }],
       comentarios: [],
-      relaciones: { reunion_ids: [], tarea_ids: [], audiencia_ids: [] },
+      relaciones: { reunion_ids: [], tarea_ids: [], audiencia_ids: [], pjud_ids: [], siau_ids: [] },
     })
     onClose()
   }
@@ -1082,6 +1252,25 @@ function ModalCrearDoc({ plantilla, onSave, onClose }) {
             <input value={cliente} onChange={e => setCliente(e.target.value)} placeholder="Nombre del cliente"
               className="mt-1.5 w-full border border-gray-200 rounded-xl px-3 py-2 text-[12px] outline-none text-gray-700 placeholder-gray-300 focus:border-gray-300" />
           </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[10px] font-bold text-gray-300 uppercase tracking-widest">Origen del documento</label>
+              <select value={origen} onChange={e => setOrigen(e.target.value)}
+                className="mt-1.5 w-full border border-gray-200 rounded-xl px-3 py-2 text-[12px] outline-none bg-white text-gray-700 focus:border-gray-300">
+                <option value="">Sin especificar</option>
+                {ORIGENES_DOC.map(o => <option key={o}>{o}</option>)}
+              </select>
+            </div>
+            <div className="flex flex-col justify-end pb-0.5">
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input type="checkbox" checked={critico} onChange={e => setCritico(e.target.checked)}
+                  className="w-3.5 h-3.5 accent-red-500 rounded" />
+                <span className="text-[12px] text-gray-600 flex items-center gap-1">
+                  <Flame size={11} className="text-red-400" /> Documento crítico
+                </span>
+              </label>
+            </div>
+          </div>
           {plantilla && (
             <div>
               <label className="text-[10px] font-bold text-gray-300 uppercase tracking-widest">Contenido desde plantilla</label>
@@ -1105,9 +1294,12 @@ function ModalCrearDoc({ plantilla, onSave, onClose }) {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function Documentos() {
-  const [rows,    setRows]    = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error,   setError]   = useState(null)
+  const [rows,       setRows]       = useState([])
+  const [loading,    setLoading]    = useState(true)
+  const [error,      setError]      = useState(null)
+  const [tareas,     setTareas]     = useState([])
+  const [audiencias, setAudiencias] = useState([])
+  const [reuniones,  setReuniones]  = useState([])
 
   const [view,              setView]              = useState('all')
   const [selectedId,        setSelectedId]        = useState(null)
@@ -1131,6 +1323,13 @@ export default function Documentos() {
       setLoading(false)
     }
     fetchDocs()
+    // Load related entities for MetadataPanel
+    supabase.from('tareas').select('id, titulo, estado, causa_rit, cliente_nombre, prioridad')
+      .then(({ data }) => setTareas(data || []))
+    supabase.from('audiencias').select('id, tipo, fecha, hora, tribunal, causa_rit, cliente_nombre')
+      .then(({ data }) => setAudiencias(data || []))
+    supabase.from('reuniones').select('id, tipo, fecha, hora_inicio, estado')
+      .then(({ data }) => setReuniones(data || []))
   }, [])
 
   const docs     = rows
@@ -1140,9 +1339,10 @@ export default function Documentos() {
   // Extended columns (tipo, estado, etc.) are added via supabase_schema_additions.sql
   const DOC_ALWAYS_COLS = new Set(['nombre','cliente_nombre','causa_rit','categoria','url','notas','causa_id','cliente_id'])
   const DOC_EXTENDED_COLS = new Set([
-    'tipo','estado','responsable','favorito','contenido','etiquetas',
+    'tipo','estado','responsable','favorito','critico','contenido','etiquetas',
     'versiones','comentarios','relaciones','fecha_creacion','fecha_modificacion',
-    'causa_ruc','tribunal','cliente',
+    'causa_ruc','tribunal','cliente','origen','descripcion','url',
+    'pjud_id','siau_id','tarea_id','audiencia_id',
   ])
 
   function filterDocPayload(obj) {
@@ -1247,9 +1447,9 @@ export default function Documentos() {
           onAddComentario={addComentarioDocumento}
           onAddVersion={addVersionDocumento}
           onToggleFav={toggleFavoritoDocumento}
-          reuniones={[]}
-          tareas={[]}
-          audiencias={[]}
+          reuniones={reuniones}
+          tareas={tareas}
+          audiencias={audiencias}
         />
       </div>
     )
