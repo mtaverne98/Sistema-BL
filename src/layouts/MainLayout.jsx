@@ -14,6 +14,7 @@ import { useSistema } from '../context/SistemaContext'
 import { CAUSAS }    from '../pages/Causas'
 import { CLIENTES }  from '../pages/Clientes'
 import { useUser }   from '../context/UserContext'
+import QuickAdd      from '../components/QuickAdd'
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 const TODAY_LAYOUT = new Date().toISOString().slice(0, 10)
@@ -430,6 +431,17 @@ export default function MainLayout() {
           </button>
         </div>
 
+        {/* Quick Add hint */}
+        <div className="px-3 py-2 border-b border-gray-50">
+          <div className="flex items-center justify-between px-2.5">
+            <span className="text-[10px] text-gray-400">Crear nuevo</span>
+            <div className="flex items-center gap-0.5">
+              <kbd className="text-[9px] text-gray-300 bg-gray-50 border border-gray-100 rounded px-1 py-0.5 font-mono">⌘</kbd>
+              <kbd className="text-[9px] text-gray-300 bg-gray-50 border border-gray-100 rounded px-1 py-0.5 font-mono">⇧N</kbd>
+            </div>
+          </div>
+        </div>
+
         {/* Nav */}
         <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-4">
           {sections.map((section, si) => (
@@ -478,6 +490,9 @@ export default function MainLayout() {
 
       {/* ── Global CMD+K ── */}
       <GlobalCmdK open={cmdOpen} onClose={() => setCmdOpen(false)} />
+
+      {/* ── Quick Add global ── */}
+      <QuickAdd />
     </div>
   )
 }

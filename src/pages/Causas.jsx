@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import SegCargaHistorialModal from '../components/SegCargaHistorialModal'
+import { useQuickAdd } from '../context/QuickAddContext'
 
 // ── Exportación vacía para compatibilidad con CMD+K en MainLayout ──────────
 export const CAUSAS = []
@@ -685,6 +686,15 @@ function FormCausa({ inicial, onClose, onGuardar, guardando, clientes = [], onCr
 function CausaView({ causa, onClose, onEdit, onDelete }) {
   const [tab, setTab]               = useState('resumen')
   const [confirmDelete, setConfirm] = useState(false)
+
+  // ── Exponer contexto al Quick Add global ──
+  const { setCtx } = useQuickAdd()
+  useEffect(() => {
+    if (causa?.id) {
+      setCtx({ causaId: causa.id, causaRit: causa.rit || '', clienteNombre: causa.cliente_nombre || '' })
+    }
+    return () => setCtx(null)
+  }, [causa?.id])
 
   // Data states
   const [audiencias,    setAudiencias]    = useState([])
