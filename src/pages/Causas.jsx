@@ -103,6 +103,18 @@ function fmtFechaCausa(iso) {
   } catch { return iso }
 }
 
+// "hoy" / "mañana" / "ayer" / "hace 3d" / "en 5d"
+function fmtRelDate(iso) {
+  if (!iso) return null
+  const diff = Math.round((new Date(iso.slice(0,10) + 'T00:00:00') - new Date(TODAY_C + 'T00:00:00')) / 86400000)
+  if (diff === 0) return 'hoy'
+  if (diff === 1) return 'mañana'
+  if (diff === -1) return 'ayer'
+  if (diff > 0 && diff <= 30) return `en ${diff}d`
+  if (diff < 0 && diff >= -30) return `hace ${-diff}d`
+  return fmtFechaCausa(iso)
+}
+
 const PROXIMAS_ACCIONES_C = [
   'Revisar PJUD', 'Revisar SIAU', 'Llamar cliente', 'Esperar resolución',
   'Preparar escrito', 'Presentar escrito', 'Insistir fiscalía',
@@ -704,6 +716,11 @@ function CausaView({ causa, onClose, onEdit, onDelete }) {
   const [savingSeg,       setSavingSeg]       = useState(false)
   const [showSegCarga,    setShowSegCarga]    = useState(false)
 
+  // Datos rápidos para el resumen (1 fila c/u)
+  const [lastPjud,        setLastPjud]        = useState(undefined) // undefined = loading, null = empty
+  const [lastSiau,        setLastSiau]        = useState(undefined)
+  const [lastRevision,    setLastRevision]    = useState(undefined)
+
   function showToast(msg) {
     setToastMsg(msg)
     setTimeout(() => setToastMsg(null), 2500)
@@ -723,6 +740,23 @@ function CausaView({ causa, onClose, onEdit, onDelete }) {
       setPlazos(p ?? [])
       setLoadingBase(false)
     })
+    // Load last PJUD / SIAU / Revision for resumen dashboard (1 row each)
+    if (causa.rit) {
+      supabase.from('pjud').select('fecha,folio,estado,solicitud,respuesta').eq('causa_rit', causa.rit)
+        .order('fecha', { ascending: false }).limit(1)
+        .then(({ data }) => setLastPjud(data?.[0] ?? null))
+      supabase.from('siau').select('fecha,folio,estado,solicitud,respuesta').eq('causa_rit', causa.rit)
+        .order('fecha', { ascending: false }).limit(1)
+        .then(({ data }) => setLastSiau(data?.[0] ?? null))
+    } else {
+      setLastPjud(null); setLastSiau(null)
+    }
+    supabase.from('revisiones').select('fecha,responsable,nota,proxima_accion,semana_key').eq('causa_id', causa.id)
+      .order('fecha', { ascending: false }).limit(3)
+      .then(({ data }) => {
+        const teamRev = (data ?? []).find(r => !r.semana_key?.startsWith('SEG-'))
+        setLastRevision(teamRev ?? null)
+      })
   }, [causa?.id])
 
   // Load PJUD lazily
@@ -1054,133 +1088,237 @@ function CausaView({ causa, onClose, onEdit, onDelete }) {
       {/* ── TAB CONTENT ── */}
       <div className="flex-1 overflow-y-auto">
 
-        {/* RESUMEN */}
-        {tab === 'resumen' && (
-          <div className="px-8 py-6">
-            <div className="grid grid-cols-2 gap-10">
+        {/* RESUMEN — Centro de Causa */}
+        {tab === 'resumen' && (() => {
+          // ── Derived data ──────────────────────────────────────────────────
+          const proxAud    = audiencias.filter(a => a.fecha >= TODAY_C).sort((a,b) => a.fecha.localeCompare(b.fecha))[0] ?? null
+          const proxPlazo  = plazos.filter(p => p.fecha_vencimiento >= TODAY_C).sort((a,b) => a.fecha_vencimiento.localeCompare(b.fecha_vencimiento))[0] ?? null
+          const lastTarea  = tareas.filter(t => t.estado !== 'Completada').sort((a,b) => {
+            if (a.prioridad === 'Alta' && b.prioridad !== 'Alta') return -1
+            if (b.prioridad === 'Alta' && a.prioridad !== 'Alta') return 1
+            return (a.fecha_vencimiento ?? '9999').localeCompare(b.fecha_vencimiento ?? '9999')
+          })[0] ?? null
 
-              {/* Left: info */}
-              <div className="space-y-6">
-                <div>
-                  <p className="text-[10px] font-semibold text-gray-300 uppercase tracking-widest mb-4">
-                    Información procesal
-                  </p>
-                  <div className="space-y-3">
-                    {[
-                      ['RIT',            causa.rit,             true],
-                      ['RUC',            causa.ruc,             true],
-                      ['Tribunal',       causa.tribunal,        false],
-                      ['Fiscalía',       causa.fiscalia,        false],
-                      ['Fiscal',         causa.fiscal,          false],
-                      ['Etapa',          causa.etapa_procesal,  false],
-                      ['Parte',          causa.parte,           false],
-                      ['Área',           causa.area,            false],
-                      ['Inicio',         formatFecha(causa.fecha_inicio ?? causa.created_at), false],
-                    ].filter(([, v]) => v).map(([label, val, mono]) => (
-                      <div key={label} className="flex items-start gap-3">
-                        <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider w-16 flex-shrink-0 pt-0.5">
-                          {label}
-                        </span>
-                        <span className={`text-[12px] text-gray-700 leading-snug ${mono ? 'font-mono' : ''}`}>
-                          {val}
-                        </span>
-                      </div>
-                    ))}
+          const plazosDias = proxPlazo ? Math.round((new Date(proxPlazo.fecha_vencimiento + 'T00:00:00') - new Date(TODAY_C + 'T00:00:00')) / 86400000) : null
+          const audDias    = proxAud   ? Math.round((new Date(proxAud.fecha + 'T00:00:00') - new Date(TODAY_C + 'T00:00:00')) / 86400000) : null
+
+          // urgency helpers
+          const plazoUrgente = plazosDias !== null && plazosDias <= 2
+          const audUrgente   = audDias    !== null && audDias    <= 1
+          const pjudUrgente  = lastPjud?.estado === 'Urgente'
+          const siauUrgente  = lastSiau?.estado  === 'Urgente'
+          const tareaUrgente = lastTarea?.prioridad === 'Alta' || (lastTarea?.fecha_vencimiento && lastTarea.fecha_vencimiento <= TODAY_C)
+
+          // ── PulsoCard ──────────────────────────────────────────────────────
+          function PulsoCard({ icon: Icon, label, iconColor, main, sub, badge, urgent, empty, loading, onClick }) {
+            return (
+              <button
+                onClick={onClick}
+                className={`text-left w-full p-3.5 rounded-xl border transition-all duration-150 group focus:outline-none ${
+                  urgent
+                    ? 'bg-red-50/60 border-red-100 hover:border-red-200 hover:bg-red-50'
+                    : 'bg-white border-gray-100 hover:border-gray-200 hover:bg-gray-50/50'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <div className={`flex items-center gap-1 text-[9px] font-bold uppercase tracking-widest ${urgent ? 'text-red-400' : iconColor}`}>
+                    <Icon size={9} />
+                    {label}
                   </div>
+                  {badge && <div className="flex-shrink-0">{badge}</div>}
                 </div>
+                {loading ? (
+                  <div className="space-y-1.5">
+                    <div className="h-3 bg-gray-100 rounded animate-pulse w-3/4" />
+                    <div className="h-2.5 bg-gray-100 rounded animate-pulse w-1/2" />
+                  </div>
+                ) : empty ? (
+                  <p className="text-[11px] text-gray-300">Sin registros</p>
+                ) : (
+                  <>
+                    <p className={`text-[12px] font-medium leading-snug line-clamp-2 ${urgent ? 'text-red-800' : 'text-gray-800'}`}>{main}</p>
+                    {sub && <p className={`text-[10px] mt-0.5 ${urgent ? 'text-red-400' : 'text-gray-400'}`}>{sub}</p>}
+                  </>
+                )}
+              </button>
+            )
+          }
 
+          // ── Estado mini-badge ──────────────────────────────────────────────
+          function MiniEstado({ estado, urgent }) {
+            if (!estado) return null
+            const colors = urgent
+              ? 'bg-red-100 text-red-700'
+              : estado.toLowerCase().includes('pend')   ? 'bg-amber-50 text-amber-600'
+              : estado.toLowerCase().includes('respond') ? 'bg-green-50 text-green-700'
+              : 'bg-gray-100 text-gray-500'
+            return <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full ${colors}`}>{estado}</span>
+          }
+
+          return (
+          <div className="px-6 py-6 space-y-6">
+
+            {/* ── PULSO OPERATIVO ─────────────────────────────────────── */}
+            <div>
+              <p className="text-[10px] font-semibold text-gray-300 uppercase tracking-widest mb-3">
+                Pulso operativo
+              </p>
+              <div className="grid grid-cols-3 gap-2.5">
+
+                {/* PJUD */}
+                <PulsoCard
+                  icon={Scale}
+                  label="PJUD"
+                  iconColor="text-blue-400"
+                  urgent={pjudUrgente}
+                  loading={lastPjud === undefined}
+                  empty={lastPjud === null}
+                  main={lastPjud?.solicitud || lastPjud?.folio || '—'}
+                  sub={[lastPjud?.estado, fmtRelDate(lastPjud?.fecha)].filter(Boolean).join(' · ')}
+                  badge={lastPjud && <MiniEstado estado={lastPjud.estado} urgent={pjudUrgente} />}
+                  onClick={() => setTab('pjud')}
+                />
+
+                {/* SIAU */}
+                <PulsoCard
+                  icon={MessageSquare}
+                  label="SIAU"
+                  iconColor="text-violet-400"
+                  urgent={siauUrgente}
+                  loading={lastSiau === undefined}
+                  empty={lastSiau === null}
+                  main={lastSiau?.solicitud || lastSiau?.folio || '—'}
+                  sub={[lastSiau?.estado, fmtRelDate(lastSiau?.fecha)].filter(Boolean).join(' · ')}
+                  badge={lastSiau && <MiniEstado estado={lastSiau.estado} urgent={siauUrgente} />}
+                  onClick={() => setTab('siau')}
+                />
+
+                {/* Audiencia */}
+                <PulsoCard
+                  icon={Gavel}
+                  label="Próxima audiencia"
+                  iconColor="text-purple-400"
+                  urgent={audUrgente}
+                  loading={loadingBase}
+                  empty={!proxAud}
+                  main={proxAud?.tipo || 'Audiencia'}
+                  sub={proxAud ? [fmtFechaCausa(proxAud.fecha), proxAud.hora].filter(Boolean).join(' · ') + (audDias === 0 ? ' — hoy' : audDias === 1 ? ' — mañana' : '') : null}
+                  badge={proxAud && audDias !== null && (
+                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${audUrgente ? 'bg-red-100 text-red-700' : 'bg-purple-50 text-purple-600'}`}>
+                      {audDias === 0 ? 'Hoy' : audDias === 1 ? 'Mañana' : `${audDias}d`}
+                    </span>
+                  )}
+                  onClick={() => setTab('audiencias')}
+                />
+
+                {/* Plazo */}
+                <PulsoCard
+                  icon={Clock}
+                  label="Próximo plazo"
+                  iconColor="text-amber-400"
+                  urgent={plazoUrgente}
+                  loading={loadingBase}
+                  empty={!proxPlazo}
+                  main={proxPlazo?.titulo || '—'}
+                  sub={proxPlazo ? `Vence ${fmtRelDate(proxPlazo.fecha_vencimiento)}` : null}
+                  badge={proxPlazo && plazosDias !== null && (
+                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${plazoUrgente ? 'bg-red-100 text-red-700' : 'bg-amber-50 text-amber-600'}`}>
+                      {plazosDias === 0 ? 'Hoy' : `${plazosDias}d`}
+                    </span>
+                  )}
+                  onClick={() => setTab('plazos')}
+                />
+
+                {/* Revisión */}
+                <PulsoCard
+                  icon={RefreshCw}
+                  label="Última revisión"
+                  iconColor="text-teal-400"
+                  loading={lastRevision === undefined}
+                  empty={lastRevision === null}
+                  main={lastRevision?.nota?.slice(0, 80) || 'Sin nota'}
+                  sub={[lastRevision?.responsable, fmtRelDate(lastRevision?.fecha)].filter(Boolean).join(' · ')}
+                  onClick={() => setTab('revision_semanal')}
+                />
+
+                {/* Tarea */}
+                <PulsoCard
+                  icon={CheckSquare}
+                  label="Tarea pendiente"
+                  iconColor="text-indigo-400"
+                  urgent={tareaUrgente}
+                  loading={loadingBase}
+                  empty={!lastTarea}
+                  main={lastTarea?.titulo || '—'}
+                  sub={lastTarea ? [lastTarea.prioridad === 'Alta' ? '🔴 Alta prioridad' : null, lastTarea.fecha_vencimiento ? `vence ${fmtRelDate(lastTarea.fecha_vencimiento)}` : null].filter(Boolean).join(' · ') : null}
+                  badge={lastTarea && tareasPend > 1 && (
+                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500">+{tareasPend - 1}</span>
+                  )}
+                  onClick={() => setTab('tareas')}
+                />
+              </div>
+            </div>
+
+            {/* ── INFORMACIÓN PROCESAL ───────────────────────────────── */}
+            <div className="grid grid-cols-2 gap-8">
+              <div>
+                <p className="text-[10px] font-semibold text-gray-300 uppercase tracking-widest mb-3">
+                  Información procesal
+                </p>
+                <div className="space-y-2.5">
+                  {[
+                    ['RIT',      causa.rit,            true],
+                    ['RUC',      causa.ruc,            true],
+                    ['Tribunal', causa.tribunal,       false],
+                    ['Fiscalía', causa.fiscalia,       false],
+                    ['Fiscal',   causa.fiscal,         false],
+                    ['Etapa',    causa.etapa_procesal, false],
+                    ['Parte',    causa.parte,          false],
+                    ['Inicio',   formatFecha(causa.fecha_inicio ?? causa.created_at), false],
+                  ].filter(([,v]) => v).map(([label, val, mono]) => (
+                    <div key={label} className="flex items-start gap-3">
+                      <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider w-16 flex-shrink-0 pt-0.5">{label}</span>
+                      <span className={`text-[12px] text-gray-700 leading-snug ${mono ? 'font-mono' : ''}`}>{val}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-5">
                 {causa.observaciones && (
                   <div>
-                    <p className="text-[10px] font-semibold text-gray-300 uppercase tracking-widest mb-3">
-                      Observaciones
-                    </p>
-                    <p className="text-[12px] text-gray-700 leading-relaxed bg-gray-50 rounded-xl p-4">
+                    <p className="text-[10px] font-semibold text-gray-300 uppercase tracking-widest mb-2">Observaciones</p>
+                    <p className="text-[12px] text-gray-700 leading-relaxed bg-gray-50 rounded-xl p-3.5">
                       {causa.observaciones}
                     </p>
                   </div>
                 )}
-              </div>
 
-              {/* Right: live data */}
-              <div className="space-y-6">
-                <div>
-                  <p className="text-[10px] font-semibold text-gray-300 uppercase tracking-widest mb-3">
-                    Próximas audiencias
-                  </p>
-                  {loadingBase ? (
-                    <div className="flex justify-center py-4">
-                      <Loader2 size={14} className="animate-spin text-gray-300" />
+                {/* Tareas pendientes compactas */}
+                {tareasPend > 0 && (
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-[10px] font-semibold text-gray-300 uppercase tracking-widest">Tareas pendientes</p>
+                      <button onClick={() => setTab('tareas')} className="text-[10px] text-[#1a2e4a]/50 hover:text-[#1a2e4a] transition-colors">Ver todas →</button>
                     </div>
-                  ) : audiencias.filter(a => a.fecha >= TODAY_C).length === 0 ? (
-                    <p className="text-[12px] text-gray-400">Sin audiencias próximas</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {audiencias.filter(a => a.fecha >= TODAY_C).slice(0, 3).map(a => (
-                        <div key={a.id} className="flex items-center gap-3 py-2.5 px-3.5 bg-purple-50/40 border border-purple-100/60 rounded-xl">
-                          <Gavel size={12} className="text-purple-400 flex-shrink-0" />
-                          <div>
-                            <p className="text-[12px] font-medium text-gray-800">{a.tipo ?? 'Audiencia'}</p>
-                            <p className="text-[11px] text-gray-400">
-                              {formatFecha(a.fecha)}{a.hora ? ` · ${a.hora}` : ''}
-                            </p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                <div>
-                  <p className="text-[10px] font-semibold text-gray-300 uppercase tracking-widest mb-3">
-                    Tareas pendientes ({tareasPend})
-                  </p>
-                  {tareasPend === 0 ? (
-                    <p className="text-[12px] text-gray-400">Sin tareas pendientes</p>
-                  ) : (
-                    <div className="space-y-1.5">
-                      {tareas.filter(t => t.estado !== 'Completada').slice(0, 5).map(t => (
-                        <div key={t.id} className="flex items-center gap-2.5 py-1.5">
-                          <div className="w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0" />
-                          <p className="text-[12px] text-gray-700 flex-1 truncate">{t.titulo}</p>
+                    <div className="space-y-1">
+                      {tareas.filter(t => t.estado !== 'Completada').slice(0, 4).map(t => (
+                        <div key={t.id} className="flex items-center gap-2 py-1">
+                          <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${t.prioridad === 'Alta' ? 'bg-red-400' : 'bg-amber-300'}`} />
+                          <p className="text-[11px] text-gray-700 flex-1 truncate">{t.titulo}</p>
                           {t.fecha_vencimiento && (
-                            <span className="text-[10px] text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full flex-shrink-0">
-                              {fmtFechaCausa(t.fecha_vencimiento)}
-                            </span>
+                            <span className="text-[10px] text-gray-400 flex-shrink-0">{fmtFechaCausa(t.fecha_vencimiento)}</span>
                           )}
                         </div>
                       ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Próximos plazos */}
-                {plazos.filter(p => p.fecha_vencimiento >= TODAY_C).length > 0 && (
-                  <div>
-                    <p className="text-[10px] font-semibold text-gray-300 uppercase tracking-widest mb-3">
-                      Plazos próximos
-                    </p>
-                    <div className="space-y-1.5">
-                      {plazos.filter(p => p.fecha_vencimiento >= TODAY_C).slice(0, 3).map(p => {
-                        const dias = Math.round((new Date(p.fecha_vencimiento) - new Date(TODAY_C)) / 86400000)
-                        return (
-                          <div key={p.id} className="flex items-center gap-2.5 py-1.5">
-                            <Clock size={11} className={dias <= 3 ? 'text-red-400 flex-shrink-0' : 'text-gray-300 flex-shrink-0'} />
-                            <p className="text-[12px] text-gray-700 flex-1 truncate">{p.titulo}</p>
-                            <span className={`text-[10px] px-1.5 py-0.5 rounded-full flex-shrink-0 ${
-                              dias <= 3 ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-600'
-                            }`}>
-                              {dias === 0 ? 'Hoy' : `${dias}d`}
-                            </span>
-                          </div>
-                        )
-                      })}
                     </div>
                   </div>
                 )}
               </div>
             </div>
           </div>
-        )}
+          )
+        })()}
 
         {/* REVISIÓN SEMANAL */}
         {tab === 'revision_semanal' && (
