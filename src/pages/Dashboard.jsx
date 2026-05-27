@@ -5,6 +5,7 @@ import {
   Clock, MapPin, Check, Circle, ChevronRight,
   FileText, Bell, RefreshCw, FolderOpen,
   Receipt, ArrowRight, Wifi, WifiOff,
+  Calendar, MessageSquare, Flame, Activity,
 } from 'lucide-react'
 import { supabase, verificarConexion } from '../lib/supabase'
 import { useUser } from '../context/UserContext'
@@ -103,6 +104,8 @@ export default function Dashboard() {
   const [audiencias,     setAudiencias]     = useState([])
   const [plazos,         setPlazos]         = useState([])
   const [documentos,     setDocumentos]     = useState([])
+  const [reuniones,      setReuniones]      = useState([])
+  const [revUrgentes,    setRevUrgentes]    = useState([])
   const [pjudRows,       setPjudRows]       = useState([])
   const [siauRows,       setSiauRows]       = useState([])
   const [causasCount,    setCausasCount]    = useState(0)
@@ -129,6 +132,21 @@ export default function Dashboard() {
       .order('created_at', { ascending: false })
       .limit(6)
       .then(({ data }) => setDocumentos(data || []))
+
+    supabase.from('reuniones')
+      .select('id, tipo, fecha, hora_inicio, estado, responsable')
+      .gte('fecha', TODAY)
+      .order('fecha', { ascending: true })
+      .limit(5)
+      .then(({ data }) => setReuniones(data || []))
+
+    supabase.from('revisiones')
+      .select('id, fecha, responsable, nota, proxima_accion, causa_id, semana_key')
+      .eq('urgente', true)
+      .is('semana_key', null)  // team revisions only (not SEG-)
+      .order('fecha', { ascending: false })
+      .limit(5)
+      .then(({ data }) => setRevUrgentes((data || []).filter(r => !r.semana_key?.startsWith('SEG-'))))
 
     supabase.from('pjud')
       .select('id, cliente_nombre, causa_rit, fecha, solicitud, estado, notas')
@@ -166,6 +184,13 @@ export default function Dashboard() {
     { label: 'Plazos críticos',       value: plazosRealesCnt,         icon: AlertTriangle, delta: 'Próximas 48 h',                      color: '#dc2626', path: '/plazos'     },
   ], [causasCount, clientesCount, audienciasEstaSemanaCnt, tareasPendientesCnt, tareasHoy, plazosRealesCnt])
 
+  // ── Panel "Hoy" ────────────────────────────────────────────────────────────
+  const audHoy        = useMemo(() => audiencias.filter(a => a.fecha === today).sort((a,b) => (a.hora||'').localeCompare(b.hora||'')), [audiencias, today])
+  const tareasHoyList = useMemo(() => tareas.filter(t => t.fecha_vencimiento === today && t.estado !== 'Completada'), [tareas, today])
+  const plazosHoyList = useMemo(() => plazos.filter(p => p.fecha_vencimiento === today && p.estado === 'Activo'), [plazos, today])
+  const reunionesToday = useMemo(() => reuniones.filter(r => r.fecha === today), [reuniones, today])
+  const hayAlgoHoy    = audHoy.length + tareasHoyList.length + plazosHoyList.length + reunionesToday.length > 0
+
   // ── próximas audiencias (reales, ordenadas) ─────────────────────────────────
   const proximasAudiencias = useMemo(() =>
     audiencias
@@ -198,16 +223,66 @@ export default function Dashboard() {
     [plazos]
   )
 
-  // ── actividad reciente ─────────────────────────────────────────────────────
+  // ── actividad reciente (multi-fuente) ────────────────────────────────────
   const actividadReciente = useMemo(() => {
     const items = []
-    documentos.slice(0, 6).forEach(d => items.push({
-      icon: FolderOpen, texto: `Documento: ${d.nombre}`,
+    // Documentos recientes
+    documentos.forEach(d => items.push({
+      icon: FolderOpen, color: 'text-slate-400', bgColor: 'bg-slate-50',
+      texto: d.nombre, tipo: 'Documento',
       sub: d.cliente || d.causa_rit || '', quien: d.responsable || 'MT',
       ts: d.fecha_creacion || '',
     }))
-    return items.slice(0, 6)
-  }, [documentos])
+    // Audiencias más próximas/recientes
+    audiencias
+      .filter(a => a.fecha >= today)
+      .sort((a, b) => a.fecha.localeCompare(b.fecha))
+      .slice(0, 3)
+      .forEach(a => items.push({
+        icon: Gavel, color: 'text-blue-400', bgColor: 'bg-blue-50',
+        texto: `${a.tipo || 'Audiencia'} — ${a.cliente_nombre || a.causa_rit || ''}`,
+        tipo: 'Audiencia',
+        sub: a.tribunal || '', quien: 'MT',
+        ts: a.fecha,
+      }))
+    // Tareas Alta prioridad pendientes
+    tareas
+      .filter(t => t.prioridad === 'Alta' && t.estado !== 'Completada' && t.fecha_vencimiento)
+      .sort((a, b) => a.fecha_vencimiento.localeCompare(b.fecha_vencimiento))
+      .slice(0, 3)
+      .forEach(t => items.push({
+        icon: CheckSquare, color: 'text-emerald-400', bgColor: 'bg-emerald-50',
+        texto: t.titulo, tipo: 'Tarea',
+        sub: t.cliente_nombre || t.causa_rit || '', quien: t.responsable || 'MT',
+        ts: t.fecha_vencimiento,
+      }))
+    // Plazos activos
+    plazos
+      .filter(p => p.estado === 'Activo' && p.fecha_vencimiento >= today)
+      .sort((a, b) => a.fecha_vencimiento.localeCompare(b.fecha_vencimiento))
+      .slice(0, 2)
+      .forEach(p => items.push({
+        icon: Clock, color: 'text-amber-400', bgColor: 'bg-amber-50',
+        texto: p.titulo, tipo: 'Plazo',
+        sub: p.cliente_nombre || p.causa_rit || '', quien: p.responsable || 'MT',
+        ts: p.fecha_vencimiento,
+      }))
+    // Reuniones próximas
+    reuniones
+      .filter(r => r.fecha >= today && r.estado !== 'Finalizada')
+      .slice(0, 2)
+      .forEach(r => items.push({
+        icon: Calendar, color: 'text-violet-400', bgColor: 'bg-violet-50',
+        texto: r.tipo || 'Reunión de equipo', tipo: 'Reunión',
+        sub: r.hora_inicio || '', quien: r.responsable || 'MT',
+        ts: r.fecha,
+      }))
+    // Sort by ts, dedupe, limit
+    return items
+      .filter(i => i.ts)
+      .sort((a, b) => a.ts.localeCompare(b.ts))
+      .slice(0, 7)
+  }, [documentos, audiencias, tareas, plazos, reuniones, today])
 
   // ── alertas PJUD (desde rows planos) ──────────────────────────────────────
   const pjudAlertas = useMemo(() => {
@@ -290,6 +365,58 @@ export default function Dashboard() {
           ))}
         </div>
 
+        {/* Panel "Hoy en el estudio" */}
+        {hayAlgoHoy && (
+          <div className="bg-[#1a2e4a]/[0.02] border border-[#1a2e4a]/10 rounded-xl px-5 py-3.5">
+            <div className="flex items-center gap-2 mb-3">
+              <Activity size={13} className="text-[#1a2e4a]/50" />
+              <span className="text-[11px] font-bold text-[#1a2e4a]/70 uppercase tracking-widest">Hoy en el estudio</span>
+            </div>
+            <div className="flex items-center gap-3 flex-wrap">
+              {audHoy.map(a => (
+                <button key={a.id} onClick={() => navigate('/audiencias')}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-blue-50 border border-blue-100 hover:border-blue-200 transition-colors cursor-pointer">
+                  <Gavel size={11} className="text-blue-500 flex-shrink-0" />
+                  <div className="text-left">
+                    <p className="text-[11px] font-semibold text-blue-800 leading-none">{a.tipo || 'Audiencia'}</p>
+                    <p className="text-[10px] text-blue-500 mt-0.5">{a.hora} · {a.cliente_nombre || a.causa_rit}</p>
+                  </div>
+                </button>
+              ))}
+              {plazosHoyList.map(p => (
+                <button key={p.id} onClick={() => navigate('/plazos')}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-red-50 border border-red-100 hover:border-red-200 transition-colors cursor-pointer">
+                  <AlertTriangle size={11} className="text-red-500 flex-shrink-0" />
+                  <div className="text-left">
+                    <p className="text-[11px] font-semibold text-red-800 leading-none">Plazo vence hoy</p>
+                    <p className="text-[10px] text-red-500 mt-0.5 truncate max-w-[140px]">{p.titulo}</p>
+                  </div>
+                </button>
+              ))}
+              {tareasHoyList.map(t => (
+                <button key={t.id} onClick={() => navigate('/tareas')}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-100 hover:border-emerald-200 transition-colors cursor-pointer">
+                  <CheckSquare size={11} className="text-emerald-500 flex-shrink-0" />
+                  <div className="text-left">
+                    <p className="text-[11px] font-semibold text-emerald-800 leading-none truncate max-w-[120px]">{t.titulo}</p>
+                    <p className="text-[10px] text-emerald-500 mt-0.5">{t.prioridad} prioridad</p>
+                  </div>
+                </button>
+              ))}
+              {reunionesToday.map(r => (
+                <button key={r.id} onClick={() => navigate('/reuniones')}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-violet-50 border border-violet-100 hover:border-violet-200 transition-colors cursor-pointer">
+                  <Calendar size={11} className="text-violet-500 flex-shrink-0" />
+                  <div className="text-left">
+                    <p className="text-[11px] font-semibold text-violet-800 leading-none">{r.tipo || 'Reunión de equipo'}</p>
+                    <p className="text-[10px] text-violet-500 mt-0.5">{r.hora_inicio || 'Sin hora'}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Fila principal: audiencias + tareas + actividad */}
         <div className="grid grid-cols-3 gap-5">
 
@@ -369,21 +496,27 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Actividad reciente */}
+          {/* Actividad reciente (multi-fuente) */}
           <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">
-            <SectionHeader icon={FileText} title="Actividad reciente" />
+            <SectionHeader icon={Activity} title="Próximos eventos" />
             <div className="divide-y divide-gray-50">
-              {actividadReciente.map((a, i) => (
-                <div key={i} className="px-5 py-3.5 flex items-start gap-3 hover:bg-gray-50 transition-colors">
-                  <div className="w-6 h-6 rounded-lg bg-gray-50 flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <a.icon size={12} className="text-gray-400" />
+              {actividadReciente.length === 0 ? (
+                <p className="px-5 py-6 text-xs text-gray-400 text-center">Sin actividad próxima</p>
+              ) : actividadReciente.map((a, i) => (
+                <div key={i} className="px-5 py-3 flex items-start gap-3 hover:bg-gray-50 transition-colors">
+                  <div className={`w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5 ${a.bgColor}`}>
+                    <a.icon size={11} className={a.color} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs text-gray-700 leading-snug truncate">{a.texto}</p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-xs text-gray-700 leading-snug truncate flex-1">{a.texto}</p>
+                      <span className="text-[9px] text-gray-300 font-medium flex-shrink-0">{a.tipo}</span>
+                    </div>
                     {a.sub && <p className="text-[10px] text-gray-400 mt-0.5 truncate">{a.sub}</p>}
                     <div className="flex items-center gap-2 mt-1">
-                      <Avatar quien={a.quien} size={14} />
-                      <span className="text-[10px] text-gray-400">{RESP_NAME[a.quien] || a.quien}</span>
+                      <span className={`text-[10px] font-medium ${a.ts === today ? 'text-blue-500 font-semibold' : 'text-gray-400'}`}>
+                        {a.ts === today ? 'Hoy' : formatFecha(a.ts)}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -492,6 +625,33 @@ export default function Dashboard() {
                 </div>
               </div>
             )}
+          </div>
+        )}
+
+        {/* Revisiones con marcador urgente */}
+        {revUrgentes.length > 0 && (
+          <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">
+            <SectionHeader icon={Flame} title="Revisiones urgentes"
+              count={<span className="text-[10px] font-bold bg-red-500 text-white px-1.5 py-0.5 rounded-full">{revUrgentes.length}</span>}
+              linkLabel="Ver revisiones" onLink={() => navigate('/revision-causas')} />
+            <div className="divide-y divide-gray-50">
+              {revUrgentes.map(r => (
+                <div key={r.id} onClick={() => navigate('/revision-causas')}
+                  className="px-5 py-3.5 flex items-start gap-3 hover:bg-gray-50 cursor-pointer transition-colors">
+                  <div className="w-1 self-stretch rounded-full flex-shrink-0 bg-red-400" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[12px] font-medium text-gray-900 truncate">
+                      {r.proxima_accion || 'Revisión urgente'}
+                    </p>
+                    {r.nota && (
+                      <p className="text-[11px] text-gray-400 mt-0.5 truncate">{r.nota}</p>
+                    )}
+                    <p className="text-[10px] text-red-500 mt-0.5">{formatFecha(r.fecha)}</p>
+                  </div>
+                  <Avatar quien={r.responsable || 'MT'} size={18} />
+                </div>
+              ))}
+            </div>
           </div>
         )}
 

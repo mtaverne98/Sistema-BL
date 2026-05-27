@@ -7,9 +7,10 @@ import {
 import { supabase } from '../lib/supabase'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-const TODAY   = '2026-05-21'
-const NOW_H   = 10
-const NOW_M   = 30
+const _now    = new Date()
+const TODAY   = _now.toISOString().slice(0, 10)
+const NOW_H   = _now.getHours()
+const NOW_M   = _now.getMinutes()
 const HOUR_PX = 64
 const D_START = 8
 const D_END   = 20
@@ -235,7 +236,7 @@ function AlertBar({ eventos }) {
         ))}
       </div>
       <div className="ml-auto flex-shrink-0 text-[10px] text-gray-300 font-medium whitespace-nowrap">
-        Jueves, {fmtFecha(TODAY)}
+        {['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'][new Date().getDay()]}, {fmtFecha(TODAY)}
       </div>
     </div>
   )
@@ -662,6 +663,18 @@ function EventPanel({ ev, todos, onClose, onUpdate }) {
                   Módulo Audiencias
                 </span>
               )}
+              {ev._source === 'reunion' && (
+                <span className="inline-flex items-center gap-1 text-[9px] font-bold px-2 py-0.5 rounded-full bg-violet-50 text-violet-600 border border-violet-100">
+                  <Link2 size={8} />
+                  Módulo Reuniones
+                </span>
+              )}
+              {ev._source === 'plazo' && (
+                <span className="inline-flex items-center gap-1 text-[9px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-600 border border-amber-100">
+                  <Link2 size={8} />
+                  Módulo Plazos
+                </span>
+              )}
               {ev.completado && (
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600">
                   ✓ Completado
@@ -1064,6 +1077,7 @@ export default function Calendario() {
   const [tareas,     setTareas]     = useState([])
   const [audiencias, setAudiencias] = useState([])
   const [plazos,     setPlazos]     = useState([])
+  const [reuniones,  setReuniones]  = useState([])
 
   useEffect(() => {
     supabase.from('tareas')
@@ -1075,6 +1089,9 @@ export default function Calendario() {
     supabase.from('plazos')
       .select('id, titulo, fecha_vencimiento, estado, tipo, notas, causa_rit, causas(cliente_nombre)')
       .then(({ data }) => setPlazos((data || []).map(r => ({ ...r, cliente_nombre: r.causas?.cliente_nombre || '' }))))
+    supabase.from('reuniones')
+      .select('id, tipo, fecha, hora_inicio, hora_fin, estado, responsable')
+      .then(({ data }) => setReuniones(data || []))
   }, [])
 
   // ── Campos DB válidos por tabla ──
@@ -1098,6 +1115,13 @@ export default function Calendario() {
     setPlazos(prev => prev.map(p => p.id === id ? { ...p, ...changes } : p))
     const payload = Object.fromEntries(Object.entries(changes).filter(([k]) => PLAZO_DB.has(k)))
     if (Object.keys(payload).length) await supabase.from('plazos').update(payload).eq('id', id)
+  }, [])
+
+  const REUN_DB = new Set(['estado','tipo','fecha','hora_inicio','hora_fin','responsable'])
+  const updateReunion = useCallback(async (id, changes) => {
+    setReuniones(prev => prev.map(r => r.id === id ? { ...r, ...changes } : r))
+    const payload = Object.fromEntries(Object.entries(changes).filter(([k]) => REUN_DB.has(k)))
+    if (Object.keys(payload).length) await supabase.from('reuniones').update(payload).eq('id', id)
   }, [])
 
   // ── Toast helper ──
@@ -1177,10 +1201,40 @@ export default function Calendario() {
       _estado:     p.estado,
     })), [plazos])
 
+  // ── Derivar eventos sincrónicos desde Reuniones ──
+  const eventosFromReuniones = useMemo(() => reuniones
+    .filter(r => r.fecha && r.estado !== 'Cancelada')
+    .map(r => {
+      const duracion = (() => {
+        if (!r.hora_inicio || !r.hora_fin) return 60
+        const [h1,m1] = r.hora_inicio.split(':').map(Number)
+        const [h2,m2] = r.hora_fin.split(':').map(Number)
+        const mins = (h2 * 60 + m2) - (h1 * 60 + m1)
+        return mins > 0 ? mins : 60
+      })()
+      return {
+        id:          `sync_re_${r.id}`,
+        tipo:        'reunion',
+        titulo:      r.tipo || 'Reunión de equipo',
+        fecha:       r.fecha,
+        hora_inicio: r.hora_inicio || '',
+        duracion,
+        allDay:      !r.hora_inicio,
+        cliente:     '',
+        causa_rit:   '',
+        responsable: r.responsable || 'MT',
+        completado:  r.estado === 'Finalizada',
+        notas:       '',
+        _source:     'reunion',
+        _sourceId:   r.id,
+        _estado:     r.estado,
+      }
+    }), [reuniones])
+
   // ── Merge: eventos nativos + sincrónicos ──
   const todosEventos = useMemo(() =>
-    [...eventos, ...eventosFromTareas, ...eventosFromAudiencias, ...eventosFromPlazos],
-    [eventos, eventosFromTareas, eventosFromAudiencias, eventosFromPlazos])
+    [...eventos, ...eventosFromTareas, ...eventosFromAudiencias, ...eventosFromPlazos, ...eventosFromReuniones],
+    [eventos, eventosFromTareas, eventosFromAudiencias, eventosFromPlazos, eventosFromReuniones])
 
   const days      = useMemo(() => getWeekDays(anchor), [anchor])
 
@@ -1237,6 +1291,11 @@ export default function Calendario() {
       const sourceId = id.replace('sync_pl_', '')
       updatePlazo(sourceId, { fecha_vencimiento: newDate })
       showSyncToast('Plazo actualizado en módulo Plazos')
+    } else if (id.startsWith('sync_re_')) {
+      // Reunión sincronizada → actualizar módulo Reuniones
+      const sourceId = id.replace('sync_re_', '')
+      updateReunion(sourceId, { fecha: newDate, hora_inicio: newHora })
+      showSyncToast('Reunión reagendada en módulo Reuniones')
     } else {
       // Evento nativo del calendario
       setEventos(prev => prev.map(e => e.id === id ? { ...e, fecha: newDate, hora_inicio: newHora } : e))
@@ -1272,7 +1331,6 @@ export default function Calendario() {
       }
     } else if (id.startsWith('sync_pl_')) {
       const sourceId = id.replace('sync_pl_', '')
-      // Mapear completado → estado en Plazos
       const plazoCambios = {}
       if ('completado' in changes) {
         plazoCambios.estado = changes.completado ? 'Completado' : 'Activo'
@@ -1281,6 +1339,18 @@ export default function Calendario() {
       if (Object.keys(plazoCambios).length) {
         updatePlazo(sourceId, plazoCambios)
         showSyncToast('Plazo actualizado en módulo Plazos')
+      }
+    } else if (id.startsWith('sync_re_')) {
+      const sourceId = id.replace('sync_re_', '')
+      const reunCambios = {}
+      if ('completado' in changes) {
+        reunCambios.estado = changes.completado ? 'Finalizada' : 'Programada'
+      }
+      if (changes.fecha)       reunCambios.fecha       = changes.fecha
+      if (changes.hora_inicio) reunCambios.hora_inicio = changes.hora_inicio
+      if (Object.keys(reunCambios).length) {
+        updateReunion(sourceId, reunCambios)
+        showSyncToast('Reunión actualizada en módulo Reuniones')
       }
     } else {
       // Evento nativo
