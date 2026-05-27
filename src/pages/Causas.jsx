@@ -721,6 +721,9 @@ function CausaView({ causa, onClose, onEdit, onDelete }) {
   const [lastSiau,        setLastSiau]        = useState(undefined)
   const [lastRevision,    setLastRevision]    = useState(undefined)
 
+  // Timeline filter
+  const [filterTimeline,  setFilterTimeline]  = useState('Todo')
+
   function showToast(msg) {
     setToastMsg(msg)
     setTimeout(() => setToastMsg(null), 2500)
@@ -759,17 +762,19 @@ function CausaView({ causa, onClose, onEdit, onDelete }) {
       })
   }, [causa?.id])
 
-  // Load PJUD lazily
+  // Load PJUD lazily (also for timeline)
   useEffect(() => {
-    if (tab !== 'pjud' || !causa?.rit) return
+    if ((tab !== 'pjud' && tab !== 'timeline') || !causa?.rit) return
+    if (pjudRows.length > 0) return
     setLoadingPjud(true)
     supabase.from('pjud').select('*').eq('causa_rit', causa.rit).order('fecha', { ascending: false })
       .then(({ data }) => { setPjudRows(data ?? []); setLoadingPjud(false) })
   }, [tab, causa?.rit])
 
-  // Load SIAU lazily
+  // Load SIAU lazily (also for timeline)
   useEffect(() => {
-    if (tab !== 'siau' || !causa?.rit) return
+    if ((tab !== 'siau' && tab !== 'timeline') || !causa?.rit) return
+    if (siauRows.length > 0) return
     setLoadingSiau(true)
     supabase.from('siau').select('*').eq('causa_rit', causa.rit).order('fecha', { ascending: false })
       .then(({ data }) => { setSiauRows(data ?? []); setLoadingSiau(false) })
@@ -1638,120 +1643,234 @@ function CausaView({ causa, onClose, onEdit, onDelete }) {
 
         {/* TIMELINE */}
         {tab === 'timeline' && (() => {
-          // Build unified timeline events
-          const events = [
+          const isLoading = loadingBase || loadingRev || loadingPjud || loadingSiau
+
+          // Color palette
+          const colorMap = {
+            purple:  { bg: 'bg-purple-50',  text: 'text-purple-600',  dot: 'bg-purple-400',  badge: 'bg-purple-50 text-purple-700',   border: 'border-purple-100'  },
+            blue:    { bg: 'bg-blue-50',    text: 'text-blue-600',    dot: 'bg-blue-400',    badge: 'bg-blue-50 text-blue-700',       border: 'border-blue-100'    },
+            amber:   { bg: 'bg-amber-50',   text: 'text-amber-600',   dot: 'bg-amber-400',   badge: 'bg-amber-50 text-amber-700',     border: 'border-amber-100'   },
+            green:   { bg: 'bg-emerald-50', text: 'text-emerald-600', dot: 'bg-emerald-400', badge: 'bg-emerald-50 text-emerald-700', border: 'border-emerald-100' },
+            red:     { bg: 'bg-red-50',     text: 'text-red-600',     dot: 'bg-red-400',     badge: 'bg-red-50 text-red-700',         border: 'border-red-100'     },
+            slate:   { bg: 'bg-slate-50',   text: 'text-slate-500',   dot: 'bg-slate-300',   badge: 'bg-slate-100 text-slate-500',    border: 'border-slate-100'   },
+            orange:  { bg: 'bg-orange-50',  text: 'text-orange-600',  dot: 'bg-orange-400',  badge: 'bg-orange-50 text-orange-700',   border: 'border-orange-100'  },
+          }
+
+          // Filter tabs config
+          const FILTERS = [
+            { key: 'Todo',       label: 'Todo' },
+            { key: 'PJUD',       label: 'PJUD',       color: 'blue'   },
+            { key: 'SIAU',       label: 'SIAU',       color: 'amber'  },
+            { key: 'Tarea',      label: 'Tareas',     color: 'green'  },
+            { key: 'Audiencia',  label: 'Audiencias', color: 'purple' },
+            { key: 'Plazo',      label: 'Plazos',     color: 'orange' },
+            { key: 'Revisión',   label: 'Revisiones', color: 'slate'  },
+          ]
+
+          // Build unified events
+          const allEvents = [
             ...audiencias.map(a => ({
               id: `a-${a.id}`, fecha: a.fecha, tipo: 'Audiencia',
-              titulo: a.tipo ?? 'Audiencia', subtitulo: a.hora || null,
+              titulo: a.tipo ?? 'Audiencia',
+              subtitulo: a.hora ? `${a.hora}${a.sala ? ' · Sala ' + a.sala : ''}` : null,
+              detalle: a.notas || null,
               color: 'purple', Icon: Gavel,
               futuro: a.fecha >= TODAY_C,
+              navTab: null,
             })),
             ...plazos.map(p => ({
               id: `p-${p.id}`, fecha: p.fecha_vencimiento, tipo: 'Plazo',
               titulo: p.titulo, subtitulo: p.tipo || null,
-              color: 'amber', Icon: Clock,
+              detalle: p.descripcion || null,
+              color: (() => {
+                const d = Math.round((new Date(p.fecha_vencimiento) - new Date(TODAY_C)) / 86400000)
+                return d >= 0 && d <= 3 ? 'red' : 'orange'
+              })(),
+              Icon: Clock,
               futuro: p.fecha_vencimiento >= TODAY_C,
               urgente: (() => {
                 const d = Math.round((new Date(p.fecha_vencimiento) - new Date(TODAY_C)) / 86400000)
                 return d >= 0 && d <= 3
               })(),
+              navTab: null,
             })),
             ...tareas.filter(t => t.fecha_vencimiento).map(t => ({
               id: `t-${t.id}`, fecha: t.fecha_vencimiento, tipo: 'Tarea',
-              titulo: t.titulo, subtitulo: t.prioridad || null,
-              color: t.estado === 'Completada' ? 'slate' : 'blue', Icon: CheckSquare,
+              titulo: t.titulo,
+              subtitulo: [t.prioridad, t.responsable ? RESPONSABLE_NAMES_C[t.responsable] || t.responsable : null].filter(Boolean).join(' · ') || null,
+              detalle: t.descripcion || null,
+              color: t.estado === 'Completada' ? 'slate' : 'green', Icon: CheckSquare,
               futuro: t.fecha_vencimiento >= TODAY_C,
               completada: t.estado === 'Completada',
+              navTab: 'tareas',
             })),
-            ...revisiones.map(r => ({
+            ...revisiones.filter(r => !r.semana_key?.startsWith('SEG-')).map(r => ({
               id: `r-${r.id}`, fecha: r.fecha, tipo: 'Revisión',
-              titulo: r.proxima_accion || 'Revisión semanal', subtitulo: RESPONSABLE_NAMES_C[r.responsable] || r.responsable,
+              titulo: r.proxima_accion || 'Revisión semanal',
+              subtitulo: RESPONSABLE_NAMES_C[r.responsable] || r.responsable || null,
+              detalle: r.nota || null,
               color: r.urgente ? 'red' : 'slate', Icon: RefreshCw,
               futuro: false, urgente: r.urgente,
+              navTab: 'revision_semanal',
+            })),
+            ...pjudRows.map(p => ({
+              id: `pj-${p.id}`, fecha: p.fecha, tipo: 'PJUD',
+              titulo: p.solicitud || p.folio || 'Movimiento PJUD',
+              subtitulo: [p.folio, p.estado].filter(Boolean).join(' · ') || null,
+              detalle: p.respuesta || p.notas || null,
+              color: 'blue', Icon: Scale,
+              futuro: p.fecha >= TODAY_C,
+              urgente: p.estado === 'Urgente',
+              navTab: 'pjud',
+            })),
+            ...siauRows.map(s => ({
+              id: `si-${s.id}`, fecha: s.fecha, tipo: 'SIAU',
+              titulo: s.solicitud || s.folio || 'Solicitud SIAU',
+              subtitulo: [s.folio, s.estado].filter(Boolean).join(' · ') || null,
+              detalle: s.respuesta || s.notas || null,
+              color: 'amber', Icon: MessageSquare,
+              futuro: s.fecha >= TODAY_C,
+              urgente: s.estado === 'Urgente',
+              navTab: 'siau',
             })),
           ].filter(e => e.fecha).sort((a, b) => b.fecha.localeCompare(a.fecha))
 
-          const colorMap = {
-            purple: { bg: 'bg-purple-50', text: 'text-purple-600', dot: 'bg-purple-400', badge: 'bg-purple-50 text-purple-700' },
-            amber:  { bg: 'bg-amber-50',  text: 'text-amber-600',  dot: 'bg-amber-400',  badge: 'bg-amber-50 text-amber-700' },
-            blue:   { bg: 'bg-blue-50',   text: 'text-blue-600',   dot: 'bg-blue-400',   badge: 'bg-blue-50 text-blue-700' },
-            slate:  { bg: 'bg-slate-50',  text: 'text-slate-500',  dot: 'bg-slate-300',  badge: 'bg-slate-100 text-slate-500' },
-            red:    { bg: 'bg-red-50',    text: 'text-red-600',    dot: 'bg-red-400',    badge: 'bg-red-50 text-red-700' },
-          }
+          // Apply filter
+          const events = filterTimeline === 'Todo'
+            ? allEvents
+            : allEvents.filter(e => e.tipo === filterTimeline)
+
+          // Expanded card state (local to IIFE, tracked via closured state would need outer state)
+          // We'll use a lightweight inline approach — no expansion for now, just rich single-line cards
 
           return (
             <div className="px-8 py-6">
-              <div className="flex items-center justify-between mb-6">
+              {/* Header */}
+              <div className="flex items-start justify-between mb-5">
                 <div>
-                  <h3 className="text-[15px] font-semibold text-gray-900">Timeline de la causa</h3>
+                  <h3 className="text-[15px] font-semibold text-gray-900">Timeline unificado</h3>
                   <p className="text-[11px] text-gray-400 mt-0.5">
-                    Cronología integrada · {events.length} eventos
+                    Todos los eventos cronológicamente · {allEvents.length} total
                   </p>
-                </div>
-                <div className="flex items-center gap-2 text-[10px] text-gray-400">
-                  {[['purple','Audiencias'],['amber','Plazos'],['blue','Tareas'],['slate','Revisiones']].map(([c, lbl]) => (
-                    <span key={c} className="flex items-center gap-1">
-                      <span className={`w-2 h-2 rounded-full ${colorMap[c].dot}`} />
-                      {lbl}
-                    </span>
-                  ))}
                 </div>
               </div>
 
-              {loadingBase || loadingRev ? (
+              {/* Filter chips */}
+              <div className="flex items-center gap-1.5 flex-wrap mb-6">
+                {FILTERS.map(f => {
+                  const active = filterTimeline === f.key
+                  const c = f.color ? colorMap[f.color] : null
+                  return (
+                    <button
+                      key={f.key}
+                      onClick={() => setFilterTimeline(f.key)}
+                      className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-medium border transition-all ${
+                        active
+                          ? f.color
+                            ? `${c.badge} ${c.border}`
+                            : 'bg-[#1a2e4a] text-white border-[#1a2e4a]'
+                          : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300 hover:text-gray-700'
+                      }`}
+                    >
+                      {f.color && (
+                        <span className={`w-1.5 h-1.5 rounded-full ${active ? c.dot : 'bg-gray-300'}`} />
+                      )}
+                      {f.label}
+                      {f.key !== 'Todo' && (
+                        <span className={`text-[10px] tabular-nums ${active ? 'opacity-70' : 'text-gray-400'}`}>
+                          {allEvents.filter(e => e.tipo === f.key).length}
+                        </span>
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+
+              {/* Timeline body */}
+              {isLoading ? (
                 <div className="flex justify-center py-12">
                   <Loader2 size={18} className="animate-spin text-gray-300" />
                 </div>
               ) : events.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-16">
                   <Activity size={28} className="text-gray-200 mb-3" />
-                  <p className="text-[13px] text-gray-400">Sin eventos registrados</p>
+                  <p className="text-[13px] text-gray-400">
+                    {filterTimeline === 'Todo' ? 'Sin eventos registrados' : `Sin eventos de tipo ${filterTimeline}`}
+                  </p>
                 </div>
               ) : (
                 <div className="relative">
                   <div className="absolute left-[10px] top-3 bottom-3 w-px bg-gray-100" />
-                  <div className="space-y-3">
+                  <div className="space-y-2">
                     {events.map((ev, i) => {
                       const c = colorMap[ev.color] || colorMap.slate
                       const isToday = ev.fecha === TODAY_C
+                      const showHoySep = i > 0 && events[i-1].fecha >= TODAY_C && ev.fecha < TODAY_C
                       return (
                         <div key={ev.id} className="relative pl-8">
-                          {/* Timeline dot */}
-                          <div className={`absolute left-0 top-3 w-[20px] h-[20px] rounded-full flex items-center justify-center ${
-                            ev.urgente ? 'bg-red-400' : ev.completada ? 'bg-emerald-400' : ev.futuro ? `${c.bg} border-2 border-current ${c.text}` : c.dot
-                          }`}>
-                            <ev.Icon size={10} className={ev.urgente || ev.completada || !ev.futuro ? 'text-white' : c.text} />
-                          </div>
-
                           {/* Hoy separator */}
-                          {i > 0 && events[i-1].fecha >= TODAY_C && ev.fecha < TODAY_C && (
-                            <div className="absolute -top-2 left-8 right-0 flex items-center gap-2 mb-1">
+                          {showHoySep && (
+                            <div className="flex items-center gap-2 mb-3 -ml-8 mr-0">
+                              <div className="w-8 flex-shrink-0" />
                               <div className="flex-1 h-px bg-gray-200" />
-                              <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Hoy</span>
+                              <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest flex-shrink-0">Hoy</span>
                               <div className="flex-1 h-px bg-gray-200" />
                             </div>
                           )}
 
-                          <div className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl border transition-colors ${
-                            ev.urgente ? 'border-red-100 bg-red-50/30' :
-                            isToday ? 'border-[#1a2e4a]/15 bg-[#1a2e4a]/[0.02]' :
-                            ev.futuro ? 'border-gray-100 bg-white' : 'border-gray-50 bg-gray-50/50'
+                          {/* Dot */}
+                          <div className={`absolute left-0 top-3 w-[20px] h-[20px] rounded-full flex items-center justify-center ${
+                            ev.urgente    ? 'bg-red-400' :
+                            ev.completada ? 'bg-emerald-400' :
+                            ev.futuro     ? `bg-white border-2 ${c.border}` :
+                            c.dot
                           }`}>
-                            <div className="flex-1 min-w-0">
-                              <p className={`text-[12px] font-medium leading-snug truncate ${
-                                ev.completada ? 'line-through text-gray-300' : 'text-gray-800'
-                              }`}>{ev.titulo}</p>
-                              {ev.subtitulo && (
-                                <p className="text-[10px] text-gray-400 mt-0.5">{ev.subtitulo}</p>
+                            <ev.Icon
+                              size={10}
+                              className={
+                                ev.urgente || ev.completada ? 'text-white' :
+                                ev.futuro ? c.text : 'text-white'
+                              }
+                            />
+                          </div>
+
+                          {/* Card */}
+                          <div
+                            onClick={ev.navTab ? () => setTab(ev.navTab) : undefined}
+                            className={`group rounded-xl border transition-all ${
+                              ev.navTab ? 'cursor-pointer hover:shadow-sm' : ''
+                            } ${
+                              ev.urgente    ? 'border-red-100 bg-red-50/30 hover:border-red-200' :
+                              isToday       ? 'border-[#1a2e4a]/15 bg-[#1a2e4a]/[0.02] hover:border-[#1a2e4a]/25' :
+                              ev.futuro     ? `border-gray-100 bg-white hover:${c.border}` :
+                              'border-gray-50 bg-gray-50/50 hover:border-gray-100'
+                            }`}
+                          >
+                            <div className="flex items-start gap-3 px-3.5 py-2.5">
+                              <div className="flex-1 min-w-0">
+                                <p className={`text-[12px] font-medium leading-snug ${
+                                  ev.completada ? 'line-through text-gray-300' : 'text-gray-800'
+                                }`}>{ev.titulo}</p>
+                                {ev.subtitulo && (
+                                  <p className="text-[10px] text-gray-400 mt-0.5 truncate">{ev.subtitulo}</p>
+                                )}
+                                {ev.detalle && (
+                                  <p className="text-[10px] text-gray-500 mt-1 leading-relaxed line-clamp-2">{ev.detalle}</p>
+                                )}
+                              </div>
+                              <div className="flex flex-col items-end gap-1 flex-shrink-0 pt-0.5">
+                                <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${c.badge}`}>
+                                  {ev.tipo}
+                                </span>
+                                <span className={`text-[10px] tabular-nums ${
+                                  isToday ? 'font-semibold text-[#1a2e4a]' : 'text-gray-400'
+                                }`}>
+                                  {fmtFechaCausa(ev.fecha)}
+                                </span>
+                              </div>
+                              {ev.navTab && (
+                                <ChevronRight size={12} className="text-gray-300 group-hover:text-gray-500 flex-shrink-0 mt-1 transition-colors" />
                               )}
-                            </div>
-                            <div className="flex items-center gap-2 flex-shrink-0">
-                              <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${c.badge}`}>
-                                {ev.tipo}
-                              </span>
-                              <span className={`text-[10px] tabular-nums ${isToday ? 'font-semibold text-[#1a2e4a]' : 'text-gray-400'}`}>
-                                {fmtFechaCausa(ev.fecha)}
-                              </span>
                             </div>
                           </div>
                         </div>
