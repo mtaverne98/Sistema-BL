@@ -169,17 +169,35 @@ function EstadoBadge({ estado }) {
 /** Dropdown elegante para cambiar estado de causa directamente desde la vista */
 function EstadoDropdown({ estado, onCambiar }) {
   const [open, setOpen] = useState(false)
-  const ref = useRef(null)
+  const [pos, setPos]   = useState({ top: 0, left: 0 })
+  const btnRef = useRef(null)
+  const menuRef = useRef(null)
+
   useEffect(() => {
-    const h = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    const h = e => {
+      if (
+        btnRef.current && !btnRef.current.contains(e.target) &&
+        menuRef.current && !menuRef.current.contains(e.target)
+      ) setOpen(false)
+    }
     document.addEventListener('mousedown', h)
     return () => document.removeEventListener('mousedown', h)
   }, [])
+
+  function handleOpen() {
+    if (!open && btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect()
+      setPos({ top: r.bottom + 6, left: r.left })
+    }
+    setOpen(o => !o)
+  }
+
   const s = ESTADO_STYLES[estado] ?? ESTADO_STYLES['Abierta']
   return (
-    <div ref={ref} className="relative inline-block">
+    <div className="relative inline-block">
       <button
-        onClick={() => setOpen(o => !o)}
+        ref={btnRef}
+        onClick={handleOpen}
         className={`inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full transition-opacity hover:opacity-75 ${s.badge}`}
         title="Cambiar estado"
       >
@@ -188,7 +206,11 @@ function EstadoDropdown({ estado, onCambiar }) {
         <ChevronDown size={9} className={`transition-transform duration-150 ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
-        <div className="absolute top-full left-0 mt-1.5 bg-white border border-gray-100 rounded-xl shadow-xl shadow-black/8 z-50 py-1.5 min-w-[170px] overflow-hidden">
+        <div
+          ref={menuRef}
+          style={{ position: 'fixed', top: pos.top, left: pos.left, zIndex: 9999 }}
+          className="bg-white border border-gray-100 rounded-xl shadow-xl py-1.5 min-w-[170px]"
+        >
           <p className="text-[9px] font-semibold text-gray-400 uppercase tracking-widest px-3 pt-1 pb-1.5">Cambiar estado</p>
           {ESTADOS.map(e => {
             const es = ESTADO_STYLES[e] ?? ESTADO_STYLES['Abierta']

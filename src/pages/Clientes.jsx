@@ -28,17 +28,34 @@ function avatarColor(estado) {
 /** Dropdown minimalista para cambiar estado de cliente */
 function ClienteEstadoDropdown({ estado, onCambiar }) {
   const [open, setOpen] = useState(false)
-  const ref = useRef(null)
+  const [pos, setPos]   = useState({ top: 0, left: 0 })
+  const btnRef  = useRef(null)
+  const menuRef = useRef(null)
   useEffect(() => {
-    const h = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    const h = e => {
+      if (
+        btnRef.current  && !btnRef.current.contains(e.target) &&
+        menuRef.current && !menuRef.current.contains(e.target)
+      ) setOpen(false)
+    }
     document.addEventListener('mousedown', h)
     return () => document.removeEventListener('mousedown', h)
   }, [])
+
+  function handleOpen() {
+    if (!open && btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect()
+      setPos({ top: r.bottom + 6, left: r.left })
+    }
+    setOpen(o => !o)
+  }
+
   const badgeCls = ESTADO_BADGE[estado] ?? 'bg-gray-100 text-gray-400'
   return (
-    <div ref={ref} className="relative inline-block">
+    <div className="relative inline-block">
       <button
-        onClick={() => setOpen(o => !o)}
+        ref={btnRef}
+        onClick={handleOpen}
         className={`inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full transition-opacity hover:opacity-75 ${badgeCls}`}
         title="Cambiar estado"
       >
@@ -46,7 +63,11 @@ function ClienteEstadoDropdown({ estado, onCambiar }) {
         <ChevronDown size={9} className={`transition-transform duration-150 ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
-        <div className="absolute top-full left-0 mt-1.5 bg-white border border-gray-100 rounded-xl shadow-xl shadow-black/8 z-50 py-1.5 min-w-[140px]">
+        <div
+          ref={menuRef}
+          style={{ position: 'fixed', top: pos.top, left: pos.left, zIndex: 9999 }}
+          className="bg-white border border-gray-100 rounded-xl shadow-xl py-1.5 min-w-[140px]"
+        >
           <p className="text-[9px] font-semibold text-gray-400 uppercase tracking-widest px-3 pt-1 pb-1.5">Estado</p>
           {['Activo', 'Inactivo'].map(e => (
             <button
@@ -54,7 +75,7 @@ function ClienteEstadoDropdown({ estado, onCambiar }) {
               onClick={() => { if (e !== estado) onCambiar(e); setOpen(false) }}
               className={`w-full flex items-center gap-2.5 px-3 py-1.5 transition-colors text-left hover:bg-gray-50 ${e === estado ? 'bg-gray-50/60' : ''}`}
             >
-              <span className={`w-2 h-2 rounded-full flex-shrink-0`}
+              <span className="w-2 h-2 rounded-full flex-shrink-0"
                 style={{ backgroundColor: avatarColor(e) }} />
               <span className={`text-[12px] flex-1 ${e === estado ? 'font-semibold text-gray-700' : 'text-gray-600'}`}>{e}</span>
               {e === estado && <Check size={11} className="text-gray-400 flex-shrink-0" />}
@@ -162,7 +183,7 @@ function PanelCliente({ cliente, onClose, onEdit, onDelete, onEstadoCambiar }) {
   const ini = iniciales(cliente.nombre)
 
   return (
-    <div className="w-80 flex-shrink-0 border-l border-gray-100 flex flex-col bg-white overflow-hidden">
+    <div className="w-80 flex-shrink-0 border-l border-gray-100 flex flex-col bg-white">
       {/* Header */}
       <div className="px-5 py-4 border-b border-gray-100 flex items-start justify-between">
         <div className="flex-1 min-w-0">
