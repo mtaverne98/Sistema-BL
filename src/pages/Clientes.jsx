@@ -1,9 +1,9 @@
-import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import {
   Search, Plus, X, Phone, Mail, FileText,
   Clock, Circle, CheckCircle2,
   User, Pencil, Scale, AlertCircle, Trash2,
-  Loader2, AlertTriangle, RefreshCw,
+  Loader2, AlertTriangle, RefreshCw, ChevronDown, Check,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 
@@ -18,6 +18,52 @@ export const CLIENTES = []
 const ESTADO_BADGE = {
   Activo:   'bg-emerald-50 text-emerald-600',
   Inactivo: 'bg-gray-100 text-gray-400',
+}
+
+/** Color del avatar según estado del cliente */
+function avatarColor(estado) {
+  return estado === 'Activo' ? '#2570ba' : '#9ca3af'
+}
+
+/** Dropdown minimalista para cambiar estado de cliente */
+function ClienteEstadoDropdown({ estado, onCambiar }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+  useEffect(() => {
+    const h = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [])
+  const badgeCls = ESTADO_BADGE[estado] ?? 'bg-gray-100 text-gray-400'
+  return (
+    <div ref={ref} className="relative inline-block">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className={`inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full transition-opacity hover:opacity-75 ${badgeCls}`}
+        title="Cambiar estado"
+      >
+        {estado}
+        <ChevronDown size={9} className={`transition-transform duration-150 ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="absolute top-full left-0 mt-1.5 bg-white border border-gray-100 rounded-xl shadow-xl shadow-black/8 z-50 py-1.5 min-w-[140px]">
+          <p className="text-[9px] font-semibold text-gray-400 uppercase tracking-widest px-3 pt-1 pb-1.5">Estado</p>
+          {['Activo', 'Inactivo'].map(e => (
+            <button
+              key={e}
+              onClick={() => { if (e !== estado) onCambiar(e); setOpen(false) }}
+              className={`w-full flex items-center gap-2.5 px-3 py-1.5 transition-colors text-left hover:bg-gray-50 ${e === estado ? 'bg-gray-50/60' : ''}`}
+            >
+              <span className={`w-2 h-2 rounded-full flex-shrink-0`}
+                style={{ backgroundColor: avatarColor(e) }} />
+              <span className={`text-[12px] flex-1 ${e === estado ? 'font-semibold text-gray-700' : 'text-gray-600'}`}>{e}</span>
+              {e === estado && <Check size={11} className="text-gray-400 flex-shrink-0" />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
 }
 
 /** Toma las iniciales de un nombre completo (ej: "Carmen Contreras Muñoz" → "CC") */
@@ -95,7 +141,7 @@ function ErrorBanner({ mensaje, onRetry }) {
 }
 
 // ── Panel lateral – detalle cliente ───────────────────────────────────────
-function PanelCliente({ cliente, onClose, onEdit, onDelete }) {
+function PanelCliente({ cliente, onClose, onEdit, onDelete, onEstadoCambiar }) {
   const [tab, setTab]                   = useState('causas')
   const [causas, setCausas]             = useState([])
   const [loadingCausas, setLoadingCausas] = useState(false)
@@ -123,7 +169,7 @@ function PanelCliente({ cliente, onClose, onEdit, onDelete }) {
           <div className="flex items-center gap-2">
             <div
               className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
-              style={{ backgroundColor: '#2570ba' }}
+              style={{ backgroundColor: avatarColor(cliente.estado) }}
             >
               {ini}
             </div>
@@ -197,9 +243,10 @@ function PanelCliente({ cliente, onClose, onEdit, onDelete }) {
           </div>
         )}
         <div className="flex items-center gap-2 pt-1">
-          <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${ESTADO_BADGE[cliente.estado] ?? 'bg-gray-100 text-gray-400'}`}>
-            {cliente.estado}
-          </span>
+          <ClienteEstadoDropdown
+            estado={cliente.estado}
+            onCambiar={onEstadoCambiar}
+          />
           {!loadingCausas && (
             <span className="text-[11px] text-gray-400">
               {causas.filter(c => c.estado === 'En tramitación' || c.estado === 'Activa').length} causa{causas.length !== 1 ? 's' : ''} activa{causas.length !== 1 ? 's' : ''}
@@ -436,6 +483,18 @@ export default function Clientes() {
     }
   }
 
+  // ── Cambio rápido de estado ─────────────────────────────────────────────
+  const handleEstadoCambiar = useCallback(async (nuevoEstado) => {
+    if (!clienteSeleccionado) return
+    const { data, error: err } = await supabase
+      .from('clientes').update({ estado: nuevoEstado }).eq('id', clienteSeleccionado.id).select().single()
+    if (!err && data) {
+      const actualizado = mapCliente(data)
+      setClientes(prev => prev.map(c => c.id === actualizado.id ? actualizado : c))
+      setSeleccionado(actualizado)
+    }
+  }, [clienteSeleccionado])
+
   // ── Filtros / búsqueda ──────────────────────────────────────────────────
   const filtrados = useMemo(() => {
     const q = busqueda.toLowerCase().trim()
@@ -557,15 +616,15 @@ export default function Clientes() {
                         onClick={() => { setSeleccionado(c); setFormulario(null) }}
                         className={`border-b border-gray-50 cursor-pointer transition-colors ${
                           clienteSeleccionado?.id === c.id ? 'bg-blue-50/50' : 'hover:bg-gray-50'
-                        }`}>
+                        } ${c.estado === 'Inactivo' ? 'opacity-60' : ''}`}>
                         <td className="pl-8 pr-4 py-3">
                           <div className="flex items-center gap-2.5">
                             <div
                               className="w-7 h-7 rounded-full flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0"
-                              style={{ backgroundColor: '#2570ba' }}>
+                              style={{ backgroundColor: avatarColor(c.estado) }}>
                               {iniciales(c.nombre)}
                             </div>
-                            <span className="text-sm font-medium text-gray-900">{c.nombre}</span>
+                            <span className={`text-sm font-medium ${c.estado === 'Inactivo' ? 'text-gray-400' : 'text-gray-900'}`}>{c.nombre}</span>
                           </div>
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-500 tabular-nums">{c.rut}</td>
@@ -596,6 +655,7 @@ export default function Clientes() {
           onClose={() => setSeleccionado(null)}
           onEdit={() => setFormulario(clienteSeleccionado)}
           onDelete={handleEliminar}
+          onEstadoCambiar={handleEstadoCambiar}
         />
       )}
       {formulario && (

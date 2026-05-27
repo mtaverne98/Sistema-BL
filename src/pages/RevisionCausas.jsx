@@ -64,13 +64,18 @@ const PROXIMAS_ACCIONES = [
 ]
 
 const AREA_STYLES = {
-  'Laboral':      { bg: 'bg-violet-50',  text: 'text-violet-700' },
-  'Civil':        { bg: 'bg-sky-50',     text: 'text-sky-700'    },
-  'Familia':      { bg: 'bg-rose-50',    text: 'text-rose-600'   },
-  'Penal':        { bg: 'bg-red-50',     text: 'text-red-700'    },
-  'Inmobiliario': { bg: 'bg-teal-50',    text: 'text-teal-700'   },
-  'Societario':   { bg: 'bg-indigo-50',  text: 'text-indigo-700' },
-  'Comercial':    { bg: 'bg-orange-50',  text: 'text-orange-600' },
+  'Penal':                { bg: 'bg-[#1a2e4a]/10', text: 'text-[#1a2e4a]'  },
+  'Familia':              { bg: 'bg-blue-50',       text: 'text-blue-400'   },
+  'Laboral':              { bg: 'bg-sky-100',       text: 'text-sky-700'    },
+  'Civil':                { bg: 'bg-blue-100',      text: 'text-blue-600'   },
+  'JPL':                  { bg: 'bg-blue-50',       text: 'text-blue-500'   },
+  'Administrativo':       { bg: 'bg-slate-100',     text: 'text-slate-600'  },
+  'Corte de Apelaciones': { bg: 'bg-blue-200',      text: 'text-blue-800'   },
+  'Corte Suprema':        { bg: 'bg-blue-900/10',   text: 'text-blue-900'   },
+  // legacy aliases kept for data already in DB
+  'Inmobiliario':         { bg: 'bg-sky-50',        text: 'text-sky-600'    },
+  'Societario':           { bg: 'bg-blue-50',       text: 'text-blue-600'   },
+  'Comercial':            { bg: 'bg-slate-50',      text: 'text-slate-500'  },
 }
 
 const ACCION_STYLES = {

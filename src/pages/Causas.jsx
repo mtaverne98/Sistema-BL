@@ -28,21 +28,22 @@ const TIMELINE_CAT = {
 
 // ── Estilos ───────────────────────────────────────────────────────────────
 const ESTADO_STYLES = {
-  'En tramitación': { badge: 'bg-blue-50 text-blue-600',      dot: 'bg-blue-400'    },
-  'Abierta':        { badge: 'bg-emerald-50 text-emerald-600', dot: 'bg-emerald-400' },
-  'Terminada':      { badge: 'bg-red-50 text-red-600',          dot: 'bg-red-500'     },
-  'Archivada':      { badge: 'bg-red-100 text-red-500',         dot: 'bg-red-400'     },
-  'Suspendida':     { badge: 'bg-amber-50 text-amber-600',     dot: 'bg-amber-400'   },
+  'En tramitación': { badge: 'bg-green-50 text-green-600',         dot: 'bg-green-400'   },
+  'Abierta':        { badge: 'bg-emerald-100 text-emerald-800',    dot: 'bg-emerald-700' },
+  'Cerrada':        { badge: 'bg-red-50 text-red-600',              dot: 'bg-red-500'     },
+  'Terminada':      { badge: 'bg-red-50 text-red-600',              dot: 'bg-red-500'     },
+  'Archivada':      { badge: 'bg-stone-100 text-stone-600',         dot: 'bg-stone-500'   },
+  'Suspendida':     { badge: 'bg-yellow-50 text-yellow-700',        dot: 'bg-yellow-400'  },
 }
 const AREA_STYLES = {
-  'Penal':                'bg-red-50 text-red-600',
-  'Familia':              'bg-rose-50 text-rose-500',
-  'Laboral':              'bg-violet-50 text-violet-600',
-  'Civil':                'bg-sky-50 text-sky-600',
-  'JPL':                  'bg-orange-50 text-orange-600',
-  'Administrativo':       'bg-teal-50 text-teal-600',
-  'Corte de Apelaciones': 'bg-indigo-50 text-indigo-600',
-  'Corte Suprema':        'bg-purple-50 text-purple-600',
+  'Penal':                'bg-[#1a2e4a]/10 text-[#1a2e4a]',
+  'Familia':              'bg-blue-50 text-blue-400',
+  'Laboral':              'bg-sky-100 text-sky-700',
+  'Civil':                'bg-blue-100 text-blue-600',
+  'JPL':                  'bg-blue-50 text-blue-500',
+  'Administrativo':       'bg-slate-100 text-slate-600',
+  'Corte de Apelaciones': 'bg-blue-200 text-blue-800',
+  'Corte Suprema':        'bg-blue-900/10 text-blue-900',
 }
 
 const ESTADOS  = ['En tramitación', 'Abierta', 'Terminada', 'Archivada', 'Suspendida']
@@ -162,6 +163,53 @@ function EstadoBadge({ estado }) {
       <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${s.dot}`} />
       {estado}
     </span>
+  )
+}
+
+/** Dropdown elegante para cambiar estado de causa directamente desde la vista */
+function EstadoDropdown({ estado, onCambiar }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+  useEffect(() => {
+    const h = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [])
+  const s = ESTADO_STYLES[estado] ?? ESTADO_STYLES['Abierta']
+  return (
+    <div ref={ref} className="relative inline-block">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className={`inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full transition-opacity hover:opacity-75 ${s.badge}`}
+        title="Cambiar estado"
+      >
+        <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${s.dot}`} />
+        {estado}
+        <ChevronDown size={9} className={`transition-transform duration-150 ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="absolute top-full left-0 mt-1.5 bg-white border border-gray-100 rounded-xl shadow-xl shadow-black/8 z-50 py-1.5 min-w-[170px] overflow-hidden">
+          <p className="text-[9px] font-semibold text-gray-400 uppercase tracking-widest px-3 pt-1 pb-1.5">Cambiar estado</p>
+          {ESTADOS.map(e => {
+            const es = ESTADO_STYLES[e] ?? ESTADO_STYLES['Abierta']
+            const activo = e === estado
+            return (
+              <button
+                key={e}
+                onClick={() => { if (!activo) onCambiar(e); setOpen(false) }}
+                className={`w-full flex items-center gap-2.5 px-3 py-1.5 transition-colors text-left ${
+                  activo ? 'bg-gray-50' : 'hover:bg-gray-50'
+                }`}
+              >
+                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${es.dot}`} />
+                <span className={`text-[12px] flex-1 ${activo ? 'font-semibold text-gray-700' : 'text-gray-600'}`}>{e}</span>
+                {activo && <Check size={11} className="text-gray-400 flex-shrink-0" />}
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
   )
 }
 function AreaBadge({ area }) {
@@ -683,7 +731,7 @@ function FormCausa({ inicial, onClose, onGuardar, guardando, clientes = [], onCr
 }
 
 // ── CausaView — Vista completa de expediente jurídico ──────────────────────
-function CausaView({ causa, onClose, onEdit, onDelete }) {
+function CausaView({ causa, onClose, onEdit, onDelete, onUpdate }) {
   const [tab, setTab]               = useState('resumen')
   const [confirmDelete, setConfirm] = useState(false)
 
@@ -996,7 +1044,10 @@ function CausaView({ causa, onClose, onEdit, onDelete }) {
         {/* Badges */}
         <div className="flex items-center gap-2 flex-wrap mb-3">
           <AreaBadge area={causa.area} />
-          <EstadoBadge estado={causa.estado} />
+          {onUpdate
+            ? <EstadoDropdown estado={causa.estado} onCambiar={e => onUpdate({ estado: e })} />
+            : <EstadoBadge estado={causa.estado} />
+          }
           <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">{causa.parte}</span>
           {causa.etapa_procesal && (
             <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600">
@@ -2526,6 +2577,18 @@ export default function Causas() {
     setGuardando(false)
   }
 
+  // ── Actualización parcial (ej: cambio de estado inline) ─────────────────
+  const handleCausaUpdate = useCallback(async (updates) => {
+    if (!seleccionada) return
+    const { data, error: err } = await supabase
+      .from('causas').update(updates).eq('id', seleccionada.id).select().single()
+    if (!err && data) {
+      const actualizada = mapCausa(data)
+      setCausas(prev => prev.map(c => c.id === actualizada.id ? actualizada : c))
+      setSeleccionada(actualizada)
+    }
+  }, [seleccionada])
+
   // ── Eliminar ────────────────────────────────────────────────────────────
   const handleEliminar = async () => {
     if (!seleccionada) return
@@ -2583,6 +2646,7 @@ export default function Causas() {
             onClose={() => setSeleccionada(null)}
             onEdit={() => setFormulario(seleccionada)}
             onDelete={handleEliminar}
+            onUpdate={handleCausaUpdate}
           />
           {formulario && (
             <FormCausa
