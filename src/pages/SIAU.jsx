@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import {
   ChevronRight, ChevronDown, Search, Plus, ExternalLink,
   FileText, Clock, CheckCircle2,
@@ -12,12 +12,16 @@ const TODAY = new Date().toISOString().slice(0, 10)
 
 // ── Configs ────────────────────────────────────────────────────────────────────
 const ESTADO_CONFIG = {
-  Respondida:      { bg: 'bg-green-50',  text: 'text-green-700',  dot: 'bg-green-500'  },
-  Pendiente:       { bg: 'bg-amber-50',  text: 'text-amber-700',  dot: 'bg-amber-500'  },
-  Urgente:         { bg: 'bg-red-50',    text: 'text-red-700',    dot: 'bg-red-500'    },
-  'Sin respuesta': { bg: 'bg-gray-100',  text: 'text-gray-500',   dot: 'bg-gray-400'   },
-  'No ha lugar':   { bg: 'bg-slate-100', text: 'text-slate-600',  dot: 'bg-slate-400'  },
+  'Pendiente':           { bg: 'bg-amber-50',   text: 'text-amber-700',   dot: 'bg-amber-500'   },
+  'Respondida':          { bg: 'bg-green-50',   text: 'text-green-700',   dot: 'bg-green-500'   },
+  'Sin respuesta':       { bg: 'bg-gray-100',   text: 'text-gray-500',    dot: 'bg-gray-400'    },
+  'Urgente':             { bg: 'bg-red-50',     text: 'text-red-700',     dot: 'bg-red-500'     },
+  'No ha lugar':         { bg: 'bg-slate-100',  text: 'text-slate-600',   dot: 'bg-slate-400'   },
+  'Entrevista agendada': { bg: 'bg-blue-50',    text: 'text-blue-700',    dot: 'bg-blue-500'    },
+  'Fiscal contactó':     { bg: 'bg-violet-50',  text: 'text-violet-700',  dot: 'bg-violet-500'  },
+  'Archivado':           { bg: 'bg-gray-100',   text: 'text-gray-500',    dot: 'bg-gray-400'    },
 }
+const ESTADOS_SIAU = Object.keys(ESTADO_CONFIG)
 
 // DB fields
 const DB_FIELDS = new Set(['estado','notas','fecha','folio','causa_id','cliente_id','causa_rit','cliente_nombre','solicitud','respuesta','documentos'])
@@ -57,12 +61,56 @@ function fmtFechaCorta(iso) {
 
 // ── Atoms ──────────────────────────────────────────────────────────────────────
 function EstadoBadge({ estado }) {
-  const cfg = ESTADO_CONFIG[estado] || ESTADO_CONFIG['Sin respuesta']
+  const cfg = ESTADO_CONFIG[estado] || ESTADO_CONFIG['Pendiente']
   return (
     <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${cfg.bg} ${cfg.text} whitespace-nowrap`}>
       <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${cfg.dot}`} />
       {estado}
     </span>
+  )
+}
+
+function EstadoDropdown({ estado, onChange }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+  const cfg = ESTADO_CONFIG[estado] || ESTADO_CONFIG['Pendiente']
+
+  useEffect(() => {
+    if (!open) return
+    const handler = (e) => { if (!ref.current?.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+
+  return (
+    <div ref={ref} className="relative inline-flex" onClick={e => e.stopPropagation()}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        className={`inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${cfg.bg} ${cfg.text} whitespace-nowrap hover:opacity-80 transition-opacity cursor-pointer`}
+      >
+        <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${cfg.dot}`} />
+        {estado}
+        <ChevronDown size={9} className="opacity-50 -mr-0.5" />
+      </button>
+      {open && (
+        <div className="absolute top-full left-0 mt-1.5 z-40 bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden min-w-[176px] py-1">
+          {ESTADOS_SIAU.map(e => {
+            const c = ESTADO_CONFIG[e]
+            return (
+              <button
+                key={e}
+                onClick={() => { onChange(e); setOpen(false) }}
+                className={`w-full text-left px-3 py-1.5 flex items-center gap-2 hover:bg-gray-50 transition-colors ${e === estado ? 'bg-gray-50/80' : ''}`}
+              >
+                <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${c.dot}`} />
+                <span className={`text-[11px] font-medium ${e === estado ? c.text : 'text-gray-600'}`}>{e}</span>
+                {e === estado && <Check size={10} className="ml-auto text-gray-400" />}
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -108,11 +156,8 @@ function RegistroRow({ reg, index, onUpdate }) {
     setSaving(false)
   }
 
-  const changeEstado = (e) => {
-    e.stopPropagation()
-    const estados = Object.keys(ESTADO_CONFIG)
-    const next = estados[(estados.indexOf(reg.estado) + 1) % estados.length]
-    onUpdate(reg.id, { estado: next })
+  const changeEstado = (nuevoEstado) => {
+    onUpdate(reg.id, { estado: nuevoEstado })
   }
 
   return (
@@ -154,10 +199,8 @@ function RegistroRow({ reg, index, onUpdate }) {
 
         {/* Respuesta */}
         <div className="min-w-0 pr-2">
-          <div onClick={e => e.stopPropagation()} className="mb-0.5">
-            <button onClick={changeEstado} title="Click para cambiar estado">
-              <EstadoBadge estado={reg.estado} />
-            </button>
+          <div className="mb-0.5">
+            <EstadoDropdown estado={reg.estado} onChange={changeEstado} />
           </div>
           {reg.respuesta?.trim() && (
             <p className="text-[10px] text-gray-500 line-clamp-1 leading-snug">{reg.respuesta}</p>
@@ -196,7 +239,7 @@ function RegistroRow({ reg, index, onUpdate }) {
         <div className="px-6 pb-5 pt-3 space-y-4 bg-white border-t border-gray-100" onClick={e => e.stopPropagation()}>
 
           <div className="flex items-center gap-3 flex-wrap">
-            <EstadoBadge estado={reg.estado} />
+            <EstadoDropdown estado={reg.estado} onChange={nuevoEstado => onUpdate(reg.id, { estado: nuevoEstado })} />
             {reg.folio && (
               <span className="font-mono text-[11px] text-violet-700 bg-violet-50 px-2 py-0.5 rounded font-semibold">
                 {reg.folio}
@@ -208,19 +251,6 @@ function RegistroRow({ reg, index, onUpdate }) {
               </span>
             )}
             <span className="text-[11px] text-gray-400">{fmtFecha(reg.fecha)}</span>
-
-            {/* Cambiar estado */}
-            <div className="ml-auto flex items-center gap-1.5">
-              {Object.keys(ESTADO_CONFIG).filter(e => e !== reg.estado).map(e => (
-                <button
-                  key={e}
-                  onClick={() => onUpdate(reg.id, { estado: e })}
-                  className="text-[10px] text-gray-400 hover:text-gray-700 px-2 py-0.5 rounded border border-gray-200 hover:border-gray-300 transition-colors"
-                >
-                  → {e}
-                </button>
-              ))}
-            </div>
           </div>
 
           {/* Notas */}

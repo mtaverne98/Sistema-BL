@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from 'react'
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import {
   ChevronRight, Search, Plus, ExternalLink,
   FileText, AlertTriangle, Clock, CheckCircle2,
@@ -14,11 +14,16 @@ const TODAY = new Date().toISOString().slice(0, 10)
 
 // ── Estado config ──────────────────────────────────────────────────────────────
 const ESTADO_CONFIG = {
-  Respondida:      { bg: 'bg-green-50',  text: 'text-green-700',  dot: 'bg-green-500'  },
-  Pendiente:       { bg: 'bg-amber-50',  text: 'text-amber-700',  dot: 'bg-amber-500'  },
-  Urgente:         { bg: 'bg-red-50',    text: 'text-red-700',    dot: 'bg-red-500'    },
-  'Sin respuesta': { bg: 'bg-gray-100',  text: 'text-gray-500',   dot: 'bg-gray-400'   },
+  'Pendiente':            { bg: 'bg-amber-50',   text: 'text-amber-700',   dot: 'bg-amber-500'   },
+  'Respondido':           { bg: 'bg-green-50',   text: 'text-green-700',   dot: 'bg-green-500'   },
+  'Escrito presentado':   { bg: 'bg-blue-50',    text: 'text-blue-700',    dot: 'bg-blue-500'    },
+  'Resolución pendiente': { bg: 'bg-violet-50',  text: 'text-violet-700',  dot: 'bg-violet-500'  },
+  'Proveído':             { bg: 'bg-teal-50',    text: 'text-teal-700',    dot: 'bg-teal-500'    },
+  'No ha lugar':          { bg: 'bg-slate-100',  text: 'text-slate-600',   dot: 'bg-slate-400'   },
+  'Urgente':              { bg: 'bg-red-50',     text: 'text-red-700',     dot: 'bg-red-500'     },
+  'Archivado':            { bg: 'bg-gray-100',   text: 'text-gray-500',    dot: 'bg-gray-400'    },
 }
+const ESTADOS_PJUD = Object.keys(ESTADO_CONFIG)
 
 // ── Presenta config ────────────────────────────────────────────────────────────
 const PRESENTA_CONFIG = {
@@ -107,12 +112,56 @@ function addDays(iso, n) {
 
 // ── Small UI atoms ─────────────────────────────────────────────────────────────
 function EstadoBadge({ estado }) {
-  const cfg = ESTADO_CONFIG[estado] || ESTADO_CONFIG['Sin respuesta']
+  const cfg = ESTADO_CONFIG[estado] || ESTADO_CONFIG['Pendiente']
   return (
     <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${cfg.bg} ${cfg.text} whitespace-nowrap`}>
       <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${cfg.dot}`} />
       {estado}
     </span>
+  )
+}
+
+function EstadoDropdown({ estado, onChange }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+  const cfg = ESTADO_CONFIG[estado] || ESTADO_CONFIG['Pendiente']
+
+  useEffect(() => {
+    if (!open) return
+    const handler = (e) => { if (!ref.current?.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+
+  return (
+    <div ref={ref} className="relative inline-flex" onClick={e => e.stopPropagation()}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        className={`inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${cfg.bg} ${cfg.text} whitespace-nowrap hover:opacity-80 transition-opacity cursor-pointer`}
+      >
+        <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${cfg.dot}`} />
+        {estado}
+        <ChevronDown size={9} className="opacity-50 -mr-0.5" />
+      </button>
+      {open && (
+        <div className="absolute top-full left-0 mt-1.5 z-40 bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden min-w-[176px] py-1">
+          {ESTADOS_PJUD.map(e => {
+            const c = ESTADO_CONFIG[e]
+            return (
+              <button
+                key={e}
+                onClick={() => { onChange(e); setOpen(false) }}
+                className={`w-full text-left px-3 py-1.5 flex items-center gap-2 hover:bg-gray-50 transition-colors ${e === estado ? 'bg-gray-50/80' : ''}`}
+              >
+                <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${c.dot}`} />
+                <span className={`text-[11px] font-medium ${e === estado ? c.text : 'text-gray-600'}`}>{e}</span>
+                {e === estado && <Check size={10} className="ml-auto text-gray-400" />}
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -170,35 +219,16 @@ function StatCard({ label, value, iconBg, iconColor, icon: Icon }) {
 
 // ── AlertBanner ────────────────────────────────────────────────────────────────
 function AlertBanner({ causas }) {
-  const overdue = []
-  causas.forEach(c => {
-    c.movimientos.forEach(m => {
-      if ((m.estado === 'Sin respuesta' || m.estado === 'Pendiente') && calcDiasDesde(m.fecha) > 15) {
-        overdue.push({ causa: c, mov: m })
-      }
-    })
-  })
   const urgentes = causas.flatMap(c => c.movimientos.filter(m => m.estado === 'Urgente'))
-  if (!overdue.length && !urgentes.length) return null
-
+  if (!urgentes.length) return null
   return (
-    <div className="mx-6 mb-3 space-y-2">
-      {urgentes.length > 0 && (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 flex items-center gap-2.5">
-          <AlertCircle size={13} className="text-red-500 flex-shrink-0" />
-          <p className="text-[12px] text-red-700 font-medium">
-            {urgentes.length} movimiento{urgentes.length > 1 ? 's' : ''} marcado{urgentes.length > 1 ? 's' : ''} como urgente requiere{urgentes.length === 1 ? '' : 'n'} atención inmediata
-          </p>
-        </div>
-      )}
-      {overdue.length > 0 && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 flex items-center gap-2.5">
-          <AlertTriangle size={13} className="text-amber-600 flex-shrink-0" />
-          <p className="text-[12px] text-amber-700">
-            {overdue.length} movimiento{overdue.length > 1 ? 's' : ''} sin respuesta hace más de 15 días
-          </p>
-        </div>
-      )}
+    <div className="mx-6 mb-3">
+      <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 flex items-center gap-2.5">
+        <AlertCircle size={13} className="text-red-500 flex-shrink-0" />
+        <p className="text-[12px] text-red-700 font-medium">
+          {urgentes.length} movimiento{urgentes.length > 1 ? 's' : ''} marcado{urgentes.length > 1 ? 's' : ''} como urgente
+        </p>
+      </div>
     </div>
   )
 }
@@ -270,7 +300,6 @@ function RespuestaPanel({ mov }) {
 
 // ── RespuestaCollapsed (table cell) ───────────────────────────────────────────
 function RespuestaCollapsed({ mov }) {
-  const dias = calcDiasDesde(mov.fecha)
   if (mov.respuesta) {
     return (
       <div className="space-y-1">
@@ -285,11 +314,6 @@ function RespuestaCollapsed({ mov }) {
   return (
     <div className="space-y-1">
       <EstadoBadge estado={mov.estado} />
-      {dias > 0 && (
-        <p className={`text-[10px] ${dias > 15 ? 'text-red-500 font-medium' : 'text-gray-400'}`}>
-          {dias}d sin respuesta
-        </p>
-      )}
       {mov.accion_requerida && (
         <p className="text-[10px] text-amber-600 line-clamp-1 italic">{mov.accion_requerida}</p>
       )}
@@ -492,10 +516,7 @@ function MovimientoRow({ causa, mov, index, onUpdateNota, onChangeEstado, addTar
   const [showTareaForm, setShowTareaForm] = useState(false)
   const [showPlazoForm, setShowPlazoForm] = useState(false)
 
-  const dias      = calcDiasDesde(mov.fecha)
   const isUrgente = mov.estado === 'Urgente'
-  const isSinResp = (mov.estado === 'Sin respuesta' || mov.estado === 'Pendiente') && dias > 15
-  const highlight = isUrgente || isSinResp
   const resp      = RESPONSABLE_INFO[mov.responsable]
 
   const saveNota = () => {
@@ -510,7 +531,7 @@ function MovimientoRow({ causa, mov, index, onUpdateNota, onChangeEstado, addTar
       className={`border-b border-gray-50 transition-colors ${
         expanded ? 'bg-[#1a2e4a]/[0.02]' : index % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'
       }`}
-      style={highlight ? { borderLeft: '3px solid #ef4444' } : { borderLeft: '3px solid transparent' }}
+      style={isUrgente ? { borderLeft: '3px solid #ef4444' } : { borderLeft: '3px solid transparent' }}
     >
       {/* Main row — 7 cols: fecha | folio | presenta | solicitud | respuesta | doc | acciones */}
       <div
@@ -572,9 +593,9 @@ function MovimientoRow({ causa, mov, index, onUpdateNota, onChangeEstado, addTar
       {expanded && (
         <div className="px-4 pb-4 pt-1 space-y-3.5 border-t border-gray-100 bg-white" onClick={e => e.stopPropagation()}>
 
-          {/* Meta row: estado + fechas + responsable + cambiar estado */}
+          {/* Meta row: estado + fechas + responsable */}
           <div className="flex items-center gap-3 flex-wrap">
-            <EstadoBadge estado={mov.estado} />
+            <EstadoDropdown estado={mov.estado} onChange={onChangeEstado} />
             <PresentaBadge presenta={mov.presenta || 'Otro'} />
             <span className="text-[11px] text-gray-400">{fmtFechaLarga(mov.fecha)}</span>
             {mov.responsable && (
@@ -588,20 +609,6 @@ function MovimientoRow({ causa, mov, index, onUpdateNota, onChangeEstado, addTar
                 <span className="text-[11px] text-gray-500">{resp?.nombre}</span>
               </div>
             )}
-            <div className="ml-auto flex items-center gap-1.5">
-              {['Respondida','Pendiente','Urgente','Sin respuesta']
-                .filter(e => e !== mov.estado)
-                .map(e => (
-                  <button
-                    key={e}
-                    onClick={ev => { ev.stopPropagation(); onChangeEstado(e) }}
-                    className="text-[10px] text-gray-400 hover:text-gray-700 px-2 py-0.5 rounded border border-gray-200 hover:border-gray-300 transition-colors"
-                  >
-                    → {e}
-                  </button>
-                ))
-              }
-            </div>
           </div>
 
           {/* Solicitud */}
