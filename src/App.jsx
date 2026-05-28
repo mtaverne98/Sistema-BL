@@ -20,9 +20,21 @@ import Documentos from './pages/Documentos'
 import Gastos from './pages/Gastos'
 import Apuntes from './pages/Apuntes'
 import Configuracion from './pages/Configuracion'
+import AuthCallback from './pages/AuthCallback'
 
 function AppInner() {
   const { user } = useUser()
+
+  // Handle Google OAuth callback before user gate
+  if (window.location.pathname === '/auth/callback') {
+    return (
+      <BrowserRouter>
+        <Routes>
+          <Route path="/auth/callback" element={<AuthCallback />} />
+        </Routes>
+      </BrowserRouter>
+    )
+  }
 
   if (!user) return <UserSelector />
 

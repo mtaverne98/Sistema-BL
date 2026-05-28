@@ -3,8 +3,10 @@ import {
   ChevronLeft, ChevronRight, Plus, X, Check, Clock, MapPin,
   Video, User, FileText, AlertTriangle, Flag, Eye,
   ExternalLink, Link2, ChevronDown, Calendar, Edit2, RefreshCw,
+  Loader,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
+import { GCal, fetchEvents, gcalItemToEvent, createEvent, updateEvent } from '../lib/googleCalendar'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const _now    = new Date()
@@ -82,6 +84,7 @@ const TIPO_COLOR = {
   plazo:     '#fbbf24',
   fiscalia:  '#f87171',
   interno:   '#94a3b8',
+  gcal:      '#1a73e8',
 }
 
 // Colores de prioridad para tareas sincronizadas (border left)
@@ -98,6 +101,7 @@ const TIPOS = {
   plazo:     { label:'Plazo',     dot:'bg-amber-400',   block:'bg-amber-50 text-amber-800',     allDay:'bg-amber-100 text-amber-700',    pill:'bg-amber-50 text-amber-600',     alert:'bg-amber-50 border-amber-100 text-amber-700'    },
   fiscalia:  { label:'Fiscalía',  dot:'bg-red-400',     block:'bg-red-50 text-red-800',         allDay:'bg-red-100 text-red-700',        pill:'bg-red-50 text-red-600',         alert:'bg-red-50 border-red-100 text-red-700'          },
   interno:   { label:'Interno',   dot:'bg-slate-300',   block:'bg-slate-50 text-slate-600',     allDay:'bg-slate-100 text-slate-500',    pill:'bg-slate-100 text-slate-500',    alert:'bg-slate-50 border-slate-100 text-slate-500'   },
+  gcal:      { label:'Google Cal', dot:'bg-blue-400',   block:'bg-blue-50/70 text-blue-700',    allDay:'bg-blue-100/70 text-blue-600',   pill:'bg-blue-50 text-blue-500',       alert:'bg-blue-50 border-blue-100 text-blue-600'      },
 }
 
 const ABOGADAS = [
@@ -675,6 +679,17 @@ function EventPanel({ ev, todos, onClose, onUpdate }) {
                   Módulo Plazos
                 </span>
               )}
+              {ev._source === 'gcal' && (
+                <span className="inline-flex items-center gap-1.5 text-[9px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 border border-blue-100">
+                  <svg width="8" height="8" viewBox="0 0 24 24" fill="none">
+                    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+                    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                  </svg>
+                  Google Calendar
+                </span>
+              )}
               {ev.completado && (
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600">
                   ✓ Completado
@@ -791,6 +806,9 @@ function EventPanel({ ev, todos, onClose, onUpdate }) {
           <InfoRow icon={User}   label="Cliente"     value={ev.cliente} />
           <InfoRow icon={Flag}   label="Causa (RIT)" value={ev.causa_rit} mono />
           <InfoRow icon={MapPin} label="Tribunal"    value={[ev.tribunal, ev.sala].filter(Boolean).join(' · ')} />
+          {ev._source === 'gcal' && ev._htmlLink && (
+            <InfoRow icon={ExternalLink} label="Google Calendar" value="Ver en Google Calendar" href={ev._htmlLink} />
+          )}
           <InfoRow icon={Clock}  label="Modalidad"   value={ev.modalidad ? ev.modalidad.charAt(0).toUpperCase() + ev.modalidad.slice(1) : null} />
           {ev.zoom_link && (
             <InfoRow icon={Video} label="Enlace Zoom" value="Unirse a la reunión" href={ev.zoom_link} />
@@ -1073,6 +1091,15 @@ export default function Calendario() {
   const [syncToast,    setSyncToast]    = useState(null)
   const toastTimer = useRef(null)
 
+  // ── Google Calendar state ──
+  const [gcalConnected,  setGcalConnected]  = useState(false)
+  const [gcalEvents,     setGcalEvents]     = useState([])
+  const [gcalSyncing,    setGcalSyncing]    = useState(false)
+
+  useEffect(() => {
+    setGcalConnected(GCal.isConnected())
+  }, [])
+
   // ── Datos de Supabase ──
   const [tareas,     setTareas]     = useState([])
   const [audiencias, setAudiencias] = useState([])
@@ -1130,6 +1157,59 @@ export default function Calendario() {
     setSyncToast(msg)
     toastTimer.current = setTimeout(() => setSyncToast(null), 2800)
   }, [])
+
+  // ── Google Calendar: fetch external events ──
+  const fetchGcalEvents = useCallback(async (dateMin, dateMax) => {
+    if (!GCal.isConnected()) return
+    try {
+      const items = await fetchEvents(dateMin, dateMax)
+      // Filter out events we pushed from this system
+      const ourIds = new Set(Object.values(GCal.getAllEventIds()))
+      const external = items.filter(ev => !ourIds.has(ev.id))
+      setGcalEvents(external.map(gcalItemToEvent))
+    } catch (e) {
+      console.warn('[GCal] fetch error:', e.message)
+    }
+  }, [])
+
+  // ── Google Calendar: sync audiencias → GCal ──
+  const syncAudienciasToGcal = useCallback(async () => {
+    if (!GCal.isConnected() || !audiencias.length) return
+    setGcalSyncing(true)
+    showSyncToast('Sincronizando con Google Calendar…')
+    try {
+      const cal = GCal.getCalendarId()
+      for (const a of audiencias) {
+        if (!a.fecha || a.estado === 'Suspendida') continue
+        const existing = GCal.getEventId(a.id)
+        if (existing) {
+          await updateEvent(a, cal)
+        } else {
+          await createEvent(a, cal)
+        }
+      }
+      showSyncToast(`✓ ${audiencias.length} audiencias sincronizadas`)
+    } catch (e) {
+      showSyncToast('Error al sincronizar con Google Calendar')
+      console.error('[GCal] sync error:', e)
+    } finally {
+      setGcalSyncing(false)
+    }
+  }, [audiencias, showSyncToast])
+
+  // Fetch GCal events whenever the anchor (week/month) changes
+  useEffect(() => {
+    if (!gcalConnected) return
+    // Determine date range from current view
+    const weekDays = getWeekDays(anchor)
+    const minDate  = view === 'week'  ? weekDays[0] : (() => {
+      const d = parse(anchor); d.setDate(1); return fmt(d)
+    })()
+    const maxDate  = view === 'week'  ? weekDays[6] : (() => {
+      const d = parse(anchor); d.setMonth(d.getMonth() + 1); d.setDate(0); return fmt(d)
+    })()
+    fetchGcalEvents(minDate, maxDate)
+  }, [gcalConnected, anchor, view, fetchGcalEvents])
 
   // ── Derivar eventos sincrónicos desde Tareas ──
   const eventosFromTareas = useMemo(() => tareas
@@ -1231,10 +1311,10 @@ export default function Calendario() {
       }
     }), [reuniones])
 
-  // ── Merge: eventos nativos + sincrónicos ──
+  // ── Merge: eventos nativos + sincrónicos + Google Calendar ──
   const todosEventos = useMemo(() =>
-    [...eventos, ...eventosFromTareas, ...eventosFromAudiencias, ...eventosFromPlazos, ...eventosFromReuniones],
-    [eventos, eventosFromTareas, eventosFromAudiencias, eventosFromPlazos, eventosFromReuniones])
+    [...eventos, ...eventosFromTareas, ...eventosFromAudiencias, ...eventosFromPlazos, ...eventosFromReuniones, ...gcalEvents],
+    [eventos, eventosFromTareas, eventosFromAudiencias, eventosFromPlazos, eventosFromReuniones, gcalEvents])
 
   const days      = useMemo(() => getWeekDays(anchor), [anchor])
 
@@ -1437,6 +1517,41 @@ export default function Calendario() {
             ))}
           </div>
 
+
+          {/* Google Calendar sync button */}
+          {gcalConnected ? (
+            <button
+              onClick={syncAudienciasToGcal}
+              disabled={gcalSyncing}
+              title="Sincronizar audiencias con Google Calendar"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl border border-blue-100 bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors disabled:opacity-50"
+            >
+              {gcalSyncing
+                ? <Loader size={13} className="animate-spin" />
+                : <RefreshCw size={13} />
+              }
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" className="flex-shrink-0">
+                <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+                <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+              </svg>
+            </button>
+          ) : (
+            <a
+              href="/configuracion"
+              title="Conectar Google Calendar"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl border border-gray-100 bg-gray-50 text-gray-400 hover:bg-gray-100 transition-colors"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" className="opacity-40 flex-shrink-0">
+                <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+                <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+              </svg>
+              Conectar GCal
+            </a>
+          )}
 
           {/* New event */}
           <button
