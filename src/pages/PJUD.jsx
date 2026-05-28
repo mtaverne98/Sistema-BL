@@ -883,16 +883,24 @@ export default function PJUD() {
   }, [])
 
   const fetchCausas = useCallback(async () => {
-    const { data } = await supabase.from('causas').select('id,rit,ruc,materia,tribunal,area,cliente_nombre,cliente_id').order('rit')
+    const { data } = await supabase
+      .from('causas')
+      .select('id,rit,ruc,materia,tribunal,area,cliente_nombre,cliente_id')
+      .in('estado', ['En tramitación', 'Abierta'])
+      .order('rit')
     setCausasInfo(data || [])
   }, [])
 
   useEffect(() => { fetchRows(); fetchCausas() }, [fetchRows, fetchCausas])
 
-  // Build data tree
+  // Build data tree — solo causas activas (En tramitación / Abierta)
+  const causasActivasSet = useMemo(() => new Set(causasInfo.map(c => c.rit)), [causasInfo])
+
   const pjudClientes = useMemo(() => {
     const causaMap = {}
     rows.forEach(row => {
+      // Excluir movimientos cuya causa no está en la lista de causas activas
+      if (row.causa_rit && !causasActivasSet.has(row.causa_rit)) return
       const key = row.causa_rit || `${row.cliente_nombre || 'sin'}_sinrit`
       if (!causaMap[key]) {
         const ci = causasInfo.find(c => c.rit === row.causa_rit)

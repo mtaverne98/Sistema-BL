@@ -636,7 +636,10 @@ export default function SIAU() {
 
   const fetchCausas = useCallback(async () => {
     const { data } = await supabase
-      .from('causas').select('id,rit,ruc,materia,fiscalia,tribunal,cliente_nombre,cliente_id').order('rit')
+      .from('causas')
+      .select('id,rit,ruc,materia,fiscalia,tribunal,cliente_nombre,cliente_id')
+      .in('estado', ['En tramitación', 'Abierta'])
+      .order('rit')
     setAllCausas(data || [])
   }, [])
 
@@ -656,9 +659,9 @@ export default function SIAU() {
 
   // Build clients → causas → registros structure
   const clienteGrupos = useMemo(() => {
-    // Get all unique client names from both registros AND allCausas
+    // Solo clientes con al menos una causa activa (En tramitación / Abierta)
+    // allCausas ya viene filtrado desde Supabase con esos estados
     const clienteSet = new Set()
-    registros.forEach(r => { if (r.cliente_nombre) clienteSet.add(r.cliente_nombre) })
     allCausas.forEach(c => { if (c.cliente_nombre) clienteSet.add(c.cliente_nombre) })
 
     return [...clienteSet].sort().map(clienteNombre => {
