@@ -1146,10 +1146,10 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate }) {
             <Clock size={10} className="text-gray-300" />
             {plazos.filter(p => p.estado === 'Activo').length} plazos activos
           </span>
-          {revisiones.length > 0 && (
+          {revisiones.filter(r => !r.semana_key?.startsWith('SEG-')).length > 0 && (
             <span className="flex items-center gap-1.5">
               <RefreshCw size={10} className="text-gray-300" />
-              {revisiones.length} revisiones
+              {revisiones.filter(r => !r.semana_key?.startsWith('SEG-')).length} revisiones
             </span>
           )}
         </div>
@@ -1415,7 +1415,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate }) {
               <div>
                 <h3 className="text-[15px] font-semibold text-gray-900">Bitácora de revisiones</h3>
                 <p className="text-[11px] text-gray-400 mt-0.5">
-                  Historial semanal de seguimiento · {revisiones.length} registros
+                  Historial de revisiones de equipo · {revisiones.filter(r => !r.semana_key?.startsWith('SEG-')).length} registros
                 </p>
               </div>
               {!showRevForm && (
@@ -1552,10 +1552,10 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate }) {
               <div className="flex justify-center py-12">
                 <Loader2 size={18} className="animate-spin text-gray-300" />
               </div>
-            ) : revisiones.length === 0 ? (
+            ) : revisiones.filter(r => !r.semana_key?.startsWith('SEG-')).length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-center">
                 <RefreshCw size={28} className="text-gray-200 mb-3" />
-                <p className="text-[13px] text-gray-400 font-medium">Sin revisiones registradas</p>
+                <p className="text-[13px] text-gray-400 font-medium">Sin revisiones de equipo registradas</p>
                 <p className="text-[11px] text-gray-400 mt-1">La bitácora de esta causa está vacía</p>
                 {!showRevForm && (
                   <button
@@ -1570,9 +1570,9 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate }) {
               <div className="relative">
                 <div className="absolute left-[9px] top-3 bottom-3 w-px bg-gray-100" />
                 <div className="space-y-5">
-                  {revisiones.map((rev, i) => {
+                  {revisiones.filter(r => !r.semana_key?.startsWith('SEG-')).map((rev, i) => {
                     const weekNum = rev.semana_key ? parseInt(rev.semana_key.split('-W')[1]) : null
-                    const year    = rev.semana_key ? rev.semana_key.split('-W')[0] : null
+                    const year    = rev.semana_key ? parseInt(rev.semana_key.split('-W')[0]) : null
                     const isFirst = i === 0
                     const accionStyle = ACCION_STYLES_C[rev.proxima_accion] || 'bg-gray-50 text-gray-400'
                     const isEditing = editRevId === rev.id

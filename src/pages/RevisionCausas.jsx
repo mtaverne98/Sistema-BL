@@ -953,8 +953,8 @@ export default function RevisionCausas() {
         supabase.from('revisiones').select('*'),
       ])
       setCausasDB(causasData || [])
-      // Only use rows that have semana_key (i.e., after schema migration has run)
-      setRevRows((revData || []).filter(r => r.semana_key != null))
+      // Only use team-review rows (semana_key present, never SEG- which are personal seguimiento)
+      setRevRows((revData || []).filter(r => r.semana_key != null && !r.semana_key.startsWith('SEG-')))
       setCargando(false)
     }
     fetchAll()
