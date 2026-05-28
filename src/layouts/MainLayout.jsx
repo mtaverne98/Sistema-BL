@@ -5,7 +5,7 @@ import {
   Users, Scale, UserSearch,
   Gavel, Calendar, AlertCircle,
   Shield, Database, ClipboardCheck, CheckSquare, MessageSquare, FolderOpen, Receipt,
-  BookOpen, LogOut,
+  BookOpen, LogOut, Settings,
   Search, Plus, Command, ArrowRight, ChevronRight,
   FileText, Clock, RefreshCw, Star, Hash,
   CheckCircle2,
@@ -52,7 +52,8 @@ const sections = [
     { to: '/documentos', icon: FolderOpen,     label: 'Documentos'        },
     { to: '/gastos',     icon: Receipt,        label: 'Gastos'            },
   ]},
-  { label: 'Notas',    items: [{ to: '/apuntes', icon: BookOpen, label: 'Agenda diaria' }] },
+  { label: 'Notas',    items: [{ to: '/apuntes',       icon: BookOpen, label: 'Agenda diaria' }] },
+  { label: 'Sistema',  items: [{ to: '/configuracion', icon: Settings, label: 'Configuración' }] },
 ]
 
 // currentUser ahora viene de UserContext
@@ -101,7 +102,8 @@ const NAV_ITEMS = [
   { label: 'Reuniones',          path: '/reuniones',  icon: MessageSquare   },
   { label: 'Documentos',         path: '/documentos', icon: FolderOpen      },
   { label: 'Gastos',             path: '/gastos',     icon: Receipt         },
-  { label: 'Agenda diaria',      path: '/apuntes',    icon: BookOpen        },
+  { label: 'Agenda diaria',      path: '/apuntes',        icon: BookOpen  },
+  { label: 'Configuración',      path: '/configuracion',  icon: Settings  },
 ]
 
 const RESP_COLOR = { MT: '#2570ba', AB: '#059669', CL: '#7c3aed' }
