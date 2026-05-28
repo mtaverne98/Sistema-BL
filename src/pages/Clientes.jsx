@@ -20,7 +20,7 @@ const ESTADO_BADGE = {
   Inactivo: 'bg-gray-100 text-gray-400',
 }
 
-/** Color del avatar según estado del cliente */
+/** Color del avatar según estado del cliente — gris para cualquier estado no-Activo */
 function avatarColor(estado) {
   return estado === 'Activo' ? '#2570ba' : '#9ca3af'
 }
@@ -433,7 +433,8 @@ export default function Clientes() {
   const [guardando, setGuardando] = useState(false)
 
   const [busqueda, setBusqueda]   = useState('')
-  const [filtro, setFiltro]       = useState('Todos')
+  // Multi-select: Set vacío = sin filtro (muestra todos)
+  const [filtros, setFiltros]     = useState(new Set())
   const [clienteSeleccionado, setSeleccionado] = useState(null)
   const [formulario, setFormulario] = useState(null) // null | 'nuevo' | objeto cliente
 
@@ -525,10 +526,11 @@ export default function Clientes() {
         c.rut.replace(/\./g, '').toLowerCase().includes(q.replace(/\./g, '')) ||
         c.email.toLowerCase().includes(q) ||
         c.telefono.includes(q)
-      const matchFiltro = filtro === 'Todos' || c.estado === filtro
+      // Set vacío = todos; si hay selección, solo muestra los estados seleccionados
+      const matchFiltro = filtros.size === 0 || filtros.has(c.estado)
       return matchBusqueda && matchFiltro
     })
-  }, [busqueda, filtro, clientes])
+  }, [busqueda, filtros, clientes])
 
   // Agrupar A–Z por primera letra del nombre
   const agrupados = useMemo(() => {
@@ -578,15 +580,58 @@ export default function Clientes() {
                 className="w-full pl-8 pr-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-[#2570ba] focus:ring-1 focus:ring-[#2570ba]/20 transition-all placeholder:text-gray-300"
               />
             </div>
-            <div className="flex items-center gap-1 border border-gray-200 rounded-lg p-0.5">
-              {['Todos', 'Activo', 'Inactivo'].map(f => (
-                <button key={f} onClick={() => setFiltro(f)}
-                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
-                    filtro === f ? 'bg-[#1a2e4a] text-white' : 'text-gray-500 hover:text-gray-900'
-                  }`}>
-                  {f}
+            <div className="flex items-center gap-1.5">
+              {/* Chip Activos */}
+              <button
+                onClick={() => setFiltros(prev => {
+                  const next = new Set(prev)
+                  next.has('Activo') ? next.delete('Activo') : next.add('Activo')
+                  return next
+                })}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-all ${
+                  filtros.has('Activo')
+                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                    : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'
+                }`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${filtros.has('Activo') ? 'bg-emerald-400' : 'bg-gray-300'}`} />
+                Activos
+                {filtros.has('Activo') && (
+                  <span className="text-[10px] font-bold bg-emerald-100 text-emerald-600 px-1 rounded">
+                    {clientes.filter(c => c.estado === 'Activo').length}
+                  </span>
+                )}
+              </button>
+
+              {/* Chip Inactivos */}
+              <button
+                onClick={() => setFiltros(prev => {
+                  const next = new Set(prev)
+                  next.has('Inactivo') ? next.delete('Inactivo') : next.add('Inactivo')
+                  return next
+                })}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-all ${
+                  filtros.has('Inactivo')
+                    ? 'bg-gray-100 text-gray-600 border-gray-300'
+                    : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'
+                }`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${filtros.has('Inactivo') ? 'bg-gray-400' : 'bg-gray-300'}`} />
+                Inactivos
+                {filtros.has('Inactivo') && (
+                  <span className="text-[10px] font-bold bg-gray-200 text-gray-500 px-1 rounded">
+                    {clientes.filter(c => c.estado !== 'Activo').length}
+                  </span>
+                )}
+              </button>
+
+              {/* Reset — solo visible cuando hay filtros activos */}
+              {filtros.size > 0 && (
+                <button
+                  onClick={() => setFiltros(new Set())}
+                  className="inline-flex items-center gap-1 px-2 py-1.5 text-xs text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-50 transition-colors"
+                  title="Ver todos">
+                  <X size={11} /> Todos
                 </button>
-              ))}
+              )}
             </div>
           </div>
         </div>
