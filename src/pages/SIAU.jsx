@@ -582,8 +582,10 @@ export default function SIAU() {
   const fetchCausas = useCallback(async () => {
     const { data } = await supabase
       .from('causas')
-      .select('id,rit,ruc,materia,fiscalia,tribunal,cliente_nombre,cliente_id')
+      .select('id,rit,ruc,materia,area,fiscalia,tribunal,cliente_nombre,cliente_id')
       .in('estado', ['En tramitación', 'Abierta'])
+      // Solo causas penales: área = 'Penal' O fiscalía asignada
+      .or('area.eq.Penal,fiscalia.not.is.null')
       .order('rit')
     setAllCausas(data || [])
   }, [])
