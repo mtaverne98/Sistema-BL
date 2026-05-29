@@ -982,10 +982,14 @@ export default function RevisionCausas() {
     fetchAll()
   }, [])
 
-  // Mapa clienteId → estado
+  // Mapa clienteId → estado (también indexado por nombre normalizado como fallback)
   const clienteEstadoMap = useMemo(() => {
     const m = {}
-    clientesDB.forEach(c => { m[String(c.id)] = c.estado ?? 'Activo' })
+    clientesDB.forEach(c => {
+      m[String(c.id)] = c.estado ?? 'Activo'
+      // fallback por nombre para causas sin cliente_id
+      m[(c.nombre || '').trim().toLowerCase()] = c.estado ?? 'Activo'
+    })
     return m
   }, [clientesDB])
 
@@ -1001,7 +1005,9 @@ export default function RevisionCausas() {
       etapa_procesal: c.etapa_procesal || '',
       estado:         c.estado         || '',
       cliente_nombre: c.cliente_nombre || '',
-      cliente_id:     String(c.cliente_id || c.id),
+      // IMPORTANTE: no usar || c.id como fallback — cuando cliente_id es null
+      // y se usa c.id cada causa queda en un grupo propio → clientes duplicados
+      cliente_id:     c.cliente_id ? String(c.cliente_id) : null,
     }))
   , [causasDB])
 
@@ -1089,30 +1095,49 @@ export default function RevisionCausas() {
 
   const clienteGroups = useMemo(() => {
     const q = search.toLowerCase()
+
+    // Helper: obtener estado del cliente para una causa (por id o por nombre como fallback)
+    function estadoDeCliente(c) {
+      return c.cliente_id
+        ? (clienteEstadoMap[c.cliente_id] ?? clienteEstadoMap[(c.cliente_nombre || '').trim().toLowerCase()] ?? 'Activo')
+        : (clienteEstadoMap[(c.cliente_nombre || '').trim().toLowerCase()] ?? 'Activo')
+    }
+
     const filtered = causasActivas.filter(c => {
       const matchQ = !q ||
         c.cliente_nombre.toLowerCase().includes(q) ||
         (c.rit || '').toLowerCase().includes(q) ||
         c.materia.toLowerCase().includes(q) ||
         c.area.toLowerCase().includes(q)
-      const estadoCl = clienteEstadoMap[c.cliente_id] ?? 'Activo'
+      const estadoCl = estadoDeCliente(c)
       const matchClEst = !filtroClEst ||
         (filtroClEst === 'Inactivo' ? estadoCl !== 'Activo' : estadoCl === filtroClEst)
       return matchQ && matchClEst
     })
+
+    // Agrupar por cliente_nombre (SIEMPRE confiable, evita duplicados por cliente_id nulo)
     const map = new Map()
     filtered.forEach(c => {
-      if (!map.has(c.cliente_id)) map.set(c.cliente_id, [])
-      map.get(c.cliente_id).push(c)
+      const key = (c.cliente_nombre || '').trim()
+      if (!map.has(key)) map.set(key, [])
+      map.get(key).push(c)
     })
+
     return [...map.entries()]
-      .map(([cid, cs]) => ({
-        clienteId:     cid,
-        clienteNombre: cs[0].cliente_nombre,
-        clienteEstado: clienteEstadoMap[cid] ?? 'Activo',
-        rut:           CLIENT_RUTS[cid] || null,
-        causas:        cs,
-      }))
+      .map(([nombreKey, cs]) => {
+        // Usar el primer cliente_id no-nulo del grupo para lookup de estado/rut
+        const clienteId = cs.find(c => c.cliente_id)?.cliente_id ?? nombreKey
+        const estadoCl  = clienteEstadoMap[clienteId]
+          ?? clienteEstadoMap[nombreKey.toLowerCase()]
+          ?? 'Activo'
+        return {
+          clienteId,
+          clienteNombre: cs[0].cliente_nombre,
+          clienteEstado: estadoCl,
+          rut:           CLIENT_RUTS[clienteId] || null,
+          causas:        cs,
+        }
+      })
       .sort((a, b) => a.clienteNombre.localeCompare(b.clienteNombre, 'es'))
   }, [causasActivas, search, filtroClEst, clienteEstadoMap])
 
