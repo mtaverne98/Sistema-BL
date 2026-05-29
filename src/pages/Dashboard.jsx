@@ -1,4 +1,4 @@
-import { useMemo, useEffect, useState } from 'react'
+import { useMemo, useEffect, useState, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Scale, Gavel, CheckSquare, Users, AlertTriangle,
@@ -13,9 +13,22 @@ import { useUser } from '../context/UserContext'
 // ── helpers ───────────────────────────────────────────────────────────────────
 const TODAY = new Date().toISOString().slice(0, 10)
 
-function calcDias(f) {
-  return Math.round((new Date(f + 'T00:00:00') - new Date(TODAY + 'T00:00:00')) / 86400000)
+const MESES_CORTOS = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic']
+
+function toIsoDate(val) {
+  if (!val) return ''
+  if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(val)) return val
+  const d = new Date(val)
+  if (isNaN(d.getTime())) return ''
+  return d.toISOString().slice(0, 10)
 }
+
+function calcDias(val) {
+  const iso = toIsoDate(val)
+  if (!iso) return 0
+  return Math.round((new Date(iso + 'T00:00:00') - new Date(TODAY + 'T00:00:00')) / 86400000)
+}
+
 function getUrgencia(p) {
   if (p.estado !== 'Activo') return null
   const d = calcDias(p.fecha_vencimiento)
@@ -25,20 +38,24 @@ function getUrgencia(p) {
   if (d <= 14) return 'proximo'
   return 'normal'
 }
+
 function getGreeting() {
   const h = new Date().getHours()
   if (h < 12) return 'Buenos días'
   if (h < 19) return 'Buenas tardes'
   return 'Buenas noches'
 }
-function formatFecha(iso) {
-  if (!iso) return ''
-  const d = new Date(iso + 'T00:00:00')
+
+function formatFecha(val) {
+  if (!val) return ''
+  const iso = toIsoDate(val)
+  if (!iso) return String(val)
   const diff = calcDias(iso)
   if (diff === 0) return 'Hoy'
   if (diff === 1) return 'Mañana'
   if (diff === -1) return 'Ayer'
-  return d.toLocaleDateString('es-CL', { day: 'numeric', month: 'short' })
+  const [y, m, d] = iso.split('-').map(Number)
+  return `${d} ${MESES_CORTOS[m - 1]} ${y}`
 }
 
 const RESP_COLOR = { MT: '#2570ba', AB: '#059669', CL: '#7c3aed' }
@@ -110,58 +127,133 @@ export default function Dashboard() {
   const [siauRows,       setSiauRows]       = useState([])
   const [causasCount,    setCausasCount]    = useState(0)
   const [clientesCount,  setClientesCount]  = useState(0)
+  const [lastUpdated,    setLastUpdated]    = useState(null)
+  const [syncing,        setSyncing]        = useState(false)
+  const syncTimerRef = useRef(null)
 
-  // ── Fetch inicial ──────────────────────────────────────────────────────────
-  useEffect(() => {
-    verificarConexion().then(({ ok }) => setDbStatus(ok ? 'ok' : 'error'))
+  // ── Funciones de fetch (reutilizables para Realtime) ──────────────────────
+  const fetchTareas = useCallback(async () => {
+    const { data } = await supabase.from('tareas')
+      .select('id, titulo, estado, prioridad, notas, fecha_vencimiento, causa_rit, cliente_nombre, responsable')
+    if (data) setTareas(data)
+  }, [])
 
-    supabase.from('tareas')
-      .select('id, titulo, estado, prioridad, notas, fecha_vencimiento, causa_rit, cliente_nombre')
-      .then(({ data }) => setTareas(data || []))
-
-    supabase.from('audiencias')
+  const fetchAudiencias = useCallback(async () => {
+    const { data } = await supabase.from('audiencias')
       .select('id, tipo, fecha, hora, tribunal, sala, estado, modalidad, cliente_nombre, causa_rit')
-      .then(({ data }) => setAudiencias(data || []))
+    if (data) setAudiencias(data)
+  }, [])
 
-    supabase.from('plazos')
-      .select('id, titulo, fecha_vencimiento, estado, tipo, causa_rit, causas(cliente_nombre)')
-      .then(({ data }) => setPlazos((data || []).map(r => ({ ...r, cliente_nombre: r.causas?.cliente_nombre || '' }))))
+  const fetchPlazos = useCallback(async () => {
+    const { data } = await supabase.from('plazos')
+      .select('id, titulo, fecha_vencimiento, estado, tipo, causa_rit, responsable, causas(cliente_nombre)')
+    if (data) setPlazos(data.map(r => ({ ...r, cliente_nombre: r.causas?.cliente_nombre || '' })))
+  }, [])
 
-    supabase.from('documentos')
+  const fetchDocumentos = useCallback(async () => {
+    const { data } = await supabase.from('documentos')
       .select('id, nombre, cliente, responsable, fecha_creacion, causa_rit')
       .order('created_at', { ascending: false })
       .limit(6)
-      .then(({ data }) => setDocumentos(data || []))
+    if (data) setDocumentos(data)
+  }, [])
 
-    supabase.from('reuniones')
-      .select('id, tipo, fecha, hora_inicio, estado, responsable')
-      .gte('fecha', TODAY)
-      .order('fecha', { ascending: true })
+  const fetchReuniones = useCallback(async () => {
+    const { data } = await supabase.from('reuniones')
+      .select('id, fecha_jueves, acuerdos, estado')
+      .gte('fecha_jueves', TODAY)
+      .order('fecha_jueves', { ascending: true })
       .limit(5)
-      .then(({ data }) => setReuniones(data || []))
+    if (data) setReuniones(data)
+  }, [])
 
-    supabase.from('revisiones')
-      .select('id, fecha, responsable, nota, proxima_accion, causa_id, semana_key')
+  const fetchRevUrgentes = useCallback(async () => {
+    const { data } = await supabase.from('revisiones')
+      .select('id, fecha, responsable, nota, proxima_accion, causa_id, semana_key, urgente')
       .eq('urgente', true)
-      .is('semana_key', null)  // team revisions only (not SEG-)
       .order('fecha', { ascending: false })
       .limit(5)
-      .then(({ data }) => setRevUrgentes((data || []).filter(r => !r.semana_key?.startsWith('SEG-'))))
-
-    supabase.from('pjud')
-      .select('id, cliente_nombre, causa_rit, fecha, solicitud, estado, notas')
-      .then(({ data }) => setPjudRows(data || []))
-
-    supabase.from('siau')
-      .select('id, cliente_nombre, causa_rit, fecha, folio, solicitud, estado, notas')
-      .then(({ data }) => setSiauRows(data || []))
-
-    supabase.from('causas').select('id', { count: 'exact', head: true })
-      .then(({ count }) => setCausasCount(count || 0))
-
-    supabase.from('clientes').select('id', { count: 'exact', head: true })
-      .then(({ count }) => setClientesCount(count || 0))
+    if (data) setRevUrgentes(data)
   }, [])
+
+  const fetchPjud = useCallback(async () => {
+    const { data } = await supabase.from('pjud')
+      .select('id, cliente_nombre, causa_rit, fecha, solicitud, estado, notas')
+    if (data) setPjudRows(data)
+  }, [])
+
+  const fetchSiau = useCallback(async () => {
+    const { data } = await supabase.from('siau')
+      .select('id, cliente_nombre, causa_rit, fecha, folio, solicitud, estado, notas')
+    if (data) setSiauRows(data)
+  }, [])
+
+  const fetchCounts = useCallback(async () => {
+    const [{ count: cCount }, { count: clCount }] = await Promise.all([
+      supabase.from('causas').select('id', { count: 'exact', head: true }),
+      supabase.from('clientes').select('id', { count: 'exact', head: true }),
+    ])
+    setCausasCount(cCount || 0)
+    setClientesCount(clCount || 0)
+  }, [])
+
+  const fetchAll = useCallback(async (showSync = false) => {
+    if (showSync) setSyncing(true)
+    await Promise.all([
+      fetchTareas(),
+      fetchAudiencias(),
+      fetchPlazos(),
+      fetchDocumentos(),
+      fetchReuniones(),
+      fetchRevUrgentes(),
+      fetchPjud(),
+      fetchSiau(),
+      fetchCounts(),
+    ])
+    setLastUpdated(new Date())
+    if (showSync) {
+      setTimeout(() => setSyncing(false), 600)
+    }
+  }, [fetchTareas, fetchAudiencias, fetchPlazos, fetchDocumentos, fetchReuniones, fetchRevUrgentes, fetchPjud, fetchSiau, fetchCounts])
+
+  // ── Fetch inicial + Realtime + intervalo ──────────────────────────────────
+  useEffect(() => {
+    verificarConexion().then(({ ok }) => setDbStatus(ok ? 'ok' : 'error'))
+    fetchAll()
+
+    // Supabase Realtime — suscripción a todos los cambios relevantes
+    const channel = supabase.channel('dashboard-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tareas' },
+        () => { fetchTareas(); setLastUpdated(new Date()) })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'audiencias' },
+        () => { fetchAudiencias(); setLastUpdated(new Date()) })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'plazos' },
+        () => { fetchPlazos(); setLastUpdated(new Date()) })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'documentos' },
+        () => { fetchDocumentos(); setLastUpdated(new Date()) })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'reuniones' },
+        () => { fetchReuniones(); setLastUpdated(new Date()) })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'revisiones' },
+        () => { fetchRevUrgentes(); setLastUpdated(new Date()) })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pjud' },
+        () => { fetchPjud(); setLastUpdated(new Date()) })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'siau' },
+        () => { fetchSiau(); setLastUpdated(new Date()) })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'causas' },
+        () => { fetchCounts(); setLastUpdated(new Date()) })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'clientes' },
+        () => { fetchCounts(); setLastUpdated(new Date()) })
+      .subscribe()
+
+    // Fallback: refresh automático cada 60 segundos
+    const timer = setInterval(() => fetchAll(), 60_000)
+    syncTimerRef.current = timer
+
+    return () => {
+      supabase.removeChannel(channel)
+      clearInterval(timer)
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── métricas reales ────────────────────────────────────────────────────────
   const today = TODAY
@@ -171,10 +263,13 @@ export default function Dashboard() {
     return d.toISOString().slice(0, 10)
   })()
 
-  const audienciasEstaSemanaCnt = audiencias.filter(a => a.fecha >= today && a.fecha <= thisWeekEnd).length
-  const tareasPendientesCnt     = tareas.filter(t => t.estado !== 'Completada').length
-  const plazosRealesCnt         = plazos.filter(p => { const u = getUrgencia(p); return u === 'critico' || u === 'vencido' }).length
-  const tareasHoy               = tareas.filter(t => t.fecha_vencimiento === today && t.estado !== 'Completada').length
+  const audienciasEstaSemanaCnt = audiencias.filter(a => {
+    const f = toIsoDate(a.fecha)
+    return f >= today && f <= thisWeekEnd
+  }).length
+  const tareasPendientesCnt = tareas.filter(t => t.estado !== 'Completada').length
+  const plazosRealesCnt     = plazos.filter(p => { const u = getUrgencia(p); return u === 'critico' || u === 'vencido' }).length
+  const tareasHoy           = tareas.filter(t => toIsoDate(t.fecha_vencimiento) === today && t.estado !== 'Completada').length
 
   const metricas = useMemo(() => [
     { label: 'Causas activas',        value: causasCount,             icon: Scale,         delta: `${causasCount} total`,              color: '#2570ba', path: '/causas'     },
@@ -185,20 +280,33 @@ export default function Dashboard() {
   ], [causasCount, clientesCount, audienciasEstaSemanaCnt, tareasPendientesCnt, tareasHoy, plazosRealesCnt])
 
   // ── Panel "Hoy" ────────────────────────────────────────────────────────────
-  const audHoy        = useMemo(() => audiencias.filter(a => a.fecha === today).sort((a,b) => (a.hora||'').localeCompare(b.hora||'')), [audiencias, today])
-  const tareasHoyList = useMemo(() => tareas.filter(t => t.fecha_vencimiento === today && t.estado !== 'Completada'), [tareas, today])
-  const plazosHoyList = useMemo(() => plazos.filter(p => p.fecha_vencimiento === today && p.estado === 'Activo'), [plazos, today])
-  const reunionesToday = useMemo(() => reuniones.filter(r => r.fecha === today), [reuniones, today])
-  const hayAlgoHoy    = audHoy.length + tareasHoyList.length + plazosHoyList.length + reunionesToday.length > 0
+  const audHoy = useMemo(() =>
+    audiencias
+      .filter(a => toIsoDate(a.fecha) === today)
+      .sort((a, b) => (a.hora || '').localeCompare(b.hora || '')),
+    [audiencias, today])
+
+  const tareasHoyList = useMemo(() =>
+    tareas.filter(t => toIsoDate(t.fecha_vencimiento) === today && t.estado !== 'Completada'),
+    [tareas, today])
+
+  const plazosHoyList = useMemo(() =>
+    plazos.filter(p => toIsoDate(p.fecha_vencimiento) === today && p.estado === 'Activo'),
+    [plazos, today])
+
+  const reunionesToday = useMemo(() =>
+    reuniones.filter(r => r.fecha_jueves === today),
+    [reuniones, today])
+
+  const hayAlgoHoy = audHoy.length + tareasHoyList.length + plazosHoyList.length + reunionesToday.length > 0
 
   // ── próximas audiencias (reales, ordenadas) ─────────────────────────────────
   const proximasAudiencias = useMemo(() =>
     audiencias
-      .filter(a => a.fecha >= today)
-      .sort((a, b) => (a.fecha + a.hora).localeCompare(b.fecha + b.hora))
+      .filter(a => toIsoDate(a.fecha) >= today)
+      .sort((a, b) => (toIsoDate(a.fecha) + (a.hora || '')).localeCompare(toIsoDate(b.fecha) + (b.hora || '')))
       .slice(0, 6),
-    [audiencias, today]
-  )
+    [audiencias, today])
 
   // ── tareas pendientes (ordenadas por urgencia) ─────────────────────────────
   const tareasDestacadas = useMemo(() =>
@@ -208,11 +316,10 @@ export default function Dashboard() {
         const pa = a.prioridad === 'Alta' ? 0 : a.prioridad === 'Media' ? 1 : 2
         const pb = b.prioridad === 'Alta' ? 0 : b.prioridad === 'Media' ? 1 : 2
         if (pa !== pb) return pa - pb
-        return (a.fecha_vencimiento || '').localeCompare(b.fecha_vencimiento || '')
+        return (toIsoDate(a.fecha_vencimiento) || '').localeCompare(toIsoDate(b.fecha_vencimiento) || '')
       })
       .slice(0, 6),
-    [tareas]
-  )
+    [tareas])
 
   // ── plazos críticos ────────────────────────────────────────────────────────
   const plazosDestacados = useMemo(() =>
@@ -220,8 +327,7 @@ export default function Dashboard() {
       .filter(p => { const u = getUrgencia(p); return u === 'critico' || u === 'vencido' || u === 'urgente' })
       .sort((a, b) => calcDias(a.fecha_vencimiento) - calcDias(b.fecha_vencimiento))
       .slice(0, 5),
-    [plazos]
-  )
+    [plazos])
 
   // ── actividad reciente (multi-fuente) ────────────────────────────────────
   const actividadReciente = useMemo(() => {
@@ -231,51 +337,51 @@ export default function Dashboard() {
       icon: FolderOpen, color: 'text-slate-400', bgColor: 'bg-slate-50',
       texto: d.nombre, tipo: 'Documento',
       sub: d.cliente || d.causa_rit || '', quien: d.responsable || 'MT',
-      ts: d.fecha_creacion || '',
+      ts: toIsoDate(d.fecha_creacion) || '',
     }))
     // Audiencias más próximas/recientes
     audiencias
-      .filter(a => a.fecha >= today)
-      .sort((a, b) => a.fecha.localeCompare(b.fecha))
+      .filter(a => toIsoDate(a.fecha) >= today)
+      .sort((a, b) => toIsoDate(a.fecha).localeCompare(toIsoDate(b.fecha)))
       .slice(0, 3)
       .forEach(a => items.push({
         icon: Gavel, color: 'text-blue-400', bgColor: 'bg-blue-50',
         texto: `${a.tipo || 'Audiencia'} — ${a.cliente_nombre || a.causa_rit || ''}`,
         tipo: 'Audiencia',
         sub: a.tribunal || '', quien: 'MT',
-        ts: a.fecha,
+        ts: toIsoDate(a.fecha),
       }))
     // Tareas Alta prioridad pendientes
     tareas
       .filter(t => t.prioridad === 'Alta' && t.estado !== 'Completada' && t.fecha_vencimiento)
-      .sort((a, b) => a.fecha_vencimiento.localeCompare(b.fecha_vencimiento))
+      .sort((a, b) => toIsoDate(a.fecha_vencimiento).localeCompare(toIsoDate(b.fecha_vencimiento)))
       .slice(0, 3)
       .forEach(t => items.push({
         icon: CheckSquare, color: 'text-emerald-400', bgColor: 'bg-emerald-50',
         texto: t.titulo, tipo: 'Tarea',
         sub: t.cliente_nombre || t.causa_rit || '', quien: t.responsable || 'MT',
-        ts: t.fecha_vencimiento,
+        ts: toIsoDate(t.fecha_vencimiento),
       }))
     // Plazos activos
     plazos
-      .filter(p => p.estado === 'Activo' && p.fecha_vencimiento >= today)
-      .sort((a, b) => a.fecha_vencimiento.localeCompare(b.fecha_vencimiento))
+      .filter(p => p.estado === 'Activo' && toIsoDate(p.fecha_vencimiento) >= today)
+      .sort((a, b) => toIsoDate(a.fecha_vencimiento).localeCompare(toIsoDate(b.fecha_vencimiento)))
       .slice(0, 2)
       .forEach(p => items.push({
         icon: Clock, color: 'text-amber-400', bgColor: 'bg-amber-50',
         texto: p.titulo, tipo: 'Plazo',
         sub: p.cliente_nombre || p.causa_rit || '', quien: p.responsable || 'MT',
-        ts: p.fecha_vencimiento,
+        ts: toIsoDate(p.fecha_vencimiento),
       }))
-    // Reuniones próximas
+    // Reuniones próximas (nuevo esquema)
     reuniones
-      .filter(r => r.fecha >= today && r.estado !== 'Finalizada')
+      .filter(r => r.fecha_jueves >= today && r.estado !== 'realizada')
       .slice(0, 2)
       .forEach(r => items.push({
         icon: Calendar, color: 'text-violet-400', bgColor: 'bg-violet-50',
-        texto: r.tipo || 'Reunión de equipo', tipo: 'Reunión',
-        sub: r.hora_inicio || '', quien: r.responsable || 'MT',
-        ts: r.fecha,
+        texto: 'Reunión semanal de equipo', tipo: 'Reunión',
+        sub: 'Jueves', quien: 'MT',
+        ts: r.fecha_jueves,
       }))
     // Sort by ts, dedupe, limit
     return items
@@ -289,7 +395,7 @@ export default function Dashboard() {
     const items = []
     pjudRows.forEach(row => {
       if (!row.fecha) return
-      const dias = Math.round((new Date(TODAY + 'T00:00:00') - new Date(row.fecha + 'T00:00:00')) / 86400000)
+      const dias = Math.round((new Date(TODAY + 'T00:00:00') - new Date(toIsoDate(row.fecha) + 'T00:00:00')) / 86400000)
       const urg  = row.estado === 'Urgente'
       const sinR = (row.estado === 'Pendiente' || row.estado === 'Sin respuesta') && dias >= 5
       if (urg || sinR) items.push({
@@ -306,7 +412,7 @@ export default function Dashboard() {
     const items = []
     siauRows.forEach(row => {
       if (!row.fecha) return
-      const dias = Math.round((new Date(TODAY + 'T00:00:00') - new Date(row.fecha + 'T00:00:00')) / 86400000)
+      const dias = Math.round((new Date(TODAY + 'T00:00:00') - new Date(toIsoDate(row.fecha) + 'T00:00:00')) / 86400000)
       const urg  = row.estado === 'Urgente'
       const sinR = (row.estado === 'Pendiente' || row.estado === 'Sin respuesta') && dias >= 7
       if (urg || sinR) items.push({
@@ -323,6 +429,11 @@ export default function Dashboard() {
   const greeting = getGreeting()
   const hoy      = new Date().toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' })
 
+  // Hora de última actualización formateada
+  const lastUpdatedStr = lastUpdated
+    ? lastUpdated.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })
+    : null
+
   return (
     <div className="min-h-full bg-white">
 
@@ -332,17 +443,28 @@ export default function Dashboard() {
         <div className="flex items-end justify-between mt-0.5">
           <h1 className="text-2xl font-semibold text-gray-900">{greeting}, {nombre}</h1>
           <div className="flex items-center gap-2 pb-0.5">
+            {/* Última actualización */}
+            {lastUpdatedStr && (
+              <button
+                onClick={() => fetchAll(true)}
+                title="Actualizar ahora"
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gray-50 text-gray-400 text-[11px] hover:bg-gray-100 hover:text-gray-600 transition-colors"
+              >
+                <RefreshCw size={10} className={syncing ? 'animate-spin' : ''} />
+                {syncing ? 'Actualizando…' : `Actualizado ${lastUpdatedStr}`}
+              </button>
+            )}
             {/* Badge conexión Supabase */}
             {dbStatus === 'ok' && (
               <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-600 text-[11px] font-medium">
                 <Wifi size={11} />
-                Supabase conectado
+                En línea
               </span>
             )}
             {dbStatus === 'error' && (
               <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-50 text-amber-600 text-[11px] font-medium">
                 <WifiOff size={11} />
-                Sin conexión DB
+                Sin conexión
               </span>
             )}
             {plazosRealesCnt > 0 && (
@@ -408,8 +530,8 @@ export default function Dashboard() {
                   className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-violet-50 border border-violet-100 hover:border-violet-200 transition-colors cursor-pointer">
                   <Calendar size={11} className="text-violet-500 flex-shrink-0" />
                   <div className="text-left">
-                    <p className="text-[11px] font-semibold text-violet-800 leading-none">{r.tipo || 'Reunión de equipo'}</p>
-                    <p className="text-[10px] text-violet-500 mt-0.5">{r.hora_inicio || 'Sin hora'}</p>
+                    <p className="text-[11px] font-semibold text-violet-800 leading-none">Reunión semanal</p>
+                    <p className="text-[10px] text-violet-500 mt-0.5">Equipo · Jueves</p>
                   </div>
                 </button>
               ))}
@@ -434,7 +556,7 @@ export default function Dashboard() {
                   <div className="flex items-start gap-3">
                     <div className="flex-shrink-0 mt-0.5 text-right" style={{ minWidth: 52 }}>
                       <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
-                        a.fecha === today ? 'bg-blue-50 text-blue-600' : 'bg-gray-100 text-gray-400'
+                        toIsoDate(a.fecha) === today ? 'bg-blue-50 text-blue-600' : 'bg-gray-100 text-gray-400'
                       }`}>
                         {formatFecha(a.fecha)}
                       </span>
@@ -496,7 +618,7 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Actividad reciente (multi-fuente) */}
+          {/* Próximos eventos (multi-fuente) */}
           <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">
             <SectionHeader icon={Activity} title="Próximos eventos" />
             <div className="divide-y divide-gray-50">
@@ -515,7 +637,7 @@ export default function Dashboard() {
                     {a.sub && <p className="text-[10px] text-gray-400 mt-0.5 truncate">{a.sub}</p>}
                     <div className="flex items-center gap-2 mt-1">
                       <span className={`text-[10px] font-medium ${a.ts === today ? 'text-blue-500 font-semibold' : 'text-gray-400'}`}>
-                        {a.ts === today ? 'Hoy' : formatFecha(a.ts)}
+                        {formatFecha(a.ts)}
                       </span>
                     </div>
                   </div>
