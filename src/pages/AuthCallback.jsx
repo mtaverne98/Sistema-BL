@@ -38,7 +38,7 @@ export default function AuthCallback() {
       <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-10 w-[380px] text-center">
 
         {/* Logo */}
-        <div className="w-12 h-12 rounded-xl bg-[#1a2e4a] mx-auto mb-6 flex items-center justify-center">
+        <div className="w-12 h-12 rounded-xl bg-[#2570BA] mx-auto mb-6 flex items-center justify-center">
           <span className="text-white font-bold text-sm">BL</span>
         </div>
 
@@ -68,7 +68,7 @@ export default function AuthCallback() {
             <p className="text-xs text-red-500 mt-1.5 mb-5 leading-relaxed">{error}</p>
             <button
               onClick={() => window.location.replace('/configuracion')}
-              className="text-xs bg-[#1a2e4a] text-white px-5 py-2 rounded-lg hover:bg-[#2570ba] transition-colors font-semibold"
+              className="text-xs bg-[#2570BA] text-white px-5 py-2 rounded-lg hover:bg-[#2570BA]/90 transition-colors font-semibold"
             >
               Volver a Configuración
             </button>

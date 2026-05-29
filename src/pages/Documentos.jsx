@@ -242,7 +242,7 @@ function LeftSidebar({
     return (
       <button onClick={() => { clearAll(); onView(id) }}
         className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-[12px] transition-all select-none ${
-          active ? 'bg-[#1a2e4a] text-white' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'
+          active ? 'bg-[#2570BA] text-white' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'
         }`}>
         <Icon size={12} strokeWidth={1.75} className="flex-shrink-0" />
         <span className="flex-1 text-left truncate">{label}</span>
@@ -986,7 +986,7 @@ function MetadataPanel({ doc, activeTab, onTabChange, onUpdate, onAddComentario,
                 className="w-full border border-gray-200 rounded-xl px-2.5 py-2 text-[12px] outline-none text-gray-700 placeholder-gray-300 resize-none focus:border-gray-300"
                 onKeyDown={e => e.key === 'Enter' && e.metaKey && handleAddComentario()} />
               <button onClick={handleAddComentario}
-                className="w-full text-[11px] bg-[#1a2e4a] text-white py-1.5 rounded-lg font-medium hover:bg-[#243d61] transition-colors">
+                className="w-full text-[11px] bg-[#2570BA] text-white -1.5 rounded-lg font-medium hover:bg-[#2570BA]/90 transition-colors">
                 Comentar
               </button>
             </div>
@@ -1283,7 +1283,7 @@ function ModalCrearDoc({ plantilla, onSave, onClose }) {
         <div className="px-6 pb-6 flex justify-end gap-2">
           <button onClick={onClose} className="text-[12px] text-gray-400 hover:text-gray-600 px-3 py-1.5 rounded-lg transition-colors">Cancelar</button>
           <button onClick={handleSave} disabled={!nombre.trim()}
-            className="text-[12px] bg-[#1a2e4a] text-white px-4 py-1.5 rounded-lg font-medium hover:bg-[#243d61] disabled:opacity-40 transition-colors">
+            className="text-[12px] bg-[#2570BA] text-white -4 py-1.5 rounded-lg font-medium hover:bg-[#2570BA]/90 disabled:opacity-40 transition-colors">
             Crear documento
           </button>
         </div>
@@ -1472,7 +1472,7 @@ export default function Documentos() {
           <p className="text-[12px] text-gray-400 mt-0.5">Centro documental jurídico del estudio</p>
         </div>
         <button onClick={() => setShowModal(true)}
-          className="flex items-center gap-1.5 px-3.5 py-2 bg-[#1a2e4a] text-white text-[12px] font-medium rounded-lg hover:bg-[#243d61] transition-colors">
+          className="flex items-center gap-1.5 px-3.5 py-2 bg-[#2570BA] text-white text-[12px] font-medium rounded-lg hover:bg-[#2570BA]/90 transition-colors">
           <Plus size={13} /> Nuevo documento
         </button>
       </div>

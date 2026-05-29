@@ -895,7 +895,7 @@ function PanelTarea({ tarea, onClose, onUpdate, clientesLista, allCausas }) {
                 className="flex-1 text-[12px] text-gray-600 placeholder:text-gray-300 bg-transparent focus:outline-none py-1.5"
               />
               {newSub.trim() && (
-                <button onClick={addSub} className="text-[10px] bg-[#1a2e4a] text-white px-3 py-1 rounded-lg hover:bg-[#2570ba] transition-colors font-semibold">
+                <button onClick={addSub} className="text-[10px] bg-[#2570BA] text-white px-3 py-1 rounded-lg hover:bg-[#2570BA]/90 transition-colors font-semibold">
                   Agregar
                 </button>
               )}
@@ -1072,7 +1072,7 @@ function FormNuevaTarea({ onClose, onSave, clientesLista, allCausas }) {
         <button
           onClick={handleSave}
           disabled={!form.titulo.trim() || saving}
-          className="flex-1 text-xs bg-[#1a2e4a] text-white py-2.5 rounded-xl hover:bg-[#2570ba] transition-colors font-semibold disabled:opacity-40 shadow-sm shadow-[#1a2e4a]/20"
+          className="flex-1 text-xs bg-[#2570BA] text-white py-2.5 rounded-xl hover:bg-[#2570BA]/90 transition-colors font-semibold disabled:opacity-40 shadow-sm shadow-[#1a2e4a]/20"
         >
           {saving ? 'Guardando...' : 'Crear tarea'}
         </button>
@@ -1253,7 +1253,7 @@ export default function Tareas() {
           </div>
           <button
             onClick={() => { setSeleccionada(null); setShowForm(true) }}
-            className="inline-flex items-center gap-2 bg-[#1a2e4a] text-white text-sm font-medium px-4 py-2.5 rounded-xl hover:bg-[#2570ba] transition-colors"
+            className="inline-flex items-center gap-2 bg-[#2570BA] text-white text-sm font-medium px-4 py-2.5 rounded-xl hover:bg-[#2570BA]/90 transition-colors"
           >
             <Plus size={15} />
             Nueva tarea

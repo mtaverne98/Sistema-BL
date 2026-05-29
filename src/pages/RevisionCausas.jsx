@@ -263,7 +263,7 @@ function ModalCrearTarea({ causa, semanaKey, onSave, onClose }) {
           </button>
           <button disabled={!valid} onClick={handleSave}
             className={`text-[12px] px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors ${
-              valid ? 'bg-[#1a2e4a] text-white hover:bg-[#243d5e]' : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+              valid ? 'bg-[#2570BA] text-white hover:bg-[#2570BA]/90' : 'bg-gray-100 text-gray-400 cursor-not-allowed'
             }`}>
             <Check size={12} /> Crear tarea
           </button>
@@ -387,7 +387,7 @@ function CausaModal({ causa, semanaKey, revisionData, allRevisiones, onMarcar, o
               </div>
               <div className="flex items-center gap-2">
                 <button onClick={handleGuardar}
-                  className="text-[12px] px-4 py-2 bg-[#1a2e4a] text-white rounded-lg hover:bg-[#243d5e] flex items-center gap-1.5 font-medium transition-colors">
+                  className="text-[12px] px-4 py-2 bg-[#2570BA] text-white rounded-lg hover:bg-[#2570BA]/90 flex items-center gap-1.5 font-medium transition-colors">
                   <Check size={12} /> Guardar revisión
                 </button>
                 {revisada && (
@@ -496,7 +496,7 @@ function ClienteDrawer({ clienteNombre, rut, causas, semanaKey, semanaData, onMa
               </span>
             </div>
             <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-              <div className={`h-full rounded-full transition-all duration-700 ${allDone ? 'bg-green-500' : 'bg-[#1a2e4a]'}`}
+              <div className={`h-full rounded-full transition-all duration-700 ${allDone ? 'bg-green-500' : 'bg-[#2570BA]'}`}
                 style={{ width: `${pct}%` }} />
             </div>
           </div>
@@ -820,7 +820,7 @@ function CausaRow({ causa, semanaKey, revisionData, onMarcar, onDesmarcar, onCre
 
                 <div className="flex items-center gap-2 pt-0.5">
                   <button onClick={handleGuardar}
-                    className="text-[12px] px-3.5 py-1.5 bg-[#1a2e4a] text-white rounded-lg hover:bg-[#243d5e] flex items-center gap-1.5 transition-colors font-medium">
+                    className="text-[12px] px-3.5 py-1.5 bg-[#2570BA] text-white rounded-lg hover:bg-[#2570BA]/90 flex items-center gap-1.5 transition-colors font-medium">
                     <Check size={11} /> Guardar revisión
                   </button>
                   <button onClick={handleCancelar}
@@ -914,7 +914,7 @@ function ClienteBlock({ clienteNombre, clienteEstado = 'Activo', rut, causas, se
         <div className="flex items-center gap-3 flex-shrink-0">
           {/* Mini progress bar */}
           <div className="w-24 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-            <div className={`h-full rounded-full transition-all duration-700 ${allDone ? 'bg-green-500' : 'bg-[#1a2e4a]'}`}
+            <div className={`h-full rounded-full transition-all duration-700 ${allDone ? 'bg-green-500' : 'bg-[#2570BA]'}`}
               style={{ width: `${pct}%` }} />
           </div>
           <span className={`text-[12px] font-semibold tabular-nums min-w-[28px] text-right ${
@@ -1175,7 +1175,7 @@ export default function RevisionCausas() {
             <div className="mt-3">
               <div className="h-1 bg-gray-100 rounded-full overflow-hidden">
                 <div
-                  className={`h-full rounded-full transition-all duration-700 ${pctGlobal === 100 ? 'bg-green-500' : 'bg-[#1a2e4a]'}`}
+                  className={`h-full rounded-full transition-all duration-700 ${pctGlobal === 100 ? 'bg-green-500' : 'bg-[#2570BA]'}`}
                   style={{ width: `${pctGlobal}%` }} />
               </div>
               <div className="flex items-center justify-between mt-1">
@@ -1218,7 +1218,7 @@ export default function RevisionCausas() {
                 filtroClEst === val
                   ? val === 'Activo' ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                     : val === 'Inactivo' ? 'bg-gray-100 text-gray-600 border-gray-300'
-                    : 'bg-[#1a2e4a] text-white border-[#1a2e4a]'
+                    : 'bg-[#2570BA] text-white border-[#2570BA]'
                   : 'bg-white text-gray-400 border-gray-200 hover:border-gray-300 hover:text-gray-600'
               }`}>
               <span className={`w-1.5 h-1.5 rounded-full ${
@@ -1237,7 +1237,7 @@ export default function RevisionCausas() {
           </button>
           <button onClick={() => setSemanaKey(CURRENT_WEEK_KEY)}
             className={`text-[11px] px-3 py-1.5 rounded-lg font-medium transition-colors whitespace-nowrap ${
-              isCurrentWeek ? 'bg-[#1a2e4a] text-white' : 'border border-gray-200 text-gray-500 hover:bg-gray-50'
+              isCurrentWeek ? 'bg-[#2570BA] text-white' : 'border border-gray-200 text-gray-500 hover:bg-gray-50'
             }`}>
             Semana actual
           </button>
@@ -1257,23 +1257,40 @@ export default function RevisionCausas() {
             <p className="text-[13px]">No se encontraron causas activas</p>
           </div>
         ) : (
-          <div className="space-y-2.5">
-            {clienteGroups.map(({ clienteId, clienteNombre, clienteEstado, rut, causas }) => (
-              <ClienteBlock
-                key={clienteId}
-                clienteNombre={clienteNombre}
-                clienteEstado={clienteEstado}
-                rut={rut}
-                causas={causas}
-                semanaKey={semanaKey}
-                semanaData={semanaData}
-                onMarcar={marcarRevision}
-                onDesmarcar={desmarcarRevision}
-                onCrearTarea={addTarea}
-                allRevisiones={revisionesSemana}
-                onOpenPanel={() => setSelectedCliente({ clienteNombre, rut, causas })}
-              />
-            ))}
+          <div className="space-y-1">
+            {(() => {
+              const byLetter = {}
+              clienteGroups.forEach(g => {
+                const l = g.clienteNombre.trim().charAt(0).toUpperCase() || '#'
+                if (!byLetter[l]) byLetter[l] = []
+                byLetter[l].push(g)
+              })
+              return Object.entries(byLetter)
+                .sort(([a], [b]) => a.localeCompare(b))
+                .map(([letra, grupos]) => (
+                  <div key={letra}>
+                    <p className="text-[11px] font-bold text-gray-300 uppercase tracking-widest px-1 pt-3 pb-1.5">{letra}</p>
+                    <div className="space-y-2.5">
+                      {grupos.map(({ clienteId, clienteNombre, clienteEstado, rut, causas }) => (
+                        <ClienteBlock
+                          key={clienteId}
+                          clienteNombre={clienteNombre}
+                          clienteEstado={clienteEstado}
+                          rut={rut}
+                          causas={causas}
+                          semanaKey={semanaKey}
+                          semanaData={semanaData}
+                          onMarcar={marcarRevision}
+                          onDesmarcar={desmarcarRevision}
+                          onCrearTarea={addTarea}
+                          allRevisiones={revisionesSemana}
+                          onOpenPanel={() => setSelectedCliente({ clienteNombre, rut, causas })}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ))
+            })()}
           </div>
         )}
       </div>

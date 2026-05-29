@@ -221,7 +221,7 @@ function AddTemaForm({ onSave, onCancel }) {
         <button
           onClick={handleSave}
           disabled={!desc.trim()}
-          className="flex items-center gap-1.5 text-xs font-semibold bg-[#1a2e4a] text-white px-3.5 py-2 rounded-lg hover:bg-[#2570ba] disabled:opacity-40 transition-colors">
+          className="flex items-center gap-1.5 text-xs font-semibold bg-[#2570BA] text-white px-3.5 py-2 rounded-lg hover:bg-[#2570BA]/90 disabled:opacity-40 transition-colors">
           <Plus size={12}/> Agregar tema
         </button>
         <button
@@ -290,9 +290,38 @@ function HistorialItem({ reunion, temas }) {
             <p className="text-[12px] text-gray-400 italic py-2">Sin temas registrados</p>
           ) : (
             <div className="space-y-2">
-              {ts.map(t => (
-                <TemaRow key={t.id} tema={t} readOnly onToggle={() => {}} onDelete={() => {}}/>
-              ))}
+              {(() => {
+                const conCliente = ts.filter(t => t.cliente_nombre)
+                const sinCliente = ts.filter(t => !t.cliente_nombre)
+                const byLetter   = {}
+                conCliente.forEach(t => {
+                  const l = t.cliente_nombre.trim().charAt(0).toUpperCase() || '#'
+                  if (!byLetter[l]) byLetter[l] = []
+                  byLetter[l].push(t)
+                })
+                const sections  = Object.entries(byLetter).sort(([a], [b]) => a.localeCompare(b))
+                const hasGroups = sections.length > 0
+                return (
+                  <>
+                    {sections.map(([letra, lista]) => (
+                      <div key={letra} className="space-y-2">
+                        <p className="text-[10px] font-bold text-gray-300 uppercase tracking-widest pt-1 pb-0.5">{letra}</p>
+                        {lista.map(t => (
+                          <TemaRow key={t.id} tema={t} readOnly onToggle={() => {}} onDelete={() => {}}/>
+                        ))}
+                      </div>
+                    ))}
+                    {sinCliente.length > 0 && (
+                      <div className="space-y-2">
+                        {hasGroups && <p className="text-[10px] font-bold text-gray-300 uppercase tracking-widest pt-1 pb-0.5">Sin cliente</p>}
+                        {sinCliente.map(t => (
+                          <TemaRow key={t.id} tema={t} readOnly onToggle={() => {}} onDelete={() => {}}/>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )
+              })()}
             </div>
           )}
 
@@ -441,7 +470,7 @@ export default function Reuniones() {
               key={t.id}
               onClick={() => setTab(t.id)}
               className={`px-4 py-1.5 rounded-lg text-[13px] font-medium transition-colors ${
-                tab === t.id ? 'bg-[#1a2e4a] text-white' : 'text-gray-500 hover:bg-gray-100'
+                tab === t.id ? 'bg-[#2570BA] text-white' : 'text-gray-500 hover:bg-gray-100'
               }`}>
               {t.label}
             </button>
@@ -461,7 +490,7 @@ export default function Reuniones() {
 
             {/* Meeting info card */}
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-5 py-4 flex items-center gap-4">
-              <div className="w-11 h-11 rounded-xl bg-[#1a2e4a] flex items-center justify-center flex-shrink-0">
+              <div className="w-11 h-11 rounded-xl bg-[#2570BA] flex items-center justify-center flex-shrink-0">
                 <Calendar size={18} className="text-white"/>
               </div>
               <div className="flex-1">
@@ -500,7 +529,7 @@ export default function Reuniones() {
                 </div>
                 <button
                   onClick={() => setShowAdd(v => !v)}
-                  className="flex items-center gap-1.5 text-xs font-semibold bg-[#1a2e4a] text-white px-3.5 py-2 rounded-xl hover:bg-[#2570ba] transition-colors shadow-sm">
+                  className="flex items-center gap-1.5 text-xs font-semibold bg-[#2570BA] text-white px-3.5 py-2 rounded-xl hover:bg-[#2570BA]/90 transition-colors shadow-sm">
                   <Plus size={13}/> Agregar tema
                 </button>
               </div>
@@ -522,15 +551,39 @@ export default function Reuniones() {
                   </div>
                 )}
 
-                {/* Lista de temas */}
-                {temasActuales.map(t => (
-                  <TemaRow
-                    key={t.id}
-                    tema={t}
-                    onToggle={handleToggle}
-                    onDelete={handleDelete}
-                  />
-                ))}
+                {/* Lista de temas A-Z por cliente */}
+                {(() => {
+                  const conCliente  = temasActuales.filter(t => t.cliente_nombre)
+                  const sinCliente  = temasActuales.filter(t => !t.cliente_nombre)
+                  const byLetter    = {}
+                  conCliente.forEach(t => {
+                    const l = t.cliente_nombre.trim().charAt(0).toUpperCase() || '#'
+                    if (!byLetter[l]) byLetter[l] = []
+                    byLetter[l].push(t)
+                  })
+                  const sections = Object.entries(byLetter).sort(([a], [b]) => a.localeCompare(b))
+                  const hasGroups = sections.length > 0
+                  return (
+                    <>
+                      {sections.map(([letra, lista]) => (
+                        <div key={letra} className="space-y-2">
+                          <p className="text-[10px] font-bold text-gray-300 uppercase tracking-widest pt-1 pb-0.5">{letra}</p>
+                          {lista.map(t => (
+                            <TemaRow key={t.id} tema={t} onToggle={handleToggle} onDelete={handleDelete} />
+                          ))}
+                        </div>
+                      ))}
+                      {sinCliente.length > 0 && (
+                        <div className="space-y-2">
+                          {hasGroups && <p className="text-[10px] font-bold text-gray-300 uppercase tracking-widest pt-1 pb-0.5">Sin cliente</p>}
+                          {sinCliente.map(t => (
+                            <TemaRow key={t.id} tema={t} onToggle={handleToggle} onDelete={handleDelete} />
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )
+                })()}
 
                 {/* Inline add form */}
                 {showAdd && (
@@ -581,7 +634,7 @@ export default function Reuniones() {
                   <button
                     onClick={() => handleSaveAcuerdos(false)}
                     disabled={savingAcuerdos}
-                    className="flex items-center gap-1.5 text-xs font-semibold bg-[#1a2e4a] text-white px-4 py-2 rounded-xl hover:bg-[#2570ba] disabled:opacity-40 transition-colors shadow-sm">
+                    className="flex items-center gap-1.5 text-xs font-semibold bg-[#2570BA] text-white px-4 py-2 rounded-xl hover:bg-[#2570BA]/90 disabled:opacity-40 transition-colors shadow-sm">
                     {savingAcuerdos
                       ? <Loader2 size={12} className="animate-spin"/>
                       : savedFlash

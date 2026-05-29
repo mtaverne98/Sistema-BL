@@ -707,7 +707,7 @@ export default function QuickAdd() {
             setEntityType(null)
           }}
           title="Quick Add (⌘⇧N)"
-          className={`flex items-center gap-2 pl-3.5 pr-4 py-2.5 rounded-full bg-[#1a2e4a] text-white
+          className={`flex items-center gap-2 pl-3.5 pr-4 py-2.5 rounded-full bg-[#2570BA] text-white
             shadow-lg shadow-[#1a2e4a]/30
             hover:bg-[#243d5e] hover:shadow-xl hover:shadow-[#1a2e4a]/35
             active:scale-95

@@ -174,7 +174,7 @@ function AbogadasSelect({ value, onChange }) {
         <Users size={11} />
         Asiste
         {hasSelected && (
-          <span className="bg-[#1a2e4a] text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
+          <span className="bg-[#2570BA] text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
             {value.length}
           </span>
         )}
@@ -301,7 +301,7 @@ function ResultadoEditor({ value, onChange }) {
             </button>
             <button
               onClick={() => { onChange(draft); setOpen(false) }}
-              className="text-xs bg-[#1a2e4a] text-white px-4 py-1.5 rounded-lg hover:bg-[#2570ba] transition-colors font-medium"
+              className="text-xs bg-[#2570BA] text-white px-4 py-1.5 rounded-lg hover:bg-[#2570BA]/90 transition-colors font-medium"
             >
               Guardar
             </button>
@@ -380,7 +380,7 @@ function MinutaEditor({ value, onChange, audiencia }) {
               )}
               <button
                 onClick={(e) => { e.stopPropagation(); onChange(draft); setOpen(false) }}
-                className="text-[10px] bg-[#1a2e4a] text-white px-3 py-1 rounded-md hover:bg-[#2570ba] transition-colors font-medium"
+                className="text-[10px] bg-[#2570BA] text-white px-3 py-1 rounded-md hover:bg-[#2570BA]/90 transition-colors font-medium"
               >
                 Guardar
               </button>
@@ -795,7 +795,7 @@ function FormAudiencia({ inicial, causas, onGuardar, onCancelar, guardando }) {
           <button
             onClick={() => onGuardar(form)}
             disabled={guardando || !form.fecha}
-            className="inline-flex items-center gap-2 text-xs bg-[#1a2e4a] text-white px-5 py-2 rounded-xl hover:bg-[#2570ba] transition-colors font-medium disabled:opacity-50"
+            className="inline-flex items-center gap-2 text-xs bg-[#2570BA] text-white px-5 py-2 rounded-xl hover:bg-[#2570BA]/90 transition-colors font-medium disabled:opacity-50"
           >
             {guardando && <Loader2 size={12} className="animate-spin" />}
             Guardar
@@ -937,7 +937,7 @@ export default function Audiencias() {
         </div>
         <button
           onClick={() => setMostrarForm(true)}
-          className="inline-flex items-center gap-2 bg-[#1a2e4a] text-white text-sm font-medium px-4 py-2.5 rounded-xl hover:bg-[#2570ba] transition-colors"
+          className="inline-flex items-center gap-2 bg-[#2570BA] text-white text-sm font-medium px-4 py-2.5 rounded-xl hover:bg-[#2570BA]/90 transition-colors"
         >
           <Plus size={15} />
           Nueva audiencia

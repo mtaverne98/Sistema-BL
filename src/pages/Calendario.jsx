@@ -292,7 +292,7 @@ function WeekView({ eventos, days, onEventClick, onSlotClick, onDrop }) {
             <div key={day} className={`flex-1 text-center py-3 border-l border-gray-50 ${isToday ? 'bg-blue-50/30' : isWeekend ? 'bg-gray-50/50' : ''}`}>
               <div className={`text-[10px] font-semibold uppercase tracking-wider ${isToday ? 'text-blue-500' : isWeekend ? 'text-gray-300' : 'text-gray-400'}`}>{label}</div>
               <div className={`text-lg font-bold mt-0.5 w-8 h-8 flex items-center justify-center mx-auto rounded-full ${
-                isToday ? 'bg-[#1a2e4a] text-white' : isWeekend ? 'text-gray-300' : 'text-gray-700'
+                isToday ? 'bg-[#2570BA] text-white' : isWeekend ? 'text-gray-300' : 'text-gray-700'
               }`}>{num}</div>
             </div>
           )
@@ -501,7 +501,7 @@ function MonthView({ eventos, anchor, onEventClick, onDayClick, selectedDay }) {
               className={`bg-white p-2 min-h-[88px] cursor-pointer transition-colors hover:bg-gray-50/70 ${!isCurrentMonth ? 'opacity-25' : ''} ${isSelected ? 'ring-2 ring-inset ring-[#1a2e4a]/20' : ''}`}
             >
               <div className={`text-[12px] font-bold w-6 h-6 flex items-center justify-center rounded-full mb-1.5 leading-none ${
-                isToday ? 'bg-[#1a2e4a] text-white' : 'text-gray-600'
+                isToday ? 'bg-[#2570BA] text-white' : 'text-gray-600'
               }`}>
                 {parse(dateStr).getDate()}
               </div>
@@ -544,7 +544,7 @@ function DaySidebar({ date, eventos, onEventClick, onClose, onNewEvent }) {
         </div>
         <div className="flex items-center gap-2">
           <button onClick={() => onNewEvent(date, '09:00')}
-            className="flex items-center gap-1.5 text-[11px] font-semibold bg-[#1a2e4a] text-white px-3 py-1.5 rounded-lg hover:bg-[#2570ba] transition-colors">
+            className="flex items-center gap-1.5 text-[11px] font-semibold bg-[#2570BA] text-white px-3 py-1.5 rounded-lg hover:bg-[#2570BA]/90 transition-colors">
             <Plus size={12} /> Nuevo
           </button>
           <button onClick={onClose} className="text-gray-300 hover:text-gray-500 transition-colors p-1 rounded-lg hover:bg-gray-100">
@@ -776,7 +776,7 @@ function EventPanel({ ev, todos, onClose, onUpdate }) {
                 className="w-24 text-xs border border-blue-100 rounded-lg px-2 py-1.5 focus:outline-none focus:border-blue-300 bg-white" />
             )}
             <button onClick={confirmResc}
-              className="text-[11px] font-bold bg-[#1a2e4a] text-white px-3 py-1.5 rounded-lg hover:bg-[#2570ba] whitespace-nowrap transition-colors">
+              className="text-[11px] font-bold bg-[#2570BA] text-white px-3 py-1.5 rounded-lg hover:bg-[#2570BA]/90 whitespace-nowrap transition-colors">
               OK
             </button>
           </div>
@@ -875,7 +875,7 @@ function EventPanel({ ev, todos, onClose, onUpdate }) {
                 <button onClick={() => { setNotas(ev.notas); setEditNotas(false) }}
                   className="text-xs text-gray-400 hover:text-gray-600 px-3 py-1.5 rounded-lg hover:bg-gray-50">Cancelar</button>
                 <button onClick={saveNotas}
-                  className="text-xs font-semibold bg-[#1a2e4a] text-white px-3 py-1.5 rounded-lg hover:bg-[#2570ba]">Guardar</button>
+                  className="text-xs font-semibold bg-[#2570BA] text-white px-3 py-1.5 rounded-lg hover:bg-[#2570BA]/90">Guardar</button>
               </div>
             </div>
           ) : (
@@ -1053,7 +1053,7 @@ function NewEventForm({ initial, onClose, onSave }) {
           Cancelar
         </button>
         <button onClick={handleSave} disabled={!form.titulo.trim() || saving}
-          className="flex-1 text-xs bg-[#1a2e4a] text-white py-2.5 rounded-xl hover:bg-[#2570ba] transition-colors font-semibold disabled:opacity-40 shadow-sm">
+          className="flex-1 text-xs bg-[#2570BA] text-white py-2.5 rounded-xl hover:bg-[#2570BA]/90 transition-colors font-semibold disabled:opacity-40 shadow-sm">
           {saving ? 'Guardando...' : 'Crear evento'}
         </button>
       </div>
@@ -1067,7 +1067,7 @@ function SyncToast({ msg }) {
   return (
     <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[9999] pointer-events-none
       animate-in slide-in-from-bottom-2 fade-in duration-200">
-      <div className="bg-[#1a2e4a] text-white text-xs font-medium px-4 py-2.5 rounded-full
+      <div className="bg-[#2570BA] text-white text-xs font-medium px-4 py-2.5 rounded-full
         shadow-xl shadow-black/20 flex items-center gap-2.5 whitespace-nowrap">
         <RefreshCw size={11} className="text-emerald-400 animate-spin" style={{ animationDuration: '1.5s' }} />
         <span>{msg}</span>
@@ -1556,7 +1556,7 @@ export default function Calendario() {
           {/* New event */}
           <button
             onClick={() => { setSelEvent(null); setSelDay(null); setFormInitial(null); setShowForm(true) }}
-            className="inline-flex items-center gap-1.5 bg-[#1a2e4a] text-white text-xs font-semibold px-3.5 py-2 rounded-xl hover:bg-[#2570ba] transition-colors shadow-sm">
+            className="inline-flex items-center gap-1.5 bg-[#2570BA] text-white text-xs font-semibold px-3.5 py-2 rounded-xl hover:bg-[#2570BA]/90 transition-colors shadow-sm">
             <Plus size={14} /> Nuevo evento
           </button>
         </div>

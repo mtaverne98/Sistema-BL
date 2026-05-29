@@ -66,19 +66,21 @@ function NavItem({ to, icon: Icon, label, badge }) {
       end={to === '/'}
       className={({ isActive }) =>
         `flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-[13px] transition-all duration-150 group select-none ${
-          isActive ? 'bg-[#1a2e4a] text-white font-medium' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'
+          isActive
+            ? 'bg-[#2570BA] text-white font-medium shadow-sm'
+            : 'text-white/60 hover:text-white hover:bg-white/10'
         }`
       }
     >
       {({ isActive }) => (
         <>
           <Icon size={14} strokeWidth={isActive ? 2.2 : 1.75}
-            className={isActive ? 'text-white/90 flex-shrink-0' : 'text-gray-400 group-hover:text-gray-500 flex-shrink-0'} />
+            className={isActive ? 'text-white/90 flex-shrink-0' : 'text-white/50 group-hover:text-white/80 flex-shrink-0'} />
           <span className="truncate leading-none flex-1">{label}</span>
           {badge > 0 && (
-            <span className={`flex-shrink-0 min-w-[16px] h-4 px-1 rounded-full text-[9px] font-bold flex items-center justify-center ${
-              isActive ? 'bg-white/20 text-white' : 'bg-red-500 text-white'
-            }`}>{badge}</span>
+            <span className="flex-shrink-0 min-w-[16px] h-4 px-1 rounded-full text-[9px] font-bold flex items-center justify-center bg-red-400 text-white">
+              {badge}
+            </span>
           )}
         </>
       )}
@@ -406,50 +408,51 @@ export default function MainLayout() {
     <div className="flex h-screen bg-white overflow-hidden">
 
       {/* ── Sidebar ── */}
-      <aside className="flex-shrink-0 flex flex-col bg-white border-r border-gray-100" style={{ width: 224 }}>
+      <aside className="flex-shrink-0 flex flex-col" style={{ width: 224, backgroundColor: '#1A2E4A' }}>
 
         {/* Logo */}
-        <div className="px-4 pt-4 pb-3 border-b border-gray-100">
+        <div className="px-4 pt-4 pb-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
           <img
             src="/logo.jpg"
             alt="Bianchi Leiva Abogadas"
-            className="w-full object-contain"
+            className="w-full object-contain rounded-lg"
             style={{ maxHeight: 56 }}
           />
         </div>
 
         {/* CMD+K search bar */}
-        <div className="px-3 py-2.5 border-b border-gray-50">
+        <div className="px-3 py-2.5" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
           <button
             onClick={() => setCmdOpen(true)}
-            className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-gray-50 hover:bg-gray-100 border border-gray-100 hover:border-gray-200 transition-all text-left group"
+            className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg transition-all text-left group"
+            style={{ backgroundColor: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)' }}
           >
-            <Search size={12} className="text-gray-400 flex-shrink-0" />
-            <span className="text-[12px] text-gray-400 flex-1">Buscar...</span>
+            <Search size={12} className="text-white/40 flex-shrink-0" />
+            <span className="text-[12px] text-white/40 flex-1">Buscar...</span>
             <div className="flex items-center gap-0.5">
-              <kbd className="text-[9px] text-gray-300 bg-white border border-gray-200 rounded px-1 py-0.5 font-mono">⌘</kbd>
-              <kbd className="text-[9px] text-gray-300 bg-white border border-gray-200 rounded px-1 py-0.5 font-mono">K</kbd>
+              <kbd className="text-[9px] text-white/25 rounded px-1 py-0.5 font-mono" style={{ backgroundColor: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)' }}>⌘</kbd>
+              <kbd className="text-[9px] text-white/25 rounded px-1 py-0.5 font-mono" style={{ backgroundColor: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)' }}>K</kbd>
             </div>
           </button>
         </div>
 
         {/* Quick Add hint */}
-        <div className="px-3 py-2 border-b border-gray-50">
+        <div className="px-3 py-2" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
           <div className="flex items-center justify-between px-2.5">
-            <span className="text-[10px] text-gray-400">Crear nuevo</span>
+            <span className="text-[10px] text-white/35">Crear nuevo</span>
             <div className="flex items-center gap-0.5">
-              <kbd className="text-[9px] text-gray-300 bg-gray-50 border border-gray-100 rounded px-1 py-0.5 font-mono">⌘</kbd>
-              <kbd className="text-[9px] text-gray-300 bg-gray-50 border border-gray-100 rounded px-1 py-0.5 font-mono">⇧N</kbd>
+              <kbd className="text-[9px] text-white/25 rounded px-1 py-0.5 font-mono" style={{ backgroundColor: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)' }}>⌘</kbd>
+              <kbd className="text-[9px] text-white/25 rounded px-1 py-0.5 font-mono" style={{ backgroundColor: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)' }}>⇧N</kbd>
             </div>
           </div>
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-4">
+        <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-4" style={{ scrollbarWidth: 'none' }}>
           {sections.map((section, si) => (
             <div key={si}>
               {section.label && (
-                <p className="px-2.5 mb-1 text-[10px] font-semibold text-gray-300 uppercase tracking-widest select-none">
+                <p className="px-2.5 mb-1 text-[10px] font-semibold uppercase tracking-widest select-none text-white/30">
                   {section.label}
                 </p>
               )}
@@ -467,20 +470,20 @@ export default function MainLayout() {
         </nav>
 
         {/* User */}
-        <div className="px-2 pb-4 pt-2 border-t border-gray-100">
+        <div className="px-2 pb-4 pt-2" style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
           <button
             onClick={() => setUser(null)}
-            className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md hover:bg-gray-50 cursor-pointer group transition-colors"
+            className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md cursor-pointer group transition-colors hover:bg-white/10"
             title="Cambiar usuario"
           >
             <div className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0"
-              style={{ backgroundColor: user?.color || '#2570ba' }}>
+              style={{ backgroundColor: user?.color || '#2570BA' }}>
               {user?.id || 'MT'}
             </div>
-            <span className="text-[13px] text-gray-600 flex-1 truncate text-left">
+            <span className="text-[13px] text-white/70 flex-1 truncate text-left">
               {user ? `${user.nombre} ${user.apellido}` : 'Macarena T.'}
             </span>
-            <LogOut size={13} className="text-gray-300 group-hover:text-gray-400 flex-shrink-0 transition-colors" />
+            <LogOut size={13} className="text-white/25 group-hover:text-white/50 flex-shrink-0 transition-colors" />
           </button>
         </div>
       </aside>

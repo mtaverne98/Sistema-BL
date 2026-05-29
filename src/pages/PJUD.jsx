@@ -230,7 +230,7 @@ function GenerarTareaForm({ causaRit, clienteNombre, mov, addTarea, onClose }) {
           onClose()
         }}
           disabled={!valid}
-          className={`text-[11px] px-3 py-1.5 rounded-lg font-medium flex items-center gap-1.5 transition-colors ${valid ? 'bg-[#1a2e4a] text-white hover:bg-[#243d5e]' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>
+          className={`text-[11px] px-3 py-1.5 rounded-lg font-medium flex items-center gap-1.5 transition-colors ${valid ? 'bg-[#2570BA] text-white hover:bg-[#2570BA]/90' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>
           <Check size={10} /> Crear tarea
         </button>
         <button onClick={e => { e.stopPropagation(); onClose() }}
@@ -290,7 +290,7 @@ function GenerarPlazoForm({ causaRit, clienteNombre, mov, addPlazo, onClose }) {
           onClose()
         }}
           disabled={!valid}
-          className={`text-[11px] px-3 py-1.5 rounded-lg font-medium flex items-center gap-1.5 transition-colors ${valid ? 'bg-[#1a2e4a] text-white hover:bg-[#243d5e]' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>
+          className={`text-[11px] px-3 py-1.5 rounded-lg font-medium flex items-center gap-1.5 transition-colors ${valid ? 'bg-[#2570BA] text-white hover:bg-[#2570BA]/90' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>
           <Check size={10} /> Crear plazo
         </button>
         <button onClick={e => { e.stopPropagation(); onClose() }}
@@ -449,7 +449,7 @@ function FormNuevaEntrada({ causa, causasInfo, onSave, onClose, globalMode = fal
                 {[true, false].map(v => (
                   <label key={String(v)} className="flex items-center gap-2 cursor-pointer">
                     <div onClick={() => setForm(f => ({ ...f, tiene_documento: v }))}
-                      className={`w-4 h-4 rounded border flex items-center justify-center cursor-pointer transition-colors ${form.tiene_documento === v ? 'bg-[#1a2e4a] border-[#1a2e4a]' : 'border-gray-300'}`}>
+                      className={`w-4 h-4 rounded border flex items-center justify-center cursor-pointer transition-colors ${form.tiene_documento === v ? 'bg-[#2570BA] border-[#2570BA]' : 'border-gray-300'}`}>
                       {form.tiene_documento === v && <Check size={9} className="text-white" />}
                     </div>
                     <span className="text-[12px] text-gray-600">{v ? 'Sí' : 'No'}</span>
@@ -472,7 +472,7 @@ function FormNuevaEntrada({ causa, causasInfo, onSave, onClose, globalMode = fal
         <div className="px-5 py-4 border-t border-gray-100 flex items-center justify-end gap-2.5">
           <button onClick={onClose} className="text-[13px] px-4 py-2 rounded-lg text-gray-600 border border-gray-200 hover:bg-gray-50">Cancelar</button>
           <button onClick={handleSubmit} disabled={!valid}
-            className={`text-[13px] px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors ${valid ? 'bg-[#1a2e4a] text-white hover:bg-[#243d5e]' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>
+            className={`text-[13px] px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors ${valid ? 'bg-[#2570BA] text-white hover:bg-[#2570BA]/90' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>
             <Plus size={13} /> Guardar entrada
           </button>
         </div>
@@ -595,7 +595,7 @@ function MovimientoDetail({ mov, causaRit, clienteNombre, onUpdate, addTarea, ad
               className="w-full text-[12px] border border-gray-200 rounded-lg px-2.5 py-2 resize-none focus:outline-none focus:border-blue-400" />
             <div className="flex gap-2">
               <button onClick={() => { onUpdate(mov.id, { notas: notaDraft }); setEditNota(false) }}
-                className="text-[11px] px-2.5 py-1 bg-[#1a2e4a] text-white rounded-lg hover:bg-[#243d5e] flex items-center gap-1">
+                className="text-[11px] px-2.5 py-1 bg-[#2570BA] text-white rounded-lg hover:bg-[#2570BA]/90 flex items-center gap-1">
                 <Check size={10} /> Guardar
               </button>
               <button onClick={() => { setEditNota(false); setNotaDraft(mov.notas) }}
@@ -716,7 +716,7 @@ function MovimientosTable({ causaData, rowsAll, onUpdate, onAdd, causasInfo, add
               {search && <button onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><X size={11}/></button>}
             </div>
             <button onClick={() => setShowForm(true)}
-              className="flex items-center gap-1.5 text-xs font-semibold bg-[#1a2e4a] text-white px-3.5 py-2 rounded-xl hover:bg-[#2570ba] transition-colors shadow-sm">
+              className="flex items-center gap-1.5 text-xs font-semibold bg-[#2570BA] text-white px-3.5 py-2 rounded-xl hover:bg-[#2570BA]/90 transition-colors shadow-sm">
               <Plus size={13}/> Nueva entrada
             </button>
           </div>
@@ -959,7 +959,7 @@ function ClienteRow({ clienteData, rowsAll, isExpanded, onToggle, onSelectCausa 
         className={`w-full flex items-center gap-3 px-5 py-3.5 text-left transition-colors ${
           isExpanded ? 'bg-[#1a2e4a]/[0.04]' : 'bg-white hover:bg-gray-50'
         }`}>
-        <div className="w-9 h-9 rounded-full bg-[#1a2e4a] flex items-center justify-center flex-shrink-0 text-white text-[11px] font-bold select-none">
+        <div className="w-9 h-9 rounded-full bg-[#2570BA] flex items-center justify-center flex-shrink-0 text-white text-[11px] font-bold select-none">
           {ini}
         </div>
         <div className="flex-1 min-w-0">
@@ -1199,7 +1199,7 @@ export default function PJUD() {
               <Table2 size={14} /> Carga masiva
             </button>
             <button onClick={() => setShowNuevaSolicitud(true)}
-              className="flex items-center gap-2 px-3.5 py-2 bg-[#1a2e4a] text-white text-[13px] font-medium rounded-lg hover:bg-[#243d5e] transition-colors">
+              className="flex items-center gap-2 px-3.5 py-2 bg-[#2570BA] text-white text-[13px] font-medium rounded-lg hover:bg-[#2570BA]/90 transition-colors">
               <Plus size={14} /> Nueva entrada
             </button>
             <a href="https://oficinajudicialvirtual.pjud.cl/" target="_blank" rel="noopener noreferrer"

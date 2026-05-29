@@ -287,9 +287,9 @@ export default function CargaMasivaModal({ modulo, allCausas, onClose, onSuccess
               {[1, 2].map(s => (
                 <div key={s} className="flex items-center gap-1.5">
                   <div className={`w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center transition-colors ${
-                    step >= s ? 'bg-[#1a2e4a] text-white' : 'bg-gray-100 text-gray-400'
+                    step >= s ? 'bg-[#2570BA] text-white' : 'bg-gray-100 text-gray-400'
                   }`}>{s}</div>
-                  {s < 2 && <div className={`w-6 h-px ${step > s ? 'bg-[#1a2e4a]' : 'bg-gray-200'}`} />}
+                  {s < 2 && <div className={`w-6 h-px ${step > s ? 'bg-[#2570BA]' : 'bg-gray-200'}`} />}
                 </div>
               ))}
             </div>
@@ -309,7 +309,7 @@ export default function CargaMasivaModal({ modulo, allCausas, onClose, onSuccess
               <p className="text-[16px] font-semibold text-gray-900">{savedCount} {savedCount === 1 ? 'registro cargado' : 'registros cargados'}</p>
               <p className="text-[13px] text-gray-400 mt-1">Los registros se añadieron a {tableName} correctamente</p>
             </div>
-            <button onClick={onClose} className="mt-2 px-5 py-2 bg-[#1a2e4a] hover:bg-[#1a2e4a]/90 text-white text-[13px] font-medium rounded-lg transition-colors">
+            <button onClick={onClose} className="mt-2 px-5 py-2 bg-[#2570BA] hover:bg-[#2570BA]/90 text-white text-[13px] font-medium rounded-lg transition-colors">
               Cerrar
             </button>
           </div>
@@ -502,7 +502,7 @@ export default function CargaMasivaModal({ modulo, allCausas, onClose, onSuccess
                 <button
                   onClick={handleSave}
                   disabled={!canSave || !canGoStep2}
-                  className="flex items-center gap-2 px-4 py-1.5 bg-[#1a2e4a] hover:bg-[#1a2e4a]/90 disabled:opacity-40 disabled:cursor-not-allowed text-white text-[13px] font-medium rounded-lg transition-colors"
+                  className="flex items-center gap-2 px-4 py-1.5 bg-[#2570BA] hover:bg-[#2570BA]/90 disabled:opacity-40 disabled:cursor-not-allowed text-white text-[13px] font-medium rounded-lg transition-colors"
                 >
                   {saving
                     ? <><Loader2 size={13} className="animate-spin" /> Guardando…</>

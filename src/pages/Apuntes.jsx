@@ -186,14 +186,14 @@ function WeekRow({ week, semana, audiencias, tareas, isCurrent, isPast,
       {/* Week header row */}
       <button onClick={() => setExpanded(v => !v)}
         className="w-full flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-gray-50 transition-colors text-left group">
-        <div className={`w-1 h-1 rounded-full flex-shrink-0 ${isCurrent ? 'bg-[#1a2e4a]' : isPast ? 'bg-gray-200' : 'bg-gray-300'}`} />
+        <div className={`w-1 h-1 rounded-full flex-shrink-0 ${isCurrent ? 'bg-[#2570BA]' : isPast ? 'bg-gray-200' : 'bg-gray-300'}`} />
         <span className={`text-[11px] font-semibold uppercase tracking-widest flex-1 ${
           isCurrent ? 'text-[#1a2e4a]' : isPast ? 'text-gray-300' : 'text-gray-500'
         }`}>
           {week.label}
         </span>
         {isCurrent && (
-          <span className="text-[8px] font-bold bg-[#1a2e4a] text-white px-1.5 py-0.5 rounded-full uppercase tracking-wide flex-shrink-0">
+          <span className="text-[8px] font-bold bg-[#2570BA] text-white px-1.5 py-0.5 rounded-full uppercase tracking-wide flex-shrink-0">
             ACTUAL
           </span>
         )}
@@ -231,7 +231,7 @@ function WeekRow({ week, semana, audiencias, tareas, isCurrent, isPast,
                       <span className="text-[12px] font-bold text-[#1a2e4a] tracking-wide">
                         {dowShort(date)} {dayNum(date)}
                       </span>
-                      <span className="text-[8px] font-bold bg-[#1a2e4a] text-white px-1.5 py-0.5 rounded-full uppercase tracking-wide">
+                      <span className="text-[8px] font-bold bg-[#2570BA] text-white px-1.5 py-0.5 rounded-full uppercase tracking-wide">
                         HOY
                       </span>
                       {hoItems.filter(i => !i.done).length > 0 && (
@@ -318,7 +318,7 @@ function WeekRow({ week, semana, audiencias, tareas, isCurrent, isPast,
                 {displayDays.map(date => (
                   <button key={date} onClick={() => setSelDay(date)}
                     className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-md transition-all ${
-                      selDay === date ? 'bg-[#1a2e4a] text-white'
+                      selDay === date ? 'bg-[#2570BA] text-white'
                         : date === TODAY ? 'bg-[#1a2e4a]/10 text-[#1a2e4a]'
                         : 'bg-white border border-gray-200 text-gray-500 hover:border-gray-300'
                     }`}>

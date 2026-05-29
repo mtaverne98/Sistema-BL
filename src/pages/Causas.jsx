@@ -454,7 +454,7 @@ function PillSelector({ label, value, onChange, options }) {
         {options.map(opt => (
           <button key={opt} type="button" onClick={() => onChange(opt)}
             className={`flex-1 py-1.5 px-2 text-xs font-medium rounded-lg border transition-all ${
-              value === opt ? 'border-[#1a2e4a] bg-[#1a2e4a] text-white' : 'border-gray-200 text-gray-500 hover:border-gray-300 hover:bg-gray-50'
+              value === opt ? 'border-[#2570BA] bg-[#2570BA] text-white' : 'border-gray-200 text-gray-500 hover:border-gray-300 hover:bg-gray-50'
             }`}>
             {opt}
           </button>
@@ -520,7 +520,7 @@ function AreaSelector({ value, onChange }) {
           const cls   = sel
             ? group === 'penal'  ? 'border-red-500 bg-red-500 text-white'
             : group === 'corte'  ? 'border-indigo-500 bg-indigo-500 text-white'
-            : 'border-[#1a2e4a] bg-[#1a2e4a] text-white'
+            : 'border-[#2570BA] bg-[#2570BA] text-white'
             : 'border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50/80'
           return (
             <button key={area} type="button" onClick={() => onChange(area)}
@@ -743,7 +743,7 @@ function FormCausa({ inicial, onClose, onGuardar, guardando, clientes = [], onCr
         <button onClick={() => onGuardar(form)}
           disabled={guardando || !clienteObj}
           className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium text-white rounded-lg transition-colors disabled:opacity-50"
-          style={{ backgroundColor: '#1a2e4a' }}>
+          style={{ backgroundColor: '#2570BA' }}>
           {guardando && <Loader2 size={11} className="animate-spin" />}
           {esEdicion ? 'Guardar cambios' : 'Guardar'}
         </button>
@@ -1016,7 +1016,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate }) {
 
       {/* Toast */}
       {toastMsg && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-[#1a2e4a] text-white text-[12px] font-medium px-4 py-2.5 rounded-xl shadow-lg flex items-center gap-2">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-[#2570BA] text-white text-[12px] font-medium px-4 py-2.5 rounded-xl shadow-lg flex items-center gap-2">
           <Check size={12} className="text-emerald-400" />
           {toastMsg}
         </div>
@@ -1423,7 +1423,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate }) {
                 <button
                   onClick={() => setShowRevForm(true)}
                   className="flex items-center gap-1.5 text-[12px] font-medium text-white px-3.5 py-2 rounded-lg transition-colors hover:opacity-90"
-                  style={{ backgroundColor: '#1a2e4a' }}
+                  style={{ backgroundColor: '#2570BA' }}
                 >
                   <Plus size={12} /> Nueva revisión
                 </button>
@@ -1494,7 +1494,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate }) {
                     onClick={handleSaveRevision}
                     disabled={savingRev || !revDraft.nota.trim()}
                     className="flex items-center gap-1.5 text-[12px] font-medium text-white px-4 py-2 rounded-lg disabled:opacity-50 transition-colors hover:opacity-90"
-                    style={{ backgroundColor: '#1a2e4a' }}
+                    style={{ backgroundColor: '#2570BA' }}
                   >
                     {savingRev ? <Loader2 size={11} className="animate-spin" /> : <Check size={11} />}
                     Guardar revisión
@@ -1582,7 +1582,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate }) {
                         {/* Dot */}
                         <div className={`absolute left-0 top-2 w-[18px] h-[18px] rounded-full border-2 flex items-center justify-center ${
                           rev.urgente ? 'border-red-400 bg-red-400' :
-                          isFirst ? 'border-[#1a2e4a] bg-[#1a2e4a]' : 'border-gray-200 bg-white'
+                          isFirst ? 'border-[#2570BA] bg-[#2570BA]' : 'border-gray-200 bg-white'
                         }`}>
                           {rev.urgente ? <Flame size={9} className="text-white" /> :
                            isFirst ? <Check size={9} className="text-white" strokeWidth={3} /> : null}
@@ -1626,7 +1626,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate }) {
                                   onClick={handleSaveEditRevision}
                                   disabled={savingEditRev || !editRevDraft.nota.trim()}
                                   className="flex items-center gap-1.5 text-[11px] font-medium text-white px-3 py-1.5 rounded-lg disabled:opacity-50 hover:opacity-90"
-                                  style={{ backgroundColor: '#1a2e4a' }}
+                                  style={{ backgroundColor: '#2570BA' }}
                                 >
                                   {savingEditRev ? <Loader2 size={10} className="animate-spin" /> : <Check size={10} />}
                                   Guardar
@@ -1852,7 +1852,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate }) {
                         active
                           ? f.color
                             ? `${c.badge} ${c.border}`
-                            : 'bg-[#1a2e4a] text-white border-[#1a2e4a]'
+                            : 'bg-[#2570BA] text-white border-[#2570BA]'
                           : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300 hover:text-gray-700'
                       }`}
                     >
@@ -2251,7 +2251,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate }) {
                 <button
                   onClick={() => { setNewSegRow({ fecha_revision: TODAY_C, por_hacer: '', que_se_hizo: 'Pendiente', notas: '' }); setEditSegId(null) }}
                   disabled={!!newSegRow}
-                  className="flex items-center gap-1.5 text-xs font-semibold bg-[#1a2e4a] text-white px-3.5 py-2 rounded-xl hover:bg-[#2570ba] disabled:opacity-40 transition-colors shadow-sm">
+                  className="flex items-center gap-1.5 text-xs font-semibold bg-[#2570BA] text-white px-3.5 py-2 rounded-xl hover:bg-[#2570BA]/90 disabled:opacity-40 transition-colors shadow-sm">
                   <Plus size={13}/> Agregar
                 </button>
               </div>
@@ -2469,6 +2469,17 @@ function CausasSidebar({ causas, clienteActivo, onSelect, busquedaSidebar, setBu
     )
   }, [busquedaSidebar, clientes, causas])
 
+  // Agrupar A-Z por primera letra
+  const byLetterSidebar = useMemo(() => {
+    const map = {}
+    filtrados.forEach(c => {
+      const l = c.nombre.trim().charAt(0).toUpperCase() || '#'
+      if (!map[l]) map[l] = []
+      map[l].push(c)
+    })
+    return Object.entries(map).sort(([a], [b]) => a.localeCompare(b))
+  }, [filtrados])
+
   return (
     <div className="flex-shrink-0 flex flex-col border-r border-gray-100 bg-white overflow-hidden" style={{ width: 200 }}>
       <div className="px-3 pt-4 pb-3 border-b border-gray-100">
@@ -2485,7 +2496,7 @@ function CausasSidebar({ causas, clienteActivo, onSelect, busquedaSidebar, setBu
       <nav className="flex-1 overflow-y-auto py-2">
         <button onClick={() => onSelect(null)}
           className={`w-full flex items-center justify-between px-4 py-2 text-xs font-semibold transition-colors ${
-            clienteActivo === null ? 'bg-[#1a2e4a] text-white' : 'text-gray-700 hover:bg-gray-50'
+            clienteActivo === null ? 'bg-[#2570BA] text-white' : 'text-gray-700 hover:bg-gray-50'
           }`}>
           <div className="flex items-center gap-2">
             <Scale size={12} className={clienteActivo === null ? 'text-white/70' : 'text-gray-400'} />
@@ -2496,32 +2507,39 @@ function CausasSidebar({ causas, clienteActivo, onSelect, busquedaSidebar, setBu
           </span>
         </button>
         <div className="mx-4 my-2 border-t border-gray-100" />
-        {filtrados.map(c => {
-          const isSelected   = clienteActivo === c.nombre
-          const estadoCl     = clienteEstadoMap[c.clienteId] ?? nombreEstadoMap[c.nombre] ?? 'Activo'
-          const isInactivo   = estadoCl !== 'Activo'
-          const avatarBg     = clienteAvatarColor(isSelected, estadoCl)
-          return (
-          <button key={c.nombre} onClick={() => onSelect(c.nombre)}
-            className={`w-full flex items-center justify-between px-4 py-1.5 text-left transition-colors group ${
-              isSelected ? 'bg-[#e8f0fb] text-[#1a2e4a]' : isInactivo ? 'text-gray-400 hover:bg-gray-50' : 'text-gray-600 hover:bg-gray-50'
-            }`}>
-            <div className="flex items-center gap-2 min-w-0">
-              <div className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[8px] font-bold flex-shrink-0"
-                style={{ backgroundColor: avatarBg }}>
-                {initials(c.nombre)}
-              </div>
-              <span className={`text-xs truncate leading-snug ${isInactivo && !isSelected ? 'text-gray-400' : ''}`}>
-                {c.nombre.split(' ')[0]}
-              </span>
+        {byLetterSidebar.length === 0
+          ? <p className="px-4 py-6 text-[11px] text-gray-400 text-center">Sin resultados</p>
+          : byLetterSidebar.map(([letra, grupo]) => (
+            <div key={letra}>
+              <p className="px-4 pt-3 pb-0.5 text-[9px] font-bold text-gray-300 uppercase tracking-widest">{letra}</p>
+              {grupo.map(c => {
+                const isSelected = clienteActivo === c.nombre
+                const estadoCl   = clienteEstadoMap[c.clienteId] ?? nombreEstadoMap[c.nombre] ?? 'Activo'
+                const isInactivo = estadoCl !== 'Activo'
+                const avatarBg   = clienteAvatarColor(isSelected, estadoCl)
+                return (
+                  <button key={c.nombre} onClick={() => onSelect(c.nombre)}
+                    className={`w-full flex items-center justify-between px-4 py-1.5 text-left transition-colors group ${
+                      isSelected ? 'bg-[#e8f0fb] text-[#1a2e4a]' : isInactivo ? 'text-gray-400 hover:bg-gray-50' : 'text-gray-600 hover:bg-gray-50'
+                    }`}>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[8px] font-bold flex-shrink-0"
+                        style={{ backgroundColor: avatarBg }}>
+                        {initials(c.nombre)}
+                      </div>
+                      <span className={`text-xs truncate leading-snug ${isInactivo && !isSelected ? 'text-gray-400' : ''}`}>
+                        {c.nombre.split(' ')[0]}
+                      </span>
+                    </div>
+                    <span className={`text-[10px] tabular-nums font-medium flex-shrink-0 ml-1 ${
+                      isSelected ? 'text-[#2570ba]' : 'text-gray-300 group-hover:text-gray-500'
+                    }`}>{c.total}</span>
+                  </button>
+                )
+              })}
             </div>
-            <span className={`text-[10px] tabular-nums font-medium flex-shrink-0 ml-1 ${
-              isSelected ? 'text-[#2570ba]' : 'text-gray-300 group-hover:text-gray-500'
-            }`}>{c.total}</span>
-          </button>
-          )
-        })}
-        {filtrados.length === 0 && <p className="px-4 py-6 text-[11px] text-gray-400 text-center">Sin resultados</p>}
+          ))
+        }
       </nav>
     </div>
   )
@@ -2690,6 +2708,17 @@ export default function Causas() {
     [...filtradas].sort((a, b) => a.cliente_nombre.localeCompare(b.cliente_nombre, 'es'))
   , [filtradas])
 
+  // Agrupadas A-Z por primera letra del nombre de cliente
+  const agrupadas = useMemo(() => {
+    const grupos = {}
+    ordenadas.forEach(c => {
+      const letra = c.cliente_nombre.trim().charAt(0).toUpperCase() || '#'
+      if (!grupos[letra]) grupos[letra] = []
+      grupos[letra].push(c)
+    })
+    return Object.entries(grupos).sort(([a], [b]) => a.localeCompare(b))
+  }, [ordenadas])
+
   const hayFiltros = filtroEstado || filtroArea || filtroClienteEstado
   const tituloVista = clienteActivo
     ? clienteActivo.split(' ').slice(0, 2).join(' ')
@@ -2751,7 +2780,7 @@ export default function Causas() {
                 <button
                   onClick={() => { setSeleccionada(null); setFormulario('nueva') }}
                   className="flex items-center gap-2 px-3.5 py-2 text-xs font-medium text-white rounded-lg hover:opacity-90 transition-opacity"
-                  style={{ backgroundColor: '#1a2e4a' }}>
+                  style={{ backgroundColor: '#2570BA' }}>
                   <Plus size={13} />Nueva causa
                 </button>
               </div>
@@ -2771,11 +2800,11 @@ export default function Causas() {
                 </button>
                 <div className="flex items-center gap-0.5 border border-gray-200 rounded-lg p-0.5">
                   <button onClick={() => setVista('tabla')}
-                    className={`p-1.5 rounded transition-colors ${vista === 'tabla' ? 'bg-[#1a2e4a] text-white' : 'text-gray-400 hover:text-gray-700'}`}>
+                    className={`p-1.5 rounded transition-colors ${vista === 'tabla' ? 'bg-[#2570BA] text-white' : 'text-gray-400 hover:text-gray-700'}`}>
                     <LayoutList size={12} />
                   </button>
                   <button onClick={() => setVista('agrupado')}
-                    className={`p-1.5 rounded transition-colors ${vista === 'agrupado' ? 'bg-[#1a2e4a] text-white' : 'text-gray-400 hover:text-gray-700'}`}>
+                    className={`p-1.5 rounded transition-colors ${vista === 'agrupado' ? 'bg-[#2570BA] text-white' : 'text-gray-400 hover:text-gray-700'}`}>
                     <Layers size={12} />
                   </button>
                 </div>
@@ -2867,37 +2896,46 @@ export default function Causas() {
                     </tr>
                   </thead>
                   <tbody>
-                    {ordenadas.map(c => (
-                      <tr key={c.id}
-                        onClick={() => { setSeleccionada(seleccionada?.id === c.id ? null : c); setFormulario(null) }}
-                        className={`border-b border-gray-50 cursor-pointer transition-colors ${
-                          seleccionada?.id === c.id ? 'bg-blue-50/40' : 'hover:bg-gray-50/60'
-                        } ${CERRADAS.has(c.estado) ? 'opacity-55' : ''}`}>
-                        {!clienteActivo && (
-                          <td className="pl-7 pr-3 py-2.5">
-                            <div className="flex items-center gap-2">
-                              <div className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[9px] font-bold flex-shrink-0"
-                                style={{ backgroundColor: clienteAvatarColor(false, clienteEstadoMap[c.cliente_id]) }}>
-                                {initials(c.cliente_nombre)}
-                              </div>
-                              <span className={`text-xs whitespace-nowrap ${
-                                clienteEstadoMap[c.cliente_id] && clienteEstadoMap[c.cliente_id] !== 'Activo'
-                                  ? 'text-gray-400' : 'text-gray-800'
-                              }`}>{c.cliente_nombre}</span>
-                            </div>
+                    {agrupadas.map(([letra, grupo]) => (
+                      <>
+                        <tr key={`letra-${letra}`}>
+                          <td colSpan={clienteActivo ? 8 : 9} className="pl-7 pt-5 pb-1.5">
+                            <span className="text-[11px] font-bold text-gray-300 uppercase tracking-widest">{letra}</span>
                           </td>
-                        )}
-                        <td className={`${clienteActivo ? 'pl-7' : ''} px-3 py-2.5`}>
-                          <span className="text-xs text-gray-600">{c.parte}</span>
-                        </td>
-                        <td className="px-3 py-2.5"><span className="text-xs font-mono text-gray-400">{c.ruc ?? '—'}</span></td>
-                        <td className="px-3 py-2.5"><span className="text-xs font-mono text-gray-500">{c.rit ?? '—'}</span></td>
-                        <td className="px-3 py-2.5 max-w-[140px]"><p className="text-xs text-gray-600 truncate">{c.tribunal.split('—')[0]?.trim()}</p></td>
-                        <td className="px-3 py-2.5"><span className="text-xs text-gray-400">{c.fiscalia ?? '—'}</span></td>
-                        <td className="px-3 py-2.5"><AreaBadge area={c.area} /></td>
-                        <td className="px-3 py-2.5 max-w-[140px]"><p className="text-xs text-gray-700 truncate">{c.materia}</p></td>
-                        <td className="px-3 py-2.5"><EstadoBadge estado={c.estado} /></td>
-                      </tr>
+                        </tr>
+                        {grupo.map(c => (
+                          <tr key={c.id}
+                            onClick={() => { setSeleccionada(seleccionada?.id === c.id ? null : c); setFormulario(null) }}
+                            className={`border-b border-gray-50 cursor-pointer transition-colors ${
+                              seleccionada?.id === c.id ? 'bg-blue-50/40' : 'hover:bg-gray-50/60'
+                            } ${CERRADAS.has(c.estado) ? 'opacity-55' : ''}`}>
+                            {!clienteActivo && (
+                              <td className="pl-7 pr-3 py-2.5">
+                                <div className="flex items-center gap-2">
+                                  <div className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[9px] font-bold flex-shrink-0"
+                                    style={{ backgroundColor: clienteAvatarColor(false, clienteEstadoMap[c.cliente_id]) }}>
+                                    {initials(c.cliente_nombre)}
+                                  </div>
+                                  <span className={`text-xs whitespace-nowrap ${
+                                    clienteEstadoMap[c.cliente_id] && clienteEstadoMap[c.cliente_id] !== 'Activo'
+                                      ? 'text-gray-400' : 'text-gray-800'
+                                  }`}>{c.cliente_nombre}</span>
+                                </div>
+                              </td>
+                            )}
+                            <td className={`${clienteActivo ? 'pl-7' : ''} px-3 py-2.5`}>
+                              <span className="text-xs text-gray-600">{c.parte}</span>
+                            </td>
+                            <td className="px-3 py-2.5"><span className="text-xs font-mono text-gray-400">{c.ruc ?? '—'}</span></td>
+                            <td className="px-3 py-2.5"><span className="text-xs font-mono text-gray-500">{c.rit ?? '—'}</span></td>
+                            <td className="px-3 py-2.5 max-w-[140px]"><p className="text-xs text-gray-600 truncate">{c.tribunal.split('—')[0]?.trim()}</p></td>
+                            <td className="px-3 py-2.5"><span className="text-xs text-gray-400">{c.fiscalia ?? '—'}</span></td>
+                            <td className="px-3 py-2.5"><AreaBadge area={c.area} /></td>
+                            <td className="px-3 py-2.5 max-w-[140px]"><p className="text-xs text-gray-700 truncate">{c.materia}</p></td>
+                            <td className="px-3 py-2.5"><EstadoBadge estado={c.estado} /></td>
+                          </tr>
+                        ))}
+                      </>
                     ))}
                   </tbody>
                 </table>
@@ -2909,10 +2947,25 @@ export default function Causas() {
                       if (!grupos[c.cliente_nombre]) grupos[c.cliente_nombre] = []
                       grupos[c.cliente_nombre].push(c)
                     })
-                    return Object.entries(grupos).map(([nombre, lista]) => (
-                      <GrupoCliente key={nombre} nombre={nombre} lista={lista}
-                        seleccionada={seleccionada} onSelect={c => { setSeleccionada(c); setFormulario(null) }} />
-                    ))
+                    const byLetterAgr = {}
+                    Object.entries(grupos).forEach(([nombre, lista]) => {
+                      const l = nombre.trim().charAt(0).toUpperCase() || '#'
+                      if (!byLetterAgr[l]) byLetterAgr[l] = []
+                      byLetterAgr[l].push({ nombre, lista })
+                    })
+                    return Object.entries(byLetterAgr)
+                      .sort(([a], [b]) => a.localeCompare(b))
+                      .map(([letra, gruposLetra]) => (
+                        <div key={letra}>
+                          <div className="px-7 pt-5 pb-1">
+                            <span className="text-[11px] font-bold text-gray-300 uppercase tracking-widest">{letra}</span>
+                          </div>
+                          {gruposLetra.map(({ nombre, lista }) => (
+                            <GrupoCliente key={nombre} nombre={nombre} lista={lista}
+                              seleccionada={seleccionada} onSelect={c => { setSeleccionada(c); setFormulario(null) }} />
+                          ))}
+                        </div>
+                      ))
                   })()}
                 </div>
               )}

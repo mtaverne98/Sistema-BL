@@ -166,7 +166,7 @@ function GoogleCalendarCard() {
           </div>
           <button
             onClick={handleConnect}
-            className="w-full flex items-center justify-center gap-2.5 bg-[#1a2e4a] text-white text-sm font-semibold px-5 py-3 rounded-xl hover:bg-[#2570ba] transition-colors shadow-sm"
+            className="w-full flex items-center justify-center gap-2.5 bg-[#2570BA] text-white text-sm font-semibold px-5 py-3 rounded-xl hover:bg-[#2570BA]/90 transition-colors shadow-sm"
           >
             <Link2 size={15} />
             Conectar Google Calendar
@@ -238,7 +238,7 @@ function GoogleCalendarCard() {
             <button
               onClick={handleSyncAll}
               disabled={syncStatus === 'syncing'}
-              className="flex items-center justify-center gap-2 bg-[#1a2e4a] text-white text-xs font-semibold px-4 py-2.5 rounded-xl hover:bg-[#2570ba] transition-colors disabled:opacity-50 shadow-sm"
+              className="flex items-center justify-center gap-2 bg-[#2570BA] text-white text-xs font-semibold px-4 py-2.5 rounded-xl hover:bg-[#2570BA]/90 transition-colors disabled:opacity-50 shadow-sm"
             >
               {syncStatus === 'syncing'
                 ? <Loader size={13} className="animate-spin" />

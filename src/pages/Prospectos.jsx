@@ -401,7 +401,7 @@ function PanelDetalle({ prospecto, onClose, onConvertir, onUpdate }) {
         <div className="flex items-center gap-3 mb-3">
           <div
             className={`w-9 h-9 rounded-full flex items-center justify-center text-white text-[11px] font-bold flex-shrink-0 transition-opacity ${inactivo ? 'opacity-50' : ''}`}
-            style={{ backgroundColor: '#1a2e4a' }}
+            style={{ backgroundColor: '#2570BA' }}
           >
             {initials(prospecto.nombre)}
           </div>
@@ -589,7 +589,7 @@ function PanelDetalle({ prospecto, onClose, onConvertir, onUpdate }) {
           <div>
             <div className="px-6 py-3 border-b border-gray-50 flex items-center justify-between">
               <p className="text-xs text-gray-500">{prospecto.interacciones.length} interaccion{prospecto.interacciones.length !== 1 ? 'es' : ''}</p>
-              <button className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white rounded-lg" style={{ backgroundColor: '#1a2e4a' }}>
+              <button className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white rounded-lg" style={{ backgroundColor: '#2570BA' }}>
                 <Plus size={11} />Agregar
               </button>
             </div>
@@ -773,7 +773,7 @@ function FormNuevoProspecto({ onClose, onGuardar }) {
       <div className="px-6 py-4 border-t border-gray-100 flex gap-3">
         <button onClick={handleSubmit} disabled={!form.nombre.trim() || guardando}
           className="flex-1 py-2 text-xs font-semibold text-white rounded-lg transition-all disabled:opacity-50 hover:opacity-90"
-          style={{ backgroundColor: '#1a2e4a' }}>
+          style={{ backgroundColor: '#2570BA' }}>
           {guardando ? 'Guardando…' : 'Guardar prospecto'}
         </button>
         <button onClick={onClose} className="px-4 py-2 text-xs text-gray-500 rounded-lg hover:bg-gray-100 transition-colors">
@@ -902,7 +902,7 @@ export default function Prospectos() {
             </div>
             <button onClick={handleNuevo}
               className="flex items-center gap-2 px-3.5 py-2 text-xs font-medium text-white rounded-lg hover:opacity-90 transition-opacity"
-              style={{ backgroundColor: '#1a2e4a' }}>
+              style={{ backgroundColor: '#2570BA' }}>
               <Plus size={13} />Nuevo prospecto
             </button>
           </div>

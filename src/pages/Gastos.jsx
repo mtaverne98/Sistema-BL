@@ -276,7 +276,7 @@ function ModalAgregarGasto({ onSave, onClose }) {
               Cancelar
             </button>
             <button onClick={handleSave} disabled={montoNum <= 0}
-              className="flex items-center gap-1.5 px-4 py-2 bg-[#1a2e4a] text-white text-[12px] font-medium rounded-lg hover:bg-[#243d61] disabled:opacity-40 transition-colors">
+              className="flex items-center gap-1.5 px-4 py-2 bg-[#2570BA] text-white text-[12px] font-medium rounded-lg hover:bg-[#2570BA]/90 disabled:opacity-40 transition-colors">
               <Plus size={12} /> Guardar
             </button>
           </div>
@@ -391,7 +391,7 @@ export default function Gastos() {
             <Printer size={12} /> Imprimir
           </button>
           <button onClick={() => setShowModal(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-[#1a2e4a] text-white text-[12px] font-medium rounded-lg hover:bg-[#243d61] transition-colors">
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-[#2570BA] text-white text-[12px] font-medium rounded-lg hover:bg-[#2570BA]/90 transition-colors">
             <Plus size={13} /> Agregar gasto
           </button>
         </div>
@@ -424,7 +424,7 @@ export default function Gastos() {
             <button key={e ?? 'all'} onClick={() => setFiltroEstado(e)}
               className={`px-3 py-1 rounded-full text-[11px] font-medium transition-all border ${
                 active
-                  ? 'bg-[#1a2e4a] text-white border-[#1a2e4a]'
+                  ? 'bg-[#2570BA] text-white border-[#2570BA]'
                   : 'text-gray-500 border-gray-200 hover:border-gray-300 hover:text-gray-700 bg-white'
               }`}>
               {e ? ESTADO_META[e].label : 'Todos'}

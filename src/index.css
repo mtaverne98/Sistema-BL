@@ -2,14 +2,26 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Paleta BL ─────────────────────────────────────────────────── */
+:root {
+  --bl-navy:       #1A2E4A;   /* sidebar bg */
+  --bl-blue:       #2570BA;   /* botones primarios, acento */
+  --bl-blue-light: #E8F0FB;   /* hover suave */
+  --bl-bg:         #FFFFFF;   /* fondo general */
+  --bl-bg-soft:    #F7F8FA;   /* fondo secundario */
+  --bl-text-1:     #1C2533;   /* texto principal */
+  --bl-text-2:     #4A5568;   /* texto secundario */
+  --bl-border:     #E2E5EA;   /* bordes */
+}
+
 @layer base {
   * {
     box-sizing: border-box;
   }
   body {
     font-family: 'Inter', system-ui, sans-serif;
-    background-color: #ffffff;
-    color: #1a2e4a;
+    background-color: var(--bl-bg);
+    color: var(--bl-text-1);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }

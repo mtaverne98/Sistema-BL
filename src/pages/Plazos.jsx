@@ -345,7 +345,7 @@ function PanelPlazo({ plazo, onClose, onUpdate, tareas }) {
             {urgencia !== 'completado' && urgencia !== 'cancelado' && (
               <button
                 onClick={() => setShowConfirmComplete(true)}
-                className="text-[11px] px-2.5 py-1.5 rounded-lg bg-[#1a2e4a] text-white hover:bg-[#243d5e] transition-colors flex items-center gap-1.5"
+                className="text-[11px] px-2.5 py-1.5 rounded-lg bg-[#2570BA] text-white hover:bg-[#2570BA]/90 transition-colors flex items-center gap-1.5"
               >
                 <Check size={11} />
                 Completar
@@ -535,7 +535,7 @@ function PanelPlazo({ plazo, onClose, onUpdate, tareas }) {
                       ? 'bg-green-500'
                       : urgencia === 'critico' || urgencia === 'vencido'
                         ? 'bg-red-400'
-                        : 'bg-[#1a2e4a]'
+                        : 'bg-[#2570BA]'
                   }`}
                   style={{ width: `${pct}%` }}
                 />
@@ -559,7 +559,7 @@ function PanelPlazo({ plazo, onClose, onUpdate, tareas }) {
                 >
                   <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center flex-shrink-0 ${
                     t.estado === 'Completada'
-                      ? 'bg-[#1a2e4a] border-[#1a2e4a]'
+                      ? 'bg-[#2570BA] border-[#2570BA]'
                       : 'border-gray-300'
                   }`}>
                     {t.estado === 'Completada' && <Check size={8} className="text-white" />}
@@ -835,7 +835,7 @@ function FormNuevoPlazo({ onSave, onClose, allCausas = [] }) {
             disabled={!valid || saving}
             className={`text-[13px] px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${
               valid && !saving
-                ? 'bg-[#1a2e4a] text-white hover:bg-[#243d5e]'
+                ? 'bg-[#2570BA] text-white hover:bg-[#2570BA]/90'
                 : 'bg-gray-100 text-gray-400 cursor-not-allowed'
             }`}
           >
@@ -1033,7 +1033,7 @@ export default function Plazos() {
             </div>
             <button
               onClick={() => setShowForm(true)}
-              className="flex items-center gap-2 px-3.5 py-2 bg-[#1a2e4a] text-white text-[13px] font-medium rounded-lg hover:bg-[#243d5e] transition-colors"
+              className="flex items-center gap-2 px-3.5 py-2 bg-[#2570BA] text-white text-[13px] font-medium rounded-lg hover:bg-[#2570BA]/90 transition-colors"
             >
               <Plus size={14} />
               Nuevo plazo

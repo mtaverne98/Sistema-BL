@@ -689,7 +689,7 @@ export default function Dashboard() {
             {pjudAlertas.length > 0 && (
               <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">
                 <SectionHeader icon={Scale} title="PJUD — Requieren atención"
-                  count={<span className="text-[10px] font-bold bg-[#1a2e4a] text-white px-1.5 py-0.5 rounded-full">{pjudAlertas.length}</span>}
+                  count={<span className="text-[10px] font-bold bg-[#2570BA] text-white px-1.5 py-0.5 rounded-full">{pjudAlertas.length}</span>}
                   linkLabel="Ver PJUD" onLink={() => navigate('/pjud')} />
                 <div className="divide-y divide-gray-50">
                   {pjudAlertas.map(({ causa, mov, dias, urg }) => (
@@ -721,7 +721,7 @@ export default function Dashboard() {
             {siauAlertas.length > 0 && (
               <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">
                 <SectionHeader icon={Gavel} title="SIAU — Requieren atención"
-                  count={<span className="text-[10px] font-bold bg-[#1a2e4a] text-white px-1.5 py-0.5 rounded-full">{siauAlertas.length}</span>}
+                  count={<span className="text-[10px] font-bold bg-[#2570BA] text-white px-1.5 py-0.5 rounded-full">{siauAlertas.length}</span>}
                   linkLabel="Ver SIAU" onLink={() => navigate('/siau')} />
                 <div className="divide-y divide-gray-50">
                   {siauAlertas.map(({ causa, sol, dias, urg }) => (

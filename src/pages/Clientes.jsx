@@ -385,7 +385,7 @@ function FormCliente({ inicial, onClose, onGuardar, guardando }) {
               <button key={e} onClick={() => set('estado', e)}
                 className={`flex-1 py-1.5 text-xs font-medium rounded-lg border transition-all ${
                   form.estado === e
-                    ? 'border-[#1a2e4a] bg-[#1a2e4a] text-white'
+                    ? 'border-[#2570BA] bg-[#2570BA] text-white'
                     : 'border-gray-200 text-gray-500 hover:border-gray-300'
                 }`}>
                 {e}
@@ -416,7 +416,7 @@ function FormCliente({ inicial, onClose, onGuardar, guardando }) {
           onClick={() => onGuardar(form)}
           disabled={guardando || !form.nombre.trim()}
           className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium text-white rounded-lg transition-colors disabled:opacity-50"
-          style={{ backgroundColor: '#1a2e4a' }}>
+          style={{ backgroundColor: '#2570BA' }}>
           {guardando && <Loader2 size={11} className="animate-spin" />}
           {esEdicion ? 'Guardar cambios' : 'Guardar'}
         </button>
@@ -563,7 +563,7 @@ export default function Clientes() {
             <button
               onClick={() => { setSeleccionado(null); setFormulario('nuevo') }}
               className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors hover:opacity-90"
-              style={{ backgroundColor: '#1a2e4a' }}>
+              style={{ backgroundColor: '#2570BA' }}>
               <Plus size={15} />
               Nuevo cliente
             </button>

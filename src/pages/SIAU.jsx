@@ -229,7 +229,7 @@ function FormNuevaSolicitud({ causa, causasInfo, globalMode, onSave, onClose }) 
           <button onClick={onClose} className="flex-1 text-xs text-gray-400 py-2.5 rounded-xl hover:bg-gray-100 font-medium">Cancelar</button>
           <button onClick={handleSave}
             disabled={!form.solicitud.trim() || (globalMode && !causaFinal) || saving}
-            className="flex-1 text-xs bg-[#1a2e4a] text-white py-2.5 rounded-xl hover:bg-[#2570ba] font-semibold disabled:opacity-40 shadow-sm">
+            className="flex-1 text-xs bg-[#2570BA] text-white py-2.5 rounded-xl hover:bg-[#2570BA]/90 font-semibold disabled:opacity-40 shadow-sm">
             {saving ? 'Guardando…' : 'Guardar'}
           </button>
         </div>
@@ -292,7 +292,7 @@ function SolicitudesTable({ grupo, registrosAll, onUpdate, onAdd, causasInfo, on
           <div className="flex items-center gap-3">
             <span className="text-[11px] text-gray-400">{registros.length} solicitud{registros.length !== 1 ? 'es' : ''}</span>
             <button onClick={() => setShowForm(true)}
-              className="flex items-center gap-1.5 text-xs font-semibold bg-[#1a2e4a] text-white px-3.5 py-2 rounded-xl hover:bg-[#2570ba] transition-colors shadow-sm">
+              className="flex items-center gap-1.5 text-xs font-semibold bg-[#2570BA] text-white px-3.5 py-2 rounded-xl hover:bg-[#2570BA]/90 transition-colors shadow-sm">
               <Plus size={13}/> Nueva solicitud
             </button>
           </div>
@@ -524,7 +524,7 @@ function ClienteRow({ grupo, registrosAll, isExpanded, onToggle, onSelectCausa }
         className={`w-full flex items-center gap-3 px-5 py-3.5 text-left transition-colors ${
           isExpanded ? 'bg-[#1a2e4a]/[0.04]' : 'bg-white hover:bg-gray-50'
         }`}>
-        <div className="w-9 h-9 rounded-full bg-[#1a2e4a] flex items-center justify-center flex-shrink-0 text-white text-[11px] font-bold select-none">
+        <div className="w-9 h-9 rounded-full bg-[#2570BA] flex items-center justify-center flex-shrink-0 text-white text-[11px] font-bold select-none">
           {ini}
         </div>
         <div className="flex-1 min-w-0">
@@ -704,7 +704,7 @@ export default function SIAU() {
             </p>
           </div>
           <button onClick={() => setShowForm(true)}
-            className="flex items-center gap-1.5 text-xs font-semibold bg-[#1a2e4a] text-white px-4 py-2 rounded-xl hover:bg-[#2570ba] transition-colors shadow-sm">
+            className="flex items-center gap-1.5 text-xs font-semibold bg-[#2570BA] text-white px-4 py-2 rounded-xl hover:bg-[#2570BA]/90 transition-colors shadow-sm">
             <Plus size={14}/> Nueva solicitud
           </button>
         </div>
