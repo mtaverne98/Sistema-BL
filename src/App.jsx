@@ -16,6 +16,7 @@ import SIAU from './pages/SIAU'
 import RevisionCausas from './pages/RevisionCausas'
 import Tareas from './pages/Tareas'
 import Reuniones from './pages/Reuniones'
+import SeguimientoSemanal from './pages/SeguimientoSemanal'
 import Documentos from './pages/Documentos'
 import Gastos from './pages/Gastos'
 import Apuntes from './pages/Apuntes'
@@ -54,6 +55,7 @@ function AppInner() {
             <Route path="pjud"           element={<PJUD />} />
             <Route path="siau"           element={<SIAU />} />
             <Route path="revision"       element={<RevisionCausas />} />
+            <Route path="seguimiento"    element={<SeguimientoSemanal />} />
             <Route path="tareas"         element={<Tareas />} />
             <Route path="reuniones"      element={<Reuniones />} />
             <Route path="documentos"     element={<Documentos />} />

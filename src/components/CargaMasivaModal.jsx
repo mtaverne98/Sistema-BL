@@ -8,15 +8,23 @@ import { supabase } from '../lib/supabase'
 // ── Helpers ────────────────────────────────────────────────────────────────────
 const TODAY = new Date().toISOString().slice(0, 10)
 
-function emptyRow() {
+const ESTADO_SEG_OPTS = ['Pendiente', 'En proceso', 'Completado', 'Bloqueado']
+
+function emptyRow(modulo) {
+  if (modulo === 'seguimiento') {
+    return { fecha: TODAY, por_hacer: '', estado: 'Pendiente', notas: '' }
+  }
   return { fecha: TODAY, folio: '', solicitud: '', respuesta: '', documento: false, notas: '' }
 }
 
-function makeRows(n) {
-  return Array.from({ length: n }, emptyRow)
+function makeRows(n, modulo) {
+  return Array.from({ length: n }, () => emptyRow(modulo))
 }
 
-function isRowEmpty(row) {
+function isRowEmpty(row, modulo) {
+  if (modulo === 'seguimiento') {
+    return !row.por_hacer?.trim() && !row.notas?.trim()
+  }
   return !row.folio.trim() && !row.solicitud.trim() && !row.respuesta.trim() && !row.notas.trim()
 }
 
@@ -132,11 +140,12 @@ export default function CargaMasivaModal({ modulo, allCausas, onClose, onSuccess
   const [step, setStep]             = useState(1)
   const [clienteSel, setClienteSel] = useState('')
   const [causaSel, setCausaSel]     = useState('')
-  const [rows, setRows]             = useState(makeRows(5))
+  const [rows, setRows]             = useState(() => makeRows(5, modulo))
   const [saving, setSaving]         = useState(false)
   const [savedCount, setSavedCount] = useState(null)
   const [error, setError]           = useState(null)
   const tableRef = useRef(null)
+  const isSeg = modulo === 'seguimiento'
 
   // Derived options
   const clienteOptions = Array.from(
@@ -167,6 +176,16 @@ export default function CargaMasivaModal({ modulo, allCausas, onClose, onSuccess
     const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim().split('\n')
     const parsed = lines.map(line => {
       const cells = parseTsvRow(line)
+      if (isSeg) {
+        const estadoRaw = (cells[2] ?? '').trim()
+        const estadoNorm = ESTADO_SEG_OPTS.find(o => o.toLowerCase() === estadoRaw.toLowerCase()) || (estadoRaw || 'Pendiente')
+        return {
+          fecha:    normalizeDate(cells[0] ?? ''),
+          por_hacer: (cells[1] ?? '').trim(),
+          estado:   estadoNorm,
+          notas:    (cells[3] ?? '').trim(),
+        }
+      }
       return {
         fecha:     normalizeDate(cells[0] ?? ''),
         folio:     (cells[1] ?? '').trim(),
@@ -175,7 +194,7 @@ export default function CargaMasivaModal({ modulo, allCausas, onClose, onSuccess
         documento: ['si','sí','1','true','x','yes'].includes((cells[4] ?? '').trim().toLowerCase()),
         notas:     (cells[5] ?? '').trim(),
       }
-    }).filter(r => !isRowEmpty(r))
+    }).filter(r => !isRowEmpty(r, modulo))
 
     if (parsed.length === 0) return
     setRows(prev => {
@@ -206,14 +225,18 @@ export default function CargaMasivaModal({ modulo, allCausas, onClose, onSuccess
 
   // ── Row ops ──────────────────────────────────────────────────────────────────
   const updateRow = (idx, key, value) => setRows(prev => prev.map((r, i) => i === idx ? { ...r, [key]: value } : r))
-  const addRow = () => setRows(prev => [...prev, emptyRow()])
+  const addRow = () => setRows(prev => [...prev, emptyRow(modulo)])
   const removeRow = (idx) => setRows(prev => prev.length > 1 ? prev.filter((_, i) => i !== idx) : prev)
 
   // ── Validations ──────────────────────────────────────────────────────────────
-  const filledRows = rows.filter(r => !isRowEmpty(r))
+  const filledRows = rows.filter(r => !isRowEmpty(r, modulo))
   const rowErrors = filledRows.map(r => {
     if (!isValidDate(r.fecha)) return 'Fecha inválida'
-    if (!r.solicitud.trim() && !r.folio.trim()) return 'Folio o solicitud requeridos'
+    if (isSeg) {
+      if (!r.por_hacer?.trim()) return 'Por hacer es requerido'
+    } else {
+      if (!r.solicitud?.trim() && !r.folio?.trim()) return 'Folio o solicitud requeridos'
+    }
     return null
   })
   const hasErrors = rowErrors.some(Boolean)
@@ -229,21 +252,34 @@ export default function CargaMasivaModal({ modulo, allCausas, onClose, onSuccess
     const payloads = filledRows.map(r => {
       const base = {
         fecha:          r.fecha,
-        folio:          r.folio.trim()     || null,
-        solicitud:      r.solicitud.trim() || null,
-        respuesta:      r.respuesta.trim() || null,
-        notas:          r.notas.trim()     || null,
-        estado:         r.respuesta.trim() ? 'Respondida' : 'Pendiente',
+        notas:          r.notas?.trim()     || null,
         causa_rit:      causaObj.rit,
         cliente_nombre: causaObj.cliente_nombre,
         causa_id:       causaObj.id        || null,
         cliente_id:     causaObj.cliente_id || null,
       }
-      if (modulo === 'siau') {
-        return { ...base, documentos: r.documento ? 'Sí' : '' }
+      if (isSeg) {
+        return {
+          ...base,
+          por_hacer: r.por_hacer?.trim() || null,
+          estado:    r.estado || 'Pendiente',
+        }
+      } else if (modulo === 'siau') {
+        return {
+          ...base,
+          folio:     r.folio?.trim()     || null,
+          solicitud: r.solicitud?.trim() || null,
+          respuesta: r.respuesta?.trim() || null,
+          estado:    r.respuesta?.trim() ? 'Respondida' : 'Pendiente',
+          documentos: r.documento ? 'Sí' : '',
+        }
       } else {
         return {
           ...base,
+          folio:           r.folio?.trim()     || null,
+          solicitud:       r.solicitud?.trim() || null,
+          respuesta:       r.respuesta?.trim() || null,
+          estado:          r.respuesta?.trim() ? 'Respondido' : 'Pendiente',
           tiene_documento: r.documento,
           documento_desc:  '',
           presenta:        'Nosotros',
@@ -252,7 +288,8 @@ export default function CargaMasivaModal({ modulo, allCausas, onClose, onSuccess
       }
     })
 
-    const { data, error: err } = await supabase.from(modulo).insert(payloads).select()
+    const tableName = isSeg ? 'seguimiento' : modulo
+    const { data, error: err } = await supabase.from(tableName).insert(payloads).select()
     if (err) {
       setError(err.message)
       setSaving(false)
@@ -264,7 +301,7 @@ export default function CargaMasivaModal({ modulo, allCausas, onClose, onSuccess
   }
 
   // ── Render ───────────────────────────────────────────────────────────────────
-  const tableName = modulo === 'siau' ? 'SIAU' : 'PJUD'
+  const tableName = isSeg ? 'Seguimiento Semanal' : modulo === 'siau' ? 'SIAU' : 'PJUD'
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-[2px]">
@@ -354,7 +391,11 @@ export default function CargaMasivaModal({ modulo, allCausas, onClose, onSuccess
                   <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">
                     Paso 2 · Ingresa los registros
                     <span className="ml-2 text-[10px] font-normal text-gray-400 normal-case">
-                      · Puedes pegar desde Excel con Cmd+V / Ctrl+V (columnas: Fecha · Folio · Solicitud · Respuesta · Documento · Notas)
+                      · Pega desde Excel con Cmd+V / Ctrl+V · Columnas:{' '}
+                      {isSeg
+                        ? 'Fecha · Por hacer · Estado · Notas'
+                        : 'Fecha · Folio · Solicitud · Respuesta · Documento · Notas'
+                      }
                     </span>
                   </p>
                   <span className="text-[11px] text-gray-400 tabular-nums">{filledRows.length} con contenido</span>
@@ -366,17 +407,26 @@ export default function CargaMasivaModal({ modulo, allCausas, onClose, onSuccess
                     <thead>
                       <tr className="bg-gray-50 border-b border-gray-200">
                         <th className="text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wide px-3 py-2 w-32">Fecha</th>
-                        <th className="text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wide px-3 py-2 w-24">Folio</th>
-                        <th className="text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wide px-3 py-2">Solicitud</th>
-                        <th className="text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wide px-3 py-2">Respuesta</th>
-                        <th className="text-center text-[10px] font-semibold text-gray-500 uppercase tracking-wide px-3 py-2 w-16">Doc.</th>
+                        {isSeg ? (
+                          <>
+                            <th className="text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wide px-3 py-2">Por hacer</th>
+                            <th className="text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wide px-3 py-2 w-36">Estado</th>
+                          </>
+                        ) : (
+                          <>
+                            <th className="text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wide px-3 py-2 w-24">Folio</th>
+                            <th className="text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wide px-3 py-2">Solicitud</th>
+                            <th className="text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wide px-3 py-2">Respuesta</th>
+                            <th className="text-center text-[10px] font-semibold text-gray-500 uppercase tracking-wide px-3 py-2 w-16">Doc.</th>
+                          </>
+                        )}
                         <th className="text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wide px-3 py-2">Notas</th>
                         <th className="w-8" />
                       </tr>
                     </thead>
                     <tbody>
                       {rows.map((row, idx) => {
-                        const filled = !isRowEmpty(row)
+                        const filled = !isRowEmpty(row, modulo)
                         const dateErr = filled && !isValidDate(row.fecha)
                         return (
                           <tr key={idx} className={`border-b border-gray-100 last:border-0 ${filled ? 'bg-white' : 'bg-gray-50/40'}`}>
@@ -393,46 +443,76 @@ export default function CargaMasivaModal({ modulo, allCausas, onClose, onSuccess
                                 }`}
                               />
                             </td>
-                            {/* Folio */}
-                            <td className="px-2 py-1.5">
-                              <input
-                                value={row.folio}
-                                onChange={e => updateRow(idx, 'folio', e.target.value)}
-                                placeholder="—"
-                                className="w-full text-[11px] font-mono px-2 py-1 rounded-md border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-blue-200 focus:border-blue-300 placeholder-gray-300 transition-colors"
-                              />
-                            </td>
-                            {/* Solicitud */}
-                            <td className="px-2 py-1.5">
-                              <textarea
-                                value={row.solicitud}
-                                onChange={e => updateRow(idx, 'solicitud', e.target.value)}
-                                placeholder="Descripción…"
-                                rows={1}
-                                className="w-full text-[11px] px-2 py-1 rounded-md border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-blue-200 focus:border-blue-300 placeholder-gray-300 resize-none transition-colors"
-                                onInput={e => { e.target.style.height = ''; e.target.style.height = e.target.scrollHeight + 'px' }}
-                              />
-                            </td>
-                            {/* Respuesta */}
-                            <td className="px-2 py-1.5">
-                              <textarea
-                                value={row.respuesta}
-                                onChange={e => updateRow(idx, 'respuesta', e.target.value)}
-                                placeholder="—"
-                                rows={1}
-                                className="w-full text-[11px] px-2 py-1 rounded-md border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-blue-200 focus:border-blue-300 placeholder-gray-300 resize-none transition-colors"
-                                onInput={e => { e.target.style.height = ''; e.target.style.height = e.target.scrollHeight + 'px' }}
-                              />
-                            </td>
-                            {/* Documento */}
-                            <td className="px-2 py-1.5 text-center">
-                              <input
-                                type="checkbox"
-                                checked={row.documento}
-                                onChange={e => updateRow(idx, 'documento', e.target.checked)}
-                                className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-200 cursor-pointer"
-                              />
-                            </td>
+
+                            {isSeg ? (
+                              <>
+                                {/* Por hacer */}
+                                <td className="px-2 py-1.5">
+                                  <textarea
+                                    value={row.por_hacer}
+                                    onChange={e => updateRow(idx, 'por_hacer', e.target.value)}
+                                    placeholder="Tarea o acción pendiente…"
+                                    rows={1}
+                                    className="w-full text-[11px] px-2 py-1 rounded-md border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-blue-200 focus:border-blue-300 placeholder-gray-300 resize-none transition-colors"
+                                    onInput={e => { e.target.style.height = ''; e.target.style.height = e.target.scrollHeight + 'px' }}
+                                  />
+                                </td>
+                                {/* Estado */}
+                                <td className="px-2 py-1.5">
+                                  <select
+                                    value={row.estado}
+                                    onChange={e => updateRow(idx, 'estado', e.target.value)}
+                                    className="w-full text-[11px] px-2 py-1 rounded-md border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-blue-200 focus:border-blue-300"
+                                  >
+                                    {ESTADO_SEG_OPTS.map(o => <option key={o}>{o}</option>)}
+                                  </select>
+                                </td>
+                              </>
+                            ) : (
+                              <>
+                                {/* Folio */}
+                                <td className="px-2 py-1.5">
+                                  <input
+                                    value={row.folio}
+                                    onChange={e => updateRow(idx, 'folio', e.target.value)}
+                                    placeholder="—"
+                                    className="w-full text-[11px] font-mono px-2 py-1 rounded-md border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-blue-200 focus:border-blue-300 placeholder-gray-300 transition-colors"
+                                  />
+                                </td>
+                                {/* Solicitud */}
+                                <td className="px-2 py-1.5">
+                                  <textarea
+                                    value={row.solicitud}
+                                    onChange={e => updateRow(idx, 'solicitud', e.target.value)}
+                                    placeholder="Descripción…"
+                                    rows={1}
+                                    className="w-full text-[11px] px-2 py-1 rounded-md border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-blue-200 focus:border-blue-300 placeholder-gray-300 resize-none transition-colors"
+                                    onInput={e => { e.target.style.height = ''; e.target.style.height = e.target.scrollHeight + 'px' }}
+                                  />
+                                </td>
+                                {/* Respuesta */}
+                                <td className="px-2 py-1.5">
+                                  <textarea
+                                    value={row.respuesta}
+                                    onChange={e => updateRow(idx, 'respuesta', e.target.value)}
+                                    placeholder="—"
+                                    rows={1}
+                                    className="w-full text-[11px] px-2 py-1 rounded-md border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-blue-200 focus:border-blue-300 placeholder-gray-300 resize-none transition-colors"
+                                    onInput={e => { e.target.style.height = ''; e.target.style.height = e.target.scrollHeight + 'px' }}
+                                  />
+                                </td>
+                                {/* Documento */}
+                                <td className="px-2 py-1.5 text-center">
+                                  <input
+                                    type="checkbox"
+                                    checked={row.documento}
+                                    onChange={e => updateRow(idx, 'documento', e.target.checked)}
+                                    className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-200 cursor-pointer"
+                                  />
+                                </td>
+                              </>
+                            )}
+
                             {/* Notas */}
                             <td className="px-2 py-1.5">
                               <input
