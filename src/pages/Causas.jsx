@@ -2431,13 +2431,26 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate }) {
   )
 }
 
+// ── helper avatar color por estado de cliente ─────────────────────────────
+function clienteAvatarColor(isSelected, clienteEstado) {
+  if (isSelected) return '#1a2e4a'
+  return (clienteEstado === 'Activo' || !clienteEstado) ? '#2570ba' : '#9ca3af'
+}
+
 // ── Sidebar de navegación interna ─────────────────────────────────────────
-function CausasSidebar({ causas, clienteActivo, onSelect, busquedaSidebar, setBusquedaSidebar }) {
+function CausasSidebar({ causas, clienteActivo, onSelect, busquedaSidebar, setBusquedaSidebar, clienteEstadoMap = {}, listaClientes = [] }) {
+  // Mapa nombre→estado para búsqueda rápida por nombre (fallback cuando no hay cliente_id)
+  const nombreEstadoMap = useMemo(() => {
+    const m = {}
+    listaClientes.forEach(c => { m[c.nombre] = c.estado ?? 'Activo' })
+    return m
+  }, [listaClientes])
+
   const clientes = useMemo(() => {
     const map = {}
     causas.forEach(c => {
       const key = (c.cliente_nombre || '').trim()
-      if (!map[key]) map[key] = { nombre: key, total: 0, activas: 0 }
+      if (!map[key]) map[key] = { nombre: key, total: 0, activas: 0, clienteId: c.cliente_id }
       map[key].total += 1
       if (c.estado === 'En tramitación' || c.estado === 'Abierta') map[key].activas += 1
     })
@@ -2483,23 +2496,31 @@ function CausasSidebar({ causas, clienteActivo, onSelect, busquedaSidebar, setBu
           </span>
         </button>
         <div className="mx-4 my-2 border-t border-gray-100" />
-        {filtrados.map(c => (
+        {filtrados.map(c => {
+          const isSelected   = clienteActivo === c.nombre
+          const estadoCl     = clienteEstadoMap[c.clienteId] ?? nombreEstadoMap[c.nombre] ?? 'Activo'
+          const isInactivo   = estadoCl !== 'Activo'
+          const avatarBg     = clienteAvatarColor(isSelected, estadoCl)
+          return (
           <button key={c.nombre} onClick={() => onSelect(c.nombre)}
             className={`w-full flex items-center justify-between px-4 py-1.5 text-left transition-colors group ${
-              clienteActivo === c.nombre ? 'bg-[#e8f0fb] text-[#1a2e4a]' : 'text-gray-600 hover:bg-gray-50'
+              isSelected ? 'bg-[#e8f0fb] text-[#1a2e4a]' : isInactivo ? 'text-gray-400 hover:bg-gray-50' : 'text-gray-600 hover:bg-gray-50'
             }`}>
             <div className="flex items-center gap-2 min-w-0">
               <div className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[8px] font-bold flex-shrink-0"
-                style={{ backgroundColor: clienteActivo === c.nombre ? '#1a2e4a' : '#cbd5e1' }}>
+                style={{ backgroundColor: avatarBg }}>
                 {initials(c.nombre)}
               </div>
-              <span className="text-xs truncate leading-snug">{c.nombre.split(' ')[0]}</span>
+              <span className={`text-xs truncate leading-snug ${isInactivo && !isSelected ? 'text-gray-400' : ''}`}>
+                {c.nombre.split(' ')[0]}
+              </span>
             </div>
             <span className={`text-[10px] tabular-nums font-medium flex-shrink-0 ml-1 ${
-              clienteActivo === c.nombre ? 'text-[#2570ba]' : 'text-gray-300 group-hover:text-gray-500'
+              isSelected ? 'text-[#2570ba]' : 'text-gray-300 group-hover:text-gray-500'
             }`}>{c.total}</span>
           </button>
-        ))}
+          )
+        })}
         {filtrados.length === 0 && <p className="px-4 py-6 text-[11px] text-gray-400 text-center">Sin resultados</p>}
       </nav>
     </div>
@@ -2553,8 +2574,9 @@ export default function Causas() {
   const [clienteActivo, setCliente]   = useState(null)
   const [busquedaSidebar, setSidebar] = useState('')
   const [busqueda, setBusqueda]       = useState('')
-  const [filtroEstado, setEstado]     = useState('')
-  const [filtroArea, setArea]         = useState('')
+  const [filtroEstado, setEstado]          = useState('')
+  const [filtroArea, setArea]              = useState('')
+  const [filtroClienteEstado, setClEstado] = useState('') // '' | 'Activo' | 'Inactivo'
   const [vista, setVista]             = useState('tabla')
   const [seleccionada, setSeleccionada] = useState(null)
   const [mostrarFiltros, setFiltros]  = useState(false)
@@ -2579,12 +2601,19 @@ export default function Causas() {
   const fetchListaClientes = useCallback(async () => {
     const { data } = await supabase
       .from('clientes')
-      .select('id, nombre, rut')
+      .select('id, nombre, rut, estado')
       .order('nombre', { ascending: true })
     setListaClientes(data || [])
   }, [])
 
   useEffect(() => { fetchCausas(); fetchListaClientes() }, [fetchCausas, fetchListaClientes])
+
+  // Mapa clienteId → estado para colorear avatares y filtrar por estado de cliente
+  const clienteEstadoMap = useMemo(() => {
+    const m = {}
+    listaClientes.forEach(c => { m[c.id] = c.estado ?? 'Activo' })
+    return m
+  }, [listaClientes])
 
   // ── Guardar (crear / editar) ─────────────────────────────────────────────
   const handleGuardar = async (form) => {
@@ -2649,15 +2678,19 @@ export default function Causas() {
       const matchEstado = !filtroEstado ||
         (filtroEstado === 'Cerradas' ? CERRADAS.has(c.estado) : c.estado === filtroEstado)
       const matchArea   = !filtroArea   || c.area   === filtroArea
-      return matchCliente && matchQ && matchEstado && matchArea
+      // Filtro por estado del cliente (Activo / Inactivo)
+      const estadoCliente = clienteEstadoMap[c.cliente_id] ?? 'Activo'
+      const matchClEst = !filtroClienteEstado ||
+        (filtroClienteEstado === 'Inactivo' ? estadoCliente !== 'Activo' : estadoCliente === 'Activo')
+      return matchCliente && matchQ && matchEstado && matchArea && matchClEst
     })
-  }, [causas, clienteActivo, busqueda, filtroEstado, filtroArea])
+  }, [causas, clienteActivo, busqueda, filtroEstado, filtroArea, filtroClienteEstado, clienteEstadoMap])
 
   const ordenadas = useMemo(() =>
     [...filtradas].sort((a, b) => a.cliente_nombre.localeCompare(b.cliente_nombre, 'es'))
   , [filtradas])
 
-  const hayFiltros = filtroEstado || filtroArea
+  const hayFiltros = filtroEstado || filtroArea || filtroClienteEstado
   const tituloVista = clienteActivo
     ? clienteActivo.split(' ').slice(0, 2).join(' ')
     : 'Todas las causas'
@@ -2672,6 +2705,8 @@ export default function Causas() {
         onSelect={n => { setCliente(n); setSeleccionada(null); setBusqueda('') }}
         busquedaSidebar={busquedaSidebar}
         setBusquedaSidebar={setSidebar}
+        clienteEstadoMap={clienteEstadoMap}
+        listaClientes={listaClientes}
       />
 
       {seleccionada ? (
@@ -2746,7 +2781,7 @@ export default function Causas() {
                 </div>
               </div>
               {mostrarFiltros && (
-                <div className="flex items-center gap-3 mt-3 pt-3 border-t border-gray-100">
+                <div className="flex items-center gap-3 mt-3 pt-3 border-t border-gray-100 flex-wrap">
                   <span className="text-xs text-gray-400">Filtrar por:</span>
                   <select value={filtroEstado} onChange={e => setEstado(e.target.value)}
                     className="px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg outline-none focus:border-[#2570ba] text-gray-600 bg-white">
@@ -2759,8 +2794,29 @@ export default function Causas() {
                     <option value="">Todas las áreas</option>
                     {AREAS.map(a => <option key={a}>{a}</option>)}
                   </select>
+                  {/* Chips estado de cliente */}
+                  <div className="flex items-center gap-1.5 border-l border-gray-100 pl-3">
+                    <span className="text-[11px] text-gray-400">Cliente:</span>
+                    {[['', 'Todos'], ['Activo', 'Activos'], ['Inactivo', 'Inactivos']].map(([val, label]) => (
+                      <button key={val} onClick={() => setClEstado(val)}
+                        className={`inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium rounded-lg border transition-all ${
+                          filtroClienteEstado === val
+                            ? val === '' ? 'bg-gray-100 text-gray-700 border-gray-300'
+                              : val === 'Activo' ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : 'bg-gray-100 text-gray-500 border-gray-300'
+                            : 'bg-white text-gray-400 border-gray-200 hover:border-gray-300'
+                        }`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${
+                          val === '' ? 'bg-gray-300'
+                          : val === 'Activo' ? 'bg-emerald-400'
+                          : 'bg-gray-400'
+                        }`} />
+                        {label}
+                      </button>
+                    ))}
+                  </div>
                   {hayFiltros && (
-                    <button onClick={() => { setEstado(''); setArea('') }} className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1">
+                    <button onClick={() => { setEstado(''); setArea(''); setClEstado('') }} className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1">
                       <X size={11} />Limpiar
                     </button>
                   )}
@@ -2820,10 +2876,14 @@ export default function Causas() {
                         {!clienteActivo && (
                           <td className="pl-7 pr-3 py-2.5">
                             <div className="flex items-center gap-2">
-                              <div className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[9px] font-bold flex-shrink-0" style={{ backgroundColor: '#2570ba' }}>
+                              <div className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[9px] font-bold flex-shrink-0"
+                                style={{ backgroundColor: clienteAvatarColor(false, clienteEstadoMap[c.cliente_id]) }}>
                                 {initials(c.cliente_nombre)}
                               </div>
-                              <span className="text-xs text-gray-800 whitespace-nowrap">{c.cliente_nombre}</span>
+                              <span className={`text-xs whitespace-nowrap ${
+                                clienteEstadoMap[c.cliente_id] && clienteEstadoMap[c.cliente_id] !== 'Activo'
+                                  ? 'text-gray-400' : 'text-gray-800'
+                              }`}>{c.cliente_nombre}</span>
                             </div>
                           </td>
                         )}

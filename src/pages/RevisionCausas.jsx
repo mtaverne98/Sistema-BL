@@ -861,7 +861,8 @@ function CausaRow({ causa, semanaKey, revisionData, onMarcar, onDesmarcar, onCre
 }
 
 // ── ClienteBlock ───────────────────────────────────────────────────────────────
-function ClienteBlock({ clienteNombre, rut, causas, semanaKey, semanaData, onMarcar, onDesmarcar, onCrearTarea, allRevisiones, onOpenPanel }) {
+function ClienteBlock({ clienteNombre, clienteEstado = 'Activo', rut, causas, semanaKey, semanaData, onMarcar, onDesmarcar, onCrearTarea, allRevisiones, onOpenPanel }) {
+  const isInactivo = clienteEstado !== 'Activo'
   const [open, setOpen] = useState(false)
 
   const total    = causas.length
@@ -891,11 +892,23 @@ function ClienteBlock({ clienteNombre, rut, causas, semanaKey, semanaData, onMar
         <ChevronRight size={13}
           className={`flex-shrink-0 text-gray-400 transition-transform duration-150 ${open ? 'rotate-90' : ''}`} />
 
-        <div className="flex-1 min-w-0">
-          <p className="text-[12px] font-bold text-gray-900 uppercase tracking-[0.04em] leading-none">
-            {clienteNombre}
-          </p>
-          {rut && <p className="text-[10px] text-gray-400 mt-0.5 font-mono">{rut}</p>}
+        <div className="flex-1 min-w-0 flex items-center gap-2">
+          <div className="w-5 h-5 rounded-full flex-shrink-0 flex items-center justify-center text-white text-[8px] font-bold"
+            style={{ backgroundColor: isInactivo ? '#9ca3af' : '#2570ba' }}>
+            {clienteNombre.trim().charAt(0).toUpperCase()}
+          </div>
+          <div className="min-w-0">
+            <p className={`text-[12px] font-bold uppercase tracking-[0.04em] leading-none ${isInactivo ? 'text-gray-400' : 'text-gray-900'}`}>
+              {clienteNombre}
+            </p>
+            {rut && <p className="text-[10px] text-gray-400 mt-0.5 font-mono">{rut}</p>}
+            {isInactivo && (
+              <span className="inline-flex items-center gap-0.5 mt-0.5 text-[9px] font-medium text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full">
+                <span className="w-1 h-1 rounded-full bg-gray-400" />
+                Inactivo
+              </span>
+            )}
+          </div>
         </div>
 
         <div className="flex items-center gap-3 flex-shrink-0">
@@ -933,32 +946,48 @@ function ClienteBlock({ clienteNombre, rut, causas, semanaKey, semanaData, onMar
   )
 }
 
+// ── helper avatar color ──────────────────────────────────────────────────────
+function rcAvatarColor(estadoCliente) {
+  return estadoCliente === 'Activo' || !estadoCliente ? '#2570ba' : '#9ca3af'
+}
+
 // ── Main ───────────────────────────────────────────────────────────────────────
 export default function RevisionCausas() {
-  const [causasDB,   setCausasDB]   = useState([])
-  const [revRows,    setRevRows]    = useState([])  // flat rows from revisiones table
-  const [cargando,   setCargando]   = useState(true)
-  const [semanaKey,  setSemanaKey]  = useState(CURRENT_WEEK_KEY)
-  const [search,     setSearch]     = useState('')
-  const [selectedCliente, setSelectedCliente] = useState(null)
+  const [causasDB,         setCausasDB]         = useState([])
+  const [revRows,          setRevRows]          = useState([])  // flat rows from revisiones table
+  const [clientesDB,       setClientesDB]       = useState([])  // para saber estado de cada cliente
+  const [cargando,         setCargando]         = useState(true)
+  const [semanaKey,        setSemanaKey]        = useState(CURRENT_WEEK_KEY)
+  const [search,           setSearch]           = useState('')
+  const [filtroClEst,      setFiltroClEst]      = useState('') // '' | 'Activo' | 'Inactivo'
+  const [selectedCliente,  setSelectedCliente]  = useState(null)
 
   useEffect(() => {
     async function fetchAll() {
-      const [{ data: causasData }, { data: revData }] = await Promise.all([
+      const [{ data: causasData }, { data: revData }, { data: clientesData }] = await Promise.all([
         // etapa_procesal may not exist yet — select without it, add later via SQL
         supabase
           .from('causas')
           .select('id, rit, ruc, materia, area, tribunal, estado, cliente_nombre, cliente_id')
           .in('estado', ['En tramitación', 'Abierta']),
         supabase.from('revisiones').select('*'),
+        supabase.from('clientes').select('id, estado'),
       ])
       setCausasDB(causasData || [])
+      setClientesDB(clientesData || [])
       // Only use team-review rows (semana_key present, never SEG- which are personal seguimiento)
       setRevRows((revData || []).filter(r => r.semana_key != null && !r.semana_key.startsWith('SEG-')))
       setCargando(false)
     }
     fetchAll()
   }, [])
+
+  // Mapa clienteId → estado
+  const clienteEstadoMap = useMemo(() => {
+    const m = {}
+    clientesDB.forEach(c => { m[String(c.id)] = c.estado ?? 'Activo' })
+    return m
+  }, [clientesDB])
 
   // Shape causas for the UI
   const causasActivas = useMemo(() =>
@@ -1060,13 +1089,17 @@ export default function RevisionCausas() {
 
   const clienteGroups = useMemo(() => {
     const q = search.toLowerCase()
-    const filtered = causasActivas.filter(c =>
-      !q ||
-      c.cliente_nombre.toLowerCase().includes(q) ||
-      (c.rit || '').toLowerCase().includes(q) ||
-      c.materia.toLowerCase().includes(q) ||
-      c.area.toLowerCase().includes(q)
-    )
+    const filtered = causasActivas.filter(c => {
+      const matchQ = !q ||
+        c.cliente_nombre.toLowerCase().includes(q) ||
+        (c.rit || '').toLowerCase().includes(q) ||
+        c.materia.toLowerCase().includes(q) ||
+        c.area.toLowerCase().includes(q)
+      const estadoCl = clienteEstadoMap[c.cliente_id] ?? 'Activo'
+      const matchClEst = !filtroClEst ||
+        (filtroClEst === 'Inactivo' ? estadoCl !== 'Activo' : estadoCl === filtroClEst)
+      return matchQ && matchClEst
+    })
     const map = new Map()
     filtered.forEach(c => {
       if (!map.has(c.cliente_id)) map.set(c.cliente_id, [])
@@ -1076,11 +1109,12 @@ export default function RevisionCausas() {
       .map(([cid, cs]) => ({
         clienteId:     cid,
         clienteNombre: cs[0].cliente_nombre,
+        clienteEstado: clienteEstadoMap[cid] ?? 'Activo',
         rut:           CLIENT_RUTS[cid] || null,
         causas:        cs,
       }))
       .sort((a, b) => a.clienteNombre.localeCompare(b.clienteNombre, 'es'))
-  }, [causasActivas, search])
+  }, [causasActivas, search, filtroClEst, clienteEstadoMap])
 
   if (cargando) return (
     <div className="flex items-center justify-center h-full text-[13px] text-gray-400">
@@ -1138,8 +1172,8 @@ export default function RevisionCausas() {
       </div>
 
       {/* ── Toolbar ── */}
-      <div className="flex-shrink-0 px-6 py-2.5 flex items-center gap-2 border-b border-gray-100">
-        <div className="relative flex-1">
+      <div className="flex-shrink-0 px-6 py-2.5 flex items-center gap-2 border-b border-gray-100 flex-wrap">
+        <div className="relative flex-1 min-w-[180px]">
           <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
           <input value={search} onChange={e => setSearch(e.target.value)}
             placeholder="Buscar por cliente, RIT, materia, área..."
@@ -1149,6 +1183,25 @@ export default function RevisionCausas() {
               <X size={12} />
             </button>
           )}
+        </div>
+
+        {/* Chips estado de cliente */}
+        <div className="flex items-center gap-1 flex-shrink-0">
+          {[['', 'Todos'], ['Activo', 'Activos'], ['Inactivo', 'Inactivos']].map(([val, label]) => (
+            <button key={val} onClick={() => setFiltroClEst(val)}
+              className={`inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium rounded-lg border transition-all ${
+                filtroClEst === val
+                  ? val === 'Activo' ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                    : val === 'Inactivo' ? 'bg-gray-100 text-gray-600 border-gray-300'
+                    : 'bg-[#1a2e4a] text-white border-[#1a2e4a]'
+                  : 'bg-white text-gray-400 border-gray-200 hover:border-gray-300 hover:text-gray-600'
+              }`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${
+                val === 'Activo' ? 'bg-emerald-400' : val === 'Inactivo' ? 'bg-gray-400' : 'bg-white/50'
+              }`} />
+              {label}
+            </button>
+          ))}
         </div>
 
         {/* Week navigation */}
@@ -1180,10 +1233,11 @@ export default function RevisionCausas() {
           </div>
         ) : (
           <div className="space-y-2.5">
-            {clienteGroups.map(({ clienteId, clienteNombre, rut, causas }) => (
+            {clienteGroups.map(({ clienteId, clienteNombre, clienteEstado, rut, causas }) => (
               <ClienteBlock
                 key={clienteId}
                 clienteNombre={clienteNombre}
+                clienteEstado={clienteEstado}
                 rut={rut}
                 causas={causas}
                 semanaKey={semanaKey}
