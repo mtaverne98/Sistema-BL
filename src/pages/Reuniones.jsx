@@ -426,7 +426,7 @@ export default function Reuniones() {
       <div className="bg-white border-b border-gray-100 px-6 py-5 flex-shrink-0">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h1 className="text-lg font-bold text-[#1a2e4a]">Reuniones semanales</h1>
+            <h1 className="text-lg font-bold text-[#1a2e4a]">Seguimiento Semanal</h1>
             <p className="text-xs text-gray-400 mt-0.5">Todos los jueves · {historial.length} reunión{historial.length !== 1 ? 'es' : ''} en el historial</p>
           </div>
         </div>
