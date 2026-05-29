@@ -32,29 +32,31 @@ function getUrgenciaLayout(p) {
 
 // ── sidebar structure ─────────────────────────────────────────────────────────
 const sections = [
-  { label: null,       items: [{ to: '/',          icon: LayoutDashboard, label: 'Dashboard'         }] },
-  { label: 'Principal',items: [
-    { to: '/clientes',   icon: Users,       label: 'Clientes'   },
-    { to: '/causas',     icon: Scale,       label: 'Causas'     },
-    { to: '/prospectos', icon: UserSearch,  label: 'Prospectos' },
+  { label: null,        items: [{ to: '/', icon: LayoutDashboard, label: 'Dashboard' }] },
+  { label: 'Principal', items: [
+    { to: '/clientes',   icon: Users,      label: 'Clientes'   },
+    { to: '/causas',     icon: Scale,      label: 'Causas'     },
+    { to: '/prospectos', icon: UserSearch, label: 'Prospectos' },
   ]},
-  { label: 'Agenda',   items: [
-    { to: '/audiencias', icon: Gavel,       label: 'Audiencias' },
-    { to: '/calendario', icon: Calendar,    label: 'Calendario' },
-    { to: '/plazos',     icon: AlertCircle, label: 'Plazos'     },
+  { label: 'Agenda',    items: [
+    { to: '/audiencias', icon: Gavel,        label: 'Audiencias' },
+    { to: '/calendario', icon: Calendar,     label: 'Calendario' },
+    { to: '/plazos',     icon: AlertCircle,  label: 'Plazos'     },
+    { to: '/reuniones',  icon: MessageSquare, label: 'Reuniones' },
   ]},
-  { label: 'Gestión',  items: [
-    { to: '/pjud',         icon: Shield,         label: 'PJUD'                 },
-    { to: '/siau',         icon: Database,       label: 'SIAU'                 },
-    { to: '/revision',     icon: ClipboardCheck, label: 'Revisión de causas'   },
-    { to: '/seguimiento',  icon: CalendarCheck,  label: 'Seguimiento Semanal'  },
-    { to: '/reuniones',    icon: MessageSquare,  label: 'Reuniones'            },
-    { to: '/tareas',       icon: CheckSquare,    label: 'Tareas'               },
-    { to: '/documentos', icon: FolderOpen,     label: 'Documentos'           },
-    { to: '/gastos',     icon: Receipt,        label: 'Gastos'               },
+  { label: 'Gestión',   items: [
+    { to: '/pjud',       icon: Shield,         label: 'PJUD'               },
+    { to: '/siau',       icon: Database,       label: 'SIAU'               },
+    { to: '/revision',   icon: ClipboardCheck, label: 'Revisión de causas' },
+    { to: '/tareas',     icon: CheckSquare,    label: 'Tareas'             },
+    { to: '/documentos', icon: FolderOpen,     label: 'Documentos'         },
   ]},
-  { label: 'Notas',    items: [{ to: '/apuntes',       icon: BookOpen, label: 'Agenda diaria' }] },
-  { label: 'Sistema',  items: [{ to: '/configuracion', icon: Settings, label: 'Configuración' }] },
+  { label: 'Notas',     items: [
+    { to: '/apuntes',     icon: BookOpen,     label: 'Agenda diaria'      },
+    { to: '/seguimiento', icon: CalendarCheck, label: 'Seguimiento semanal' },
+    { to: '/gastos',      icon: Receipt,      label: 'Gastos'             },
+  ]},
+  { label: 'Sistema',   items: [{ to: '/configuracion', icon: Settings, label: 'Configuración' }] },
 ]
 
 // currentUser ahora viene de UserContext
@@ -91,23 +93,23 @@ function NavItem({ to, icon: Icon, label, badge }) {
 
 // ── GlobalCmdK ───────────────────────────────────────────────────────────────
 const NAV_ITEMS = [
-  { label: 'Dashboard',          path: '/',           icon: LayoutDashboard },
-  { label: 'Clientes',           path: '/clientes',   icon: Users           },
-  { label: 'Causas',             path: '/causas',     icon: Scale           },
-  { label: 'Prospectos',         path: '/prospectos', icon: UserSearch      },
-  { label: 'Audiencias',         path: '/audiencias', icon: Gavel           },
-  { label: 'Calendario',         path: '/calendario', icon: Calendar        },
-  { label: 'Plazos',             path: '/plazos',     icon: AlertCircle     },
-  { label: 'PJUD',               path: '/pjud',       icon: Shield          },
-  { label: 'SIAU',               path: '/siau',       icon: Database        },
-  { label: 'Revisión de causas',  path: '/revision',    icon: ClipboardCheck  },
-  { label: 'Seguimiento Semanal', path: '/seguimiento', icon: CalendarCheck   },
-  { label: 'Reuniones',           path: '/reuniones',   icon: MessageSquare   },
-  { label: 'Tareas',              path: '/tareas',      icon: CheckSquare     },
-  { label: 'Documentos',         path: '/documentos', icon: FolderOpen      },
-  { label: 'Gastos',             path: '/gastos',     icon: Receipt         },
-  { label: 'Agenda diaria',      path: '/apuntes',        icon: BookOpen  },
-  { label: 'Configuración',      path: '/configuracion',  icon: Settings  },
+  { label: 'Dashboard',           path: '/',              icon: LayoutDashboard },
+  { label: 'Clientes',            path: '/clientes',      icon: Users           },
+  { label: 'Causas',              path: '/causas',        icon: Scale           },
+  { label: 'Prospectos',          path: '/prospectos',    icon: UserSearch      },
+  { label: 'Audiencias',          path: '/audiencias',    icon: Gavel           },
+  { label: 'Calendario',          path: '/calendario',    icon: Calendar        },
+  { label: 'Plazos',              path: '/plazos',        icon: AlertCircle     },
+  { label: 'Reuniones',           path: '/reuniones',     icon: MessageSquare   },
+  { label: 'PJUD',                path: '/pjud',          icon: Shield          },
+  { label: 'SIAU',                path: '/siau',          icon: Database        },
+  { label: 'Revisión de causas',  path: '/revision',      icon: ClipboardCheck  },
+  { label: 'Tareas',              path: '/tareas',        icon: CheckSquare     },
+  { label: 'Documentos',          path: '/documentos',    icon: FolderOpen      },
+  { label: 'Agenda diaria',       path: '/apuntes',       icon: BookOpen        },
+  { label: 'Seguimiento semanal', path: '/seguimiento',   icon: CalendarCheck   },
+  { label: 'Gastos',              path: '/gastos',        icon: Receipt         },
+  { label: 'Configuración',       path: '/configuracion', icon: Settings        },
 ]
 
 const RESP_COLOR = { MT: '#2570ba', AB: '#059669', CL: '#7c3aed' }
