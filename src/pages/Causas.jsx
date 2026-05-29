@@ -10,7 +10,7 @@ import {
   UserCheck, Upload,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
-import SegCargaHistorialModal from '../components/SegCargaHistorialModal'
+
 import { useQuickAdd } from '../context/QuickAddContext'
 
 // ── Exportación vacía para compatibilidad con CMD+K en MainLayout ──────────
@@ -791,10 +791,14 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate }) {
   const [savingTarea,   setSavingTarea]   = useState(false)
   const [toastMsg,      setToastMsg]      = useState(null)
 
-  // Seguimiento personal
-  const [segDraft,        setSegDraft]        = useState({ por_hacer: '', que_se_hizo: '', estado_seg: 'Pendiente', proxima_accion: '', notas: '', responsable: 'MT' })
-  const [savingSeg,       setSavingSeg]       = useState(false)
-  const [showSegCarga,    setShowSegCarga]    = useState(false)
+  // Seguimiento (tabla simple)
+  const [segRows,       setSegRows]       = useState([])
+  const [loadingSeg,    setLoadingSeg]    = useState(false)
+  const [newSegRow,     setNewSegRow]     = useState(null)
+  const [editSegId,     setEditSegId]     = useState(null)
+  const [editSegDraft,  setEditSegDraft]  = useState({})
+  const [savingSegRow,  setSavingSegRow]  = useState(false)
+  const [confirmDelSeg, setConfirmDelSeg] = useState(null)
 
   // Datos rápidos para el resumen (1 fila c/u)
   const [lastPjud,        setLastPjud]        = useState(undefined) // undefined = loading, null = empty
@@ -862,33 +866,26 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate }) {
 
   // Load revisiones when tab opens (or on mount for timeline)
   useEffect(() => {
-    if ((tab !== 'revision_semanal' && tab !== 'timeline' && tab !== 'seguimiento') || !causa?.id) return
+    if ((tab !== 'revision_semanal' && tab !== 'timeline') || !causa?.id) return
     if (revisiones.length > 0) return // already loaded
     setLoadingRev(true)
-    supabase.from('revisiones').select('*').eq('causa_id', causa.id).order('fecha', { ascending: false })
+    supabase.from('revisiones').select('*').eq('causa_id', causa.id)
+      .not('semana_key', 'is', null)
+      .order('fecha', { ascending: false })
       .then(({ data }) => { setRevisiones(data ?? []); setLoadingRev(false) })
   }, [tab, causa?.id])
 
-  // Pre-fill segDraft with current week's seguimiento entry
+  // Load seguimiento rows (independent table — no semana_key)
   useEffect(() => {
-    if (tab !== 'seguimiento') return
-    const weekNum = getISOWeek_C(TODAY_C)
-    const year = new Date().getFullYear()
-    const semana_key = `SEG-${year}-W${String(weekNum).padStart(2, '0')}`
-    const current = revisiones.find(r => r.semana_key === semana_key)
-    if (current) {
-      setSegDraft({
-        por_hacer:      current.por_hacer      || '',
-        que_se_hizo:    current.que_se_hizo    || '',
-        estado_seg:     current.estado_seg     || 'Pendiente',
-        proxima_accion: current.proxima_accion || '',
-        notas:          current.nota           || '',
-        responsable:    current.responsable    || 'MT',
-      })
-    } else {
-      setSegDraft({ por_hacer: '', que_se_hizo: '', estado_seg: 'Pendiente', proxima_accion: '', notas: '', responsable: 'MT' })
-    }
-  }, [tab, revisiones])
+    if (tab !== 'seguimiento' || !causa?.id) return
+    if (segRows.length > 0) return
+    setLoadingSeg(true)
+    supabase.from('revisiones').select('*')
+      .eq('causa_id', causa.id)
+      .is('semana_key', null)
+      .order('fecha_revision', { ascending: false })
+      .then(({ data }) => { setSegRows(data ?? []); setLoadingSeg(false) })
+  }, [tab, causa?.id])
 
   // Save new revision
   async function handleSaveRevision() {
@@ -920,33 +917,37 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate }) {
     setSavingRev(false)
   }
 
-  // Save seguimiento personal
-  async function handleSaveSeg() {
-    setSavingSeg(true)
-    const today = TODAY_C
-    const weekNum = getISOWeek_C(today)
-    const year = new Date().getFullYear()
-    const semana_key = `SEG-${year}-W${String(weekNum).padStart(2, '0')}`
-    const payload = {
+  // Seguimiento — save new row
+  async function handleSaveNewSegRow() {
+    if (!newSegRow?.por_hacer?.trim()) return
+    setSavingSegRow(true)
+    const { data, error } = await supabase.from('revisiones').insert([{
       causa_id:       causa.id,
-      semana_key,
-      fecha:          today,
-      por_hacer:      segDraft.por_hacer.trim(),
-      que_se_hizo:    segDraft.que_se_hizo.trim(),
-      estado_seg:     segDraft.estado_seg,
-      proxima_accion: segDraft.proxima_accion.trim(),
-      nota:           segDraft.notas.trim(),
-      responsable:    segDraft.responsable,
+      causa_rit:      causa.rit       || null,
+      cliente_nombre: causa.cliente_nombre || null,
+      fecha_revision: newSegRow.fecha_revision || TODAY_C,
+      por_hacer:      newSegRow.por_hacer.trim(),
+      que_se_hizo:    newSegRow.que_se_hizo || 'Pendiente',
+      notas:          newSegRow.notas?.trim() || null,
+      semana_key:     null,
       revisada:       false,
-    }
-    const { data, error } = await supabase.from('revisiones')
-      .upsert(payload, { onConflict: 'semana_key,causa_id' })
-      .select().single()
-    if (!error && data) {
-      setRevisiones(prev => [data, ...prev.filter(r => r.semana_key !== semana_key)])
-      showToast('Seguimiento guardado ✓')
-    }
-    setSavingSeg(false)
+    }]).select().single()
+    if (!error && data) { setSegRows(prev => [data, ...prev]); showToast('Entrada guardada') }
+    setNewSegRow(null)
+    setSavingSegRow(false)
+  }
+
+  // Seguimiento — update row
+  async function handleUpdateSegRow(id, changes) {
+    const { data } = await supabase.from('revisiones').update(changes).eq('id', id).select().single()
+    if (data) setSegRows(prev => prev.map(r => r.id === id ? data : r))
+  }
+
+  // Seguimiento — delete row
+  async function handleDeleteSegRow(id) {
+    await supabase.from('revisiones').delete().eq('id', id)
+    setSegRows(prev => prev.filter(r => r.id !== id))
+    setConfirmDelSeg(null)
   }
 
   // Save edited revision
@@ -2202,192 +2203,223 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate }) {
           </div>
         )}
 
-        {/* SEGUIMIENTO PERSONAL */}
+        {/* SEGUIMIENTO */}
         {tab === 'seguimiento' && (() => {
-          const weekNum = getISOWeek_C(TODAY_C)
-          const d = new Date(TODAY_C + 'T12:00:00')
-          const dow = d.getDay() === 0 ? 7 : d.getDay()
-          const monday = new Date(d); monday.setDate(d.getDate() - (dow - 1))
-          const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6)
-          const mesNombre = monday.toLocaleDateString('es-CL', { month: 'long' })
-          const weekHeader = `Semana ${weekNum} · ${monday.getDate()}–${sunday.getDate()} de ${mesNombre} ${monday.getFullYear()}`
-          const semana_key = `SEG-${monday.getFullYear()}-W${String(weekNum).padStart(2, '0')}`
-          const segHistory = revisiones.filter(r => r.semana_key?.startsWith('SEG-') && r.semana_key !== semana_key)
-            .sort((a, b) => (b.semana_key ?? '').localeCompare(a.semana_key ?? ''))
-
-          const estadoColors = {
-            'Pendiente':     'border-amber-300 bg-amber-50 text-amber-700',
-            'En progreso':   'border-blue-300 bg-blue-50 text-blue-700',
-            'Listo':         'border-emerald-300 bg-emerald-50 text-emerald-700',
-            'Sin novedades': 'border-gray-300 bg-gray-50 text-gray-500',
+          const SEG_ESTADO = {
+            'Pendiente':     { bg: 'bg-amber-50',  text: 'text-amber-700',  dot: 'bg-amber-400',  border: 'border-amber-200'  },
+            'En progreso':   { bg: 'bg-blue-50',   text: 'text-blue-700',   dot: 'bg-blue-400',   border: 'border-blue-200'   },
+            'Listo':         { bg: 'bg-green-50',  text: 'text-green-700',  dot: 'bg-green-400',  border: 'border-green-200'  },
+            'Sin novedades': { bg: 'bg-gray-100',  text: 'text-gray-500',   dot: 'bg-gray-400',   border: 'border-gray-200'   },
           }
-          const estadoInactive = 'border-gray-200 bg-white text-gray-400 hover:border-gray-300'
+          const ESTADO_OPTS = Object.keys(SEG_ESTADO)
+
+          function fmtSegFecha(iso) {
+            if (!iso) return '—'
+            const [y, m, d] = iso.split('-')
+            return `${d}-${m}-${y}`
+          }
+
+          function SegEstadoBadge({ v }) {
+            const c = SEG_ESTADO[v] || SEG_ESTADO['Pendiente']
+            return (
+              <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border whitespace-nowrap ${c.bg} ${c.text} ${c.border}`}>
+                <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${c.dot}`}/>
+                {v || 'Pendiente'}
+              </span>
+            )
+          }
+
+          function SegEstadoSelect({ value, onChange }) {
+            return (
+              <select value={value || 'Pendiente'} onChange={e => onChange(e.target.value)}
+                onClick={e => e.stopPropagation()}
+                className="text-[11px] border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:border-blue-300 w-full">
+                {ESTADO_OPTS.map(o => <option key={o}>{o}</option>)}
+              </select>
+            )
+          }
+
+          const COLS = ['Fecha', 'Por hacer', 'Estado', 'Notas', '']
 
           return (
-            <div className="p-6 max-w-2xl mx-auto space-y-6">
-              {/* Header */}
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-[15px] font-semibold text-gray-800 flex items-center gap-2">
-                    <Target size={15} className="text-indigo-500" />
-                    Seguimiento personal
-                  </h3>
-                  <p className="text-[12px] text-gray-400 mt-0.5 ml-5">{weekHeader}</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setShowSegCarga(true)}
-                    className="flex items-center gap-1.5 text-[12px] font-medium border border-indigo-200 text-indigo-600 hover:bg-indigo-50 px-3 py-1.5 rounded-lg transition-colors"
-                  >
-                    <Upload size={13} />
-                    Cargar historial
-                  </button>
-                  <button
-                    onClick={handleSaveSeg}
-                    disabled={savingSeg}
-                    className="flex items-center gap-1.5 text-[12px] font-medium bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-3 py-1.5 rounded-lg transition-colors"
-                  >
-                    {savingSeg ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
-                    Guardar semana
-                  </button>
-                </div>
+            <div className="flex flex-col" style={{ height: '100%' }}>
+              {/* Sub-header */}
+              <div className="px-6 py-3.5 border-b border-gray-50 flex items-center justify-between flex-shrink-0 bg-white">
+                <p className="text-[11px] text-gray-400">
+                  {segRows.length} entrada{segRows.length !== 1 ? 's' : ''}
+                </p>
+                <button
+                  onClick={() => { setNewSegRow({ fecha_revision: TODAY_C, por_hacer: '', que_se_hizo: 'Pendiente', notas: '' }); setEditSegId(null) }}
+                  disabled={!!newSegRow}
+                  className="flex items-center gap-1.5 text-xs font-semibold bg-[#1a2e4a] text-white px-3.5 py-2 rounded-xl hover:bg-[#2570ba] disabled:opacity-40 transition-colors shadow-sm">
+                  <Plus size={13}/> Agregar
+                </button>
               </div>
 
-              {/* Form */}
-              <div className="bg-white border border-gray-100 rounded-xl p-5 space-y-5 shadow-sm">
-
-                {/* ¿Qué hay que hacer? */}
-                <div className="space-y-1.5">
-                  <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">¿Qué hay que hacer?</label>
-                  <textarea
-                    value={segDraft.por_hacer}
-                    onChange={e => setSegDraft(d => ({ ...d, por_hacer: e.target.value }))}
-                    placeholder="Tareas pendientes, gestiones, escritos…"
-                    rows={3}
-                    className="w-full text-[13px] text-gray-700 border border-gray-200 rounded-lg px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 placeholder-gray-300"
-                  />
-                </div>
-
-                {/* ¿Qué se hizo? */}
-                <div className="space-y-1.5">
-                  <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">¿Qué se hizo esta semana?</label>
-                  <textarea
-                    value={segDraft.que_se_hizo}
-                    onChange={e => setSegDraft(d => ({ ...d, que_se_hizo: e.target.value }))}
-                    placeholder="Avances, reuniones, escritos enviados…"
-                    rows={3}
-                    className="w-full text-[13px] text-gray-700 border border-gray-200 rounded-lg px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 placeholder-gray-300"
-                  />
-                </div>
-
-                {/* Estado */}
-                <div className="space-y-1.5">
-                  <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Estado</label>
-                  <div className="flex flex-wrap gap-2">
-                    {['Pendiente', 'En progreso', 'Listo', 'Sin novedades'].map(e => (
-                      <button
-                        key={e}
-                        onClick={() => setSegDraft(d => ({ ...d, estado_seg: e }))}
-                        className={`text-[12px] font-medium px-3 py-1.5 rounded-lg border transition-all ${segDraft.estado_seg === e ? estadoColors[e] : estadoInactive}`}
-                      >
-                        {e}
-                      </button>
-                    ))}
+              {/* Table */}
+              <div className="flex-1 overflow-auto">
+                {loadingSeg ? (
+                  <div className="flex items-center justify-center py-16">
+                    <Loader2 size={20} className="animate-spin text-gray-300"/>
                   </div>
-                </div>
+                ) : (
+                  <table className="w-full text-left border-collapse">
+                    <thead className="sticky top-0 z-10">
+                      <tr className="bg-gray-50 border-b border-gray-200">
+                        {COLS.map(col => (
+                          <th key={col} className="px-4 py-2.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap">
+                            {col}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {/* New row (inline) */}
+                      {newSegRow && (
+                        <tr className="bg-[#1a2e4a]/[0.025] border-b border-gray-100">
+                          <td className="px-4 py-2.5" style={{ width: 120 }}>
+                            <input type="date" value={newSegRow.fecha_revision || TODAY_C}
+                              onChange={e => setNewSegRow(p => ({ ...p, fecha_revision: e.target.value }))}
+                              className="text-[11px] border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:border-blue-300 w-full"/>
+                          </td>
+                          <td className="px-4 py-2.5">
+                            <textarea value={newSegRow.por_hacer || ''} onChange={e => setNewSegRow(p => ({ ...p, por_hacer: e.target.value }))}
+                              rows={2} autoFocus placeholder="¿Qué hay que hacer?"
+                              className="w-full text-[12px] border border-gray-200 rounded-lg px-2.5 py-1.5 resize-none focus:outline-none focus:border-blue-300 bg-white placeholder:text-gray-300"/>
+                          </td>
+                          <td className="px-4 py-2.5" style={{ width: 160 }}>
+                            <SegEstadoSelect value={newSegRow.que_se_hizo} onChange={v => setNewSegRow(p => ({ ...p, que_se_hizo: v }))}/>
+                          </td>
+                          <td className="px-4 py-2.5">
+                            <textarea value={newSegRow.notas || ''} onChange={e => setNewSegRow(p => ({ ...p, notas: e.target.value }))}
+                              rows={2} placeholder="Notas adicionales…"
+                              className="w-full text-[12px] border border-gray-200 rounded-lg px-2.5 py-1.5 resize-none focus:outline-none focus:border-blue-300 bg-white placeholder:text-gray-300"/>
+                          </td>
+                          <td className="px-4 py-2.5" style={{ width: 72 }}>
+                            <div className="flex items-center gap-1">
+                              <button onClick={handleSaveNewSegRow} disabled={savingSegRow || !newSegRow.por_hacer?.trim()}
+                                className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 disabled:opacity-40 transition-colors">
+                                {savingSegRow ? <Loader2 size={11} className="animate-spin"/> : <Check size={11}/>}
+                              </button>
+                              <button onClick={() => setNewSegRow(null)}
+                                className="p-1.5 rounded-lg text-gray-300 hover:text-gray-500 hover:bg-gray-100 transition-colors">
+                                <X size={11}/>
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
 
-                {/* Próxima acción */}
-                <div className="space-y-1.5">
-                  <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Próxima acción</label>
-                  <input
-                    value={segDraft.proxima_accion}
-                    onChange={e => setSegDraft(d => ({ ...d, proxima_accion: e.target.value }))}
-                    placeholder="¿Qué sigue?"
-                    className="w-full text-[13px] text-gray-700 border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 placeholder-gray-300"
-                  />
-                </div>
+                      {/* Empty state */}
+                      {!newSegRow && segRows.length === 0 && (
+                        <tr>
+                          <td colSpan={5}>
+                            <div className="py-16 text-center">
+                              <Target size={28} strokeWidth={1.5} className="mx-auto mb-2 text-gray-200"/>
+                              <p className="text-[13px] text-gray-400 font-medium">Sin entradas de seguimiento</p>
+                              <button onClick={() => setNewSegRow({ fecha_revision: TODAY_C, por_hacer: '', que_se_hizo: 'Pendiente', notas: '' })}
+                                className="mt-2 text-[12px] text-[#2570ba] hover:underline font-medium">
+                                + Agregar primera entrada
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
 
-                {/* Notas */}
-                <div className="space-y-1.5">
-                  <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Notas</label>
-                  <textarea
-                    value={segDraft.notas}
-                    onChange={e => setSegDraft(d => ({ ...d, notas: e.target.value }))}
-                    placeholder="Observaciones, recordatorios…"
-                    rows={2}
-                    className="w-full text-[13px] text-gray-700 border border-gray-200 rounded-lg px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 placeholder-gray-300"
-                  />
-                </div>
+                      {/* Data rows */}
+                      {segRows.map((row, idx) => {
+                        const isEditing    = editSegId === row.id
+                        const altRow       = idx % 2 === 1
+                        const isDelConfirm = confirmDelSeg === row.id
 
-                {/* Responsable */}
-                <div className="space-y-1.5">
-                  <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Responsable</label>
-                  <div className="flex gap-2">
-                    {['MT', 'AB', 'CL'].map(r => (
-                      <button
-                        key={r}
-                        onClick={() => setSegDraft(d => ({ ...d, responsable: r }))}
-                        className={`text-[12px] font-semibold w-10 h-8 rounded-lg border transition-all ${
-                          segDraft.responsable === r
-                            ? 'bg-indigo-600 border-indigo-600 text-white'
-                            : 'bg-white border-gray-200 text-gray-400 hover:border-gray-300'
-                        }`}
-                      >
-                        {r}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                        if (isEditing) return (
+                          <tr key={row.id} className="bg-blue-50/20 border-b border-gray-100">
+                            <td className="px-4 py-2.5" style={{ width: 120 }}>
+                              <input type="date" value={editSegDraft.fecha_revision || ''}
+                                onChange={e => setEditSegDraft(p => ({ ...p, fecha_revision: e.target.value }))}
+                                onClick={e => e.stopPropagation()}
+                                className="text-[11px] border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:border-blue-300 w-full"/>
+                            </td>
+                            <td className="px-4 py-2.5">
+                              <textarea value={editSegDraft.por_hacer || ''} onChange={e => setEditSegDraft(p => ({ ...p, por_hacer: e.target.value }))}
+                                rows={2} onClick={e => e.stopPropagation()}
+                                className="w-full text-[12px] border border-gray-200 rounded-lg px-2.5 py-1.5 resize-none focus:outline-none focus:border-blue-300 bg-white"/>
+                            </td>
+                            <td className="px-4 py-2.5" style={{ width: 160 }}>
+                              <SegEstadoSelect value={editSegDraft.que_se_hizo} onChange={v => setEditSegDraft(p => ({ ...p, que_se_hizo: v }))}/>
+                            </td>
+                            <td className="px-4 py-2.5">
+                              <textarea value={editSegDraft.notas || ''} onChange={e => setEditSegDraft(p => ({ ...p, notas: e.target.value }))}
+                                rows={2} onClick={e => e.stopPropagation()}
+                                className="w-full text-[12px] border border-gray-200 rounded-lg px-2.5 py-1.5 resize-none focus:outline-none focus:border-blue-300 bg-white"/>
+                            </td>
+                            <td className="px-4 py-2.5" style={{ width: 72 }}>
+                              <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                                <button onClick={async () => {
+                                    await handleUpdateSegRow(row.id, {
+                                      fecha_revision: editSegDraft.fecha_revision,
+                                      por_hacer:      editSegDraft.por_hacer,
+                                      que_se_hizo:    editSegDraft.que_se_hizo,
+                                      notas:          editSegDraft.notas,
+                                    })
+                                    setEditSegId(null)
+                                  }}
+                                  className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 transition-colors">
+                                  <Check size={11}/>
+                                </button>
+                                <button onClick={() => setEditSegId(null)}
+                                  className="p-1.5 rounded-lg text-gray-300 hover:text-gray-500 hover:bg-gray-100 transition-colors">
+                                  <X size={11}/>
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        )
+
+                        return (
+                          <tr key={row.id}
+                            onClick={() => { setEditSegId(row.id); setEditSegDraft({ ...row }); setNewSegRow(null); setConfirmDelSeg(null) }}
+                            className={`border-b border-gray-50 cursor-pointer transition-colors group ${
+                              altRow ? 'bg-gray-50/60 hover:bg-gray-100/60' : 'bg-white hover:bg-gray-50'
+                            }`}>
+                            <td className="px-4 py-3 whitespace-nowrap" style={{ width: 120 }}>
+                              <span className="text-[12px] text-gray-500 font-mono">{fmtSegFecha(row.fecha_revision)}</span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <p className="text-[12px] text-gray-800 leading-relaxed whitespace-pre-wrap">{row.por_hacer || '—'}</p>
+                            </td>
+                            <td className="px-4 py-3" style={{ width: 160 }}>
+                              <SegEstadoBadge v={row.que_se_hizo}/>
+                            </td>
+                            <td className="px-4 py-3">
+                              <p className="text-[12px] text-gray-500 leading-relaxed whitespace-pre-wrap">{row.notas || '—'}</p>
+                            </td>
+                            <td className="px-4 py-3" style={{ width: 72 }}>
+                              {!isDelConfirm ? (
+                                <button onClick={e => { e.stopPropagation(); setConfirmDelSeg(row.id) }}
+                                  className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-all">
+                                  <Trash2 size={11}/>
+                                </button>
+                              ) : (
+                                <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                                  <button onClick={() => handleDeleteSegRow(row.id)}
+                                    className="p-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors" title="Confirmar eliminar">
+                                    <Check size={11}/>
+                                  </button>
+                                  <button onClick={() => setConfirmDelSeg(null)}
+                                    className="p-1.5 rounded-lg text-gray-300 hover:text-gray-500 hover:bg-gray-100 transition-colors">
+                                    <X size={11}/>
+                                  </button>
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                )}
               </div>
-
-              {/* Historial */}
-              {segHistory.length > 0 && (
-                <div className="space-y-3">
-                  <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Historial</h4>
-                  <div className="space-y-3">
-                    {segHistory.map(r => {
-                      const wk = r.semana_key?.replace('SEG-', '') ?? ''
-                      const estColor = estadoColors[r.estado_seg] ?? 'border-gray-200 bg-gray-50 text-gray-500'
-                      return (
-                        <div key={r.id} className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm space-y-3">
-                          <div className="flex items-center justify-between">
-                            <span className="text-[12px] font-semibold text-gray-500">{wk}</span>
-                            <div className="flex items-center gap-2">
-                              {r.responsable && (
-                                <span className="text-[11px] font-semibold bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full">{r.responsable}</span>
-                              )}
-                              {r.estado_seg && (
-                                <span className={`text-[11px] font-medium px-2 py-0.5 rounded-lg border ${estColor}`}>{r.estado_seg}</span>
-                              )}
-                            </div>
-                          </div>
-                          {r.por_hacer && (
-                            <div>
-                              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">Por hacer</p>
-                              <p className="text-[12px] text-gray-600 whitespace-pre-wrap">{r.por_hacer}</p>
-                            </div>
-                          )}
-                          {r.que_se_hizo && (
-                            <div>
-                              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">Se hizo</p>
-                              <p className="text-[12px] text-gray-600 whitespace-pre-wrap">{r.que_se_hizo}</p>
-                            </div>
-                          )}
-                          {r.proxima_accion && (
-                            <div className="flex items-start gap-1.5">
-                              <ChevronRight size={12} className="text-indigo-400 mt-0.5 flex-shrink-0" />
-                              <p className="text-[12px] text-indigo-600 font-medium">{r.proxima_accion}</p>
-                            </div>
-                          )}
-                          {r.nota && (
-                            <p className="text-[11px] text-gray-400 italic">{r.nota}</p>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              )}
             </div>
           )
         })()}
@@ -2395,24 +2427,6 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate }) {
       </div>
     </div>
 
-    {/* Carga historial seguimiento */}
-    {showSegCarga && (
-      <SegCargaHistorialModal
-        causa={causa}
-        onClose={() => setShowSegCarga(false)}
-        onSuccess={inserted => {
-          setRevisiones(prev => {
-            const updated = [...prev]
-            inserted.forEach(r => {
-              const idx = updated.findIndex(x => x.semana_key === r.semana_key)
-              if (idx >= 0) updated[idx] = r
-              else updated.unshift(r)
-            })
-            return updated.sort((a, b) => (b.semana_key ?? '').localeCompare(a.semana_key ?? ''))
-          })
-        }}
-      />
-    )}
     </>
   )
 }
