@@ -584,10 +584,12 @@ export default function SIAU() {
       .from('causas')
       .select('id,rit,ruc,materia,area,fiscalia,tribunal,cliente_nombre,cliente_id')
       .in('estado', ['En tramitación', 'Abierta'])
-      // Solo causas penales: área = 'Penal' O fiscalía asignada
-      .or('area.eq.Penal,fiscalia.not.is.null')
       .order('rit')
-    setAllCausas(data || [])
+    // Filtrar en JS: solo causas penales (área=Penal o fiscalía asignada y no vacía)
+    // Nota: .or() de PostgREST con null-checks no es confiable en todos los casos
+    setAllCausas((data || []).filter(c =>
+      c.area === 'Penal' || (c.fiscalia && c.fiscalia.trim() !== '')
+    ))
   }, [])
 
   useEffect(() => { fetchRegistros(); fetchCausas() }, [fetchRegistros, fetchCausas])
