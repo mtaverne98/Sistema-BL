@@ -136,16 +136,26 @@ function SearchDropdown({ label, value, onChange, options, placeholder, disabled
 }
 
 // ── CargaMasivaModal ───────────────────────────────────────────────────────────
-export default function CargaMasivaModal({ modulo, allCausas, onClose, onSuccess }) {
+// modulo: 'siau' | 'pjud' | 'seguimiento' | 'seguimiento_rev'
+// 'seguimiento_rev' = carga masiva para el tab Seguimiento dentro de Causas
+//                     (guarda en tabla 'revisiones' con semana_key=null)
+export default function CargaMasivaModal({ modulo, allCausas, defaultCausaRit, onClose, onSuccess }) {
+  const isSeg    = modulo === 'seguimiento' || modulo === 'seguimiento_rev'
+  const isSegRev = modulo === 'seguimiento_rev'
+
+  // Auto-seleccionar si hay una sola causa (o defaultCausaRit)
+  const autoCliente = allCausas.length === 1 ? (allCausas[0].cliente_nombre ?? '') : ''
+  const autoRit     = defaultCausaRit
+    ?? (allCausas.length === 1 ? (allCausas[0].rit ?? '') : '')
+
   const [step, setStep]             = useState(1)
-  const [clienteSel, setClienteSel] = useState('')
-  const [causaSel, setCausaSel]     = useState('')
+  const [clienteSel, setClienteSel] = useState(autoCliente)
+  const [causaSel, setCausaSel]     = useState(autoRit)
   const [rows, setRows]             = useState(() => makeRows(5, modulo))
   const [saving, setSaving]         = useState(false)
   const [savedCount, setSavedCount] = useState(null)
   const [error, setError]           = useState(null)
   const tableRef = useRef(null)
-  const isSeg = modulo === 'seguimiento'
 
   // Derived options
   const clienteOptions = Array.from(
@@ -251,16 +261,26 @@ export default function CargaMasivaModal({ modulo, allCausas, onClose, onSuccess
 
     const payloads = filledRows.map(r => {
       const base = {
-        fecha:          r.fecha,
         notas:          r.notas?.trim()     || null,
         causa_rit:      causaObj.rit,
         cliente_nombre: causaObj.cliente_nombre,
         causa_id:       causaObj.id        || null,
         cliente_id:     causaObj.cliente_id || null,
       }
-      if (isSeg) {
+      if (isSegRev) {
+        // Tab Seguimiento en Causas → tabla revisiones
         return {
           ...base,
+          fecha_revision: r.fecha || null,
+          por_hacer:      r.por_hacer?.trim() || null,
+          que_se_hizo:    r.estado || 'Pendiente',
+          semana_key:     null,
+          revisada:       false,
+        }
+      } else if (isSeg) {
+        return {
+          ...base,
+          fecha:     r.fecha,
           por_hacer: r.por_hacer?.trim() || null,
           estado:    r.estado || 'Pendiente',
         }
@@ -288,7 +308,7 @@ export default function CargaMasivaModal({ modulo, allCausas, onClose, onSuccess
       }
     })
 
-    const tableName = isSeg ? 'seguimiento' : modulo
+    const tableName = isSegRev ? 'revisiones' : isSeg ? 'seguimiento' : modulo
     const { data, error: err } = await supabase.from(tableName).insert(payloads).select()
     if (err) {
       setError(err.message)
@@ -301,7 +321,7 @@ export default function CargaMasivaModal({ modulo, allCausas, onClose, onSuccess
   }
 
   // ── Render ───────────────────────────────────────────────────────────────────
-  const tableName = isSeg ? 'Seguimiento Semanal' : modulo === 'siau' ? 'SIAU' : 'PJUD'
+  const tableName = isSegRev ? 'Seguimiento' : isSeg ? 'Seguimiento Semanal' : modulo === 'siau' ? 'SIAU' : 'PJUD'
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-[2px]">

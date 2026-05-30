@@ -2446,7 +2446,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate }) {
 
     {showCargaMasivaSeg && (
       <CargaMasivaModal
-        modulo="seguimiento"
+        modulo="seguimiento_rev"
         allCausas={[causa]}
         defaultCausaRit={causa.rit}
         onClose={() => setShowCargaMasivaSeg(false)}
