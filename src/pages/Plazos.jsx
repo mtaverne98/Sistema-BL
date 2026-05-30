@@ -4,9 +4,10 @@ import {
   AlertCircle, Clock, Check, X, Plus, Search,
   ChevronRight, FileText, Scale,
   AlertTriangle, CheckCircle2, Edit2, Bell,
-  Gavel, ExternalLink, ArrowRight, Loader2,
+  Gavel, ExternalLink, ArrowRight, Loader2, Trash2,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
+import ConfirmDeleteModal from '../components/ConfirmDeleteModal'
 
 // ── Today ──────────────────────────────────────────────────────────────────────
 const TODAY = new Date().toISOString().slice(0, 10)
@@ -257,7 +258,7 @@ function GroupHeader({ groupKey, label, count, expanded, onToggle, isUrgencia })
 }
 
 // ── PlazosRow ──────────────────────────────────────────────────────────────────
-function PlazosRow({ plazo, selected, onClick }) {
+function PlazosRow({ plazo, selected, onClick, onDeleteRequest }) {
   const urgencia = getUrgencia(plazo)
   const cfg      = URGENCIA_CONFIG[urgencia]
   const resp     = RESPONSABLE_INFO[plazo.responsable]
@@ -289,11 +290,19 @@ function PlazosRow({ plazo, selected, onClick }) {
 
       <div className="flex-shrink-0 flex flex-col items-end gap-1.5">
         <DaysCounter plazo={plazo} />
-        <div
-          className="w-[18px] h-[18px] rounded-full flex items-center justify-center text-white text-[9px] font-bold"
-          style={{ backgroundColor: resp?.color || '#94a3b8' }}
-        >
-          {plazo.responsable}
+        <div className="flex items-center gap-1">
+          <div
+            className="w-[18px] h-[18px] rounded-full flex items-center justify-center text-white text-[9px] font-bold"
+            style={{ backgroundColor: resp?.color || '#94a3b8' }}
+          >
+            {plazo.responsable}
+          </div>
+          <button
+            onClick={e => { e.stopPropagation(); onDeleteRequest && onDeleteRequest(plazo) }}
+            className="p-1 rounded-lg text-gray-300 hover:text-red-400 hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"
+            title="Eliminar plazo">
+            <Trash2 size={11}/>
+          </button>
         </div>
       </div>
     </div>
@@ -864,6 +873,7 @@ export default function Plazos() {
   const [showForm,        setShowForm]        = useState(false)
   const [dismissedBanner, setDismissedBanner] = useState(false)
   const [collapsed,       setCollapsed]       = useState({})
+  const [deleteTarget,    setDeleteTarget]    = useState(null)
 
   // ── Fetch plazos ──
   const fetchPlazos = useCallback(async () => {
@@ -999,6 +1009,14 @@ export default function Plazos() {
       setShowForm(false)
     }
   }, [])
+
+  const handleDeletePlazo = useCallback(async () => {
+    if (!deleteTarget) return
+    await supabase.from('plazos').delete().eq('id', deleteTarget.id)
+    setPlazos(prev => prev.filter(p => p.id !== deleteTarget.id))
+    if (selectedId === deleteTarget.id) setSelectedId(null)
+    setDeleteTarget(null)
+  }, [deleteTarget, selectedId])
 
   const toggleGroup = (key) => setCollapsed(prev => ({ ...prev, [key]: !prev[key] }))
 
@@ -1184,6 +1202,7 @@ export default function Plazos() {
                     plazo={p}
                     selected={p.id === selectedId}
                     onClick={() => setSelectedId(p.id === selectedId ? null : p.id)}
+                    onDeleteRequest={p => setDeleteTarget({ id: p.id, name: p.titulo })}
                   />
                 ))}
               </div>
@@ -1216,6 +1235,13 @@ export default function Plazos() {
           allCausas={allCausas}
         />
       )}
+
+      <ConfirmDeleteModal
+        open={!!deleteTarget}
+        title={deleteTarget?.name}
+        onConfirm={handleDeletePlazo}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   )
 }

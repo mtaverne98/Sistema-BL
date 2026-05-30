@@ -6,8 +6,9 @@ import {
   Clock, Pencil, UserPlus, TrendingUp,
   CheckSquare, MessageSquare, FileText,
   ArrowUpRight, Users, CheckCircle,
-  User, Calendar, Scale, ChevronDown,
+  User, Calendar, Scale, ChevronDown, Trash2,
 } from 'lucide-react'
+import ConfirmDeleteModal from '../components/ConfirmDeleteModal'
 
 // ── Opciones ──────────────────────────────────────────────────────────────
 const ESTADO_OPTIONS = [
@@ -795,6 +796,7 @@ export default function Prospectos() {
   const [filtroOrigen,  setFiltroOrigen]  = useState('')
   const [filtroMateria, setFiltroMateria] = useState('')
   const [filtroEstado,  setFiltroEstado]  = useState('')
+  const [deleteTarget,  setDeleteTarget]  = useState(null)
 
   useEffect(() => {
     async function fetchProspectos() {
@@ -832,6 +834,14 @@ export default function Prospectos() {
     setSeleccionado(null)
     await supabase.from('prospectos').update({ estado: 'Cliente aceptado' }).eq('id', id)
     navigate('/clientes')
+  }
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return
+    await supabase.from('prospectos').delete().eq('id', deleteTarget.id)
+    setProspectos(prev => prev.filter(p => p.id !== deleteTarget.id))
+    if (seleccionado?.id === deleteTarget.id) setSeleccionado(null)
+    setDeleteTarget(null)
   }
 
   const handleUpdate = async (id, cambios) => {
@@ -959,7 +969,7 @@ export default function Prospectos() {
                   const accionStyle = ACCION_STYLES[p.proxima_accion] ?? { dot: 'bg-gray-200', label: 'text-gray-400' }
                   return (
                     <tr key={p.id} onClick={() => handleSelectRow(p)}
-                      className={`border-b border-gray-50 cursor-pointer transition-colors ${
+                      className={`border-b border-gray-50 cursor-pointer transition-colors group ${
                         seleccionado?.id === p.id ? 'bg-blue-50/40' : 'hover:bg-gray-50/60'
                       } ${inactivo ? 'opacity-55' : ''}`}
                     >
@@ -979,9 +989,17 @@ export default function Prospectos() {
                       <td className="px-3 py-3"><MateriaBadge materia={p.materia} /></td>
                       <td className="px-3 py-3"><EstadoBadge estado={p.estado} /></td>
                       <td className="px-3 py-3 pr-7">
-                        <div className="flex items-center gap-1.5">
-                          <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${accionStyle.dot}`} />
-                          <span className={`text-xs whitespace-nowrap ${accionStyle.label}`}>{p.proxima_accion}</span>
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-1.5">
+                            <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${accionStyle.dot}`} />
+                            <span className={`text-xs whitespace-nowrap ${accionStyle.label}`}>{p.proxima_accion}</span>
+                          </div>
+                          <button
+                            onClick={e => { e.stopPropagation(); setDeleteTarget({ id: p.id, name: p.nombre }) }}
+                            className="opacity-0 group-hover:opacity-100 p-1 rounded-lg text-gray-300 hover:text-red-400 hover:bg-red-50 transition-colors flex-shrink-0"
+                            title="Eliminar prospecto">
+                            <Trash2 size={12}/>
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -1007,6 +1025,13 @@ export default function Prospectos() {
           onGuardar={handleGuardar}
         />
       )}
+
+      <ConfirmDeleteModal
+        open={!!deleteTarget}
+        title={deleteTarget?.name}
+        onConfirm={handleDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   )
 }

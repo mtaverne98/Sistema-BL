@@ -680,7 +680,7 @@ export default function Clientes() {
                       <tr
                         key={c.id}
                         onClick={() => { setSeleccionado(c); setFormulario(null) }}
-                        className={`border-b border-gray-50 cursor-pointer transition-colors ${
+                        className={`group border-b border-gray-50 cursor-pointer transition-colors ${
                           clienteSeleccionado?.id === c.id ? 'bg-blue-50/50' : 'hover:bg-gray-50'
                         } ${c.estado === 'Inactivo' ? 'opacity-60' : ''}`}>
                         <td className="pl-8 pr-4 py-3">
@@ -702,7 +702,19 @@ export default function Clientes() {
                           </span>
                         </td>
                         <td className="px-4 py-3 text-xs text-gray-400">
-                          {formatFecha(c.createdAt)}
+                          <div className="flex items-center gap-2">
+                            {formatFecha(c.createdAt)}
+                            <button
+                              onClick={e => {
+                                e.stopPropagation()
+                                setSeleccionado(c)
+                                setFormulario(null)
+                              }}
+                              className="opacity-0 group-hover:opacity-100 p-1 rounded-lg text-gray-300 hover:text-red-400 hover:bg-red-50 transition-colors flex-shrink-0"
+                              title="Eliminar cliente">
+                              <Trash2 size={11} />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}

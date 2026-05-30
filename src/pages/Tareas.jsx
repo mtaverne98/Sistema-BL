@@ -5,6 +5,7 @@ import {
   AlignLeft, Layers, Tag, Trash2, Edit2, Loader2, AlertCircle,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
+import ConfirmDeleteModal from '../components/ConfirmDeleteModal'
 
 // ── Constantes ────────────────────────────────────────────────────────────────
 const TODAY      = new Date().toISOString().split('T')[0]
@@ -519,7 +520,7 @@ function DropdownSelect({ value, onChange, options, getStyle, label, compact = f
 }
 
 // ── TaskRow ───────────────────────────────────────────────────────────────────
-function TaskRow({ tarea, onClick, onToggle, panelOpen }) {
+function TaskRow({ tarea, onClick, onToggle, onDeleteRequest, panelOpen }) {
   const eE    = efectivoEstado(tarea)
   const eS    = ESTADO_STYLES[eE]     || ESTADO_STYLES['Pendiente']
   const pS    = PRIORIDAD_STYLES[tarea.prioridad] || PRIORIDAD_STYLES['Media']
@@ -612,6 +613,13 @@ function TaskRow({ tarea, onClick, onToggle, panelOpen }) {
         >
           <Calendar size={12} />
         </button>
+        <button
+          onClick={e => { e.stopPropagation(); onDeleteRequest && onDeleteRequest(tarea) }}
+          title="Eliminar tarea"
+          className="p-1.5 rounded-lg text-gray-300 hover:text-red-400 hover:bg-red-50 transition-colors"
+        >
+          <Trash2 size={12} />
+        </button>
       </div>
 
       {/* Estado */}
@@ -623,7 +631,7 @@ function TaskRow({ tarea, onClick, onToggle, panelOpen }) {
 }
 
 // ── GroupSection ──────────────────────────────────────────────────────────────
-function GroupSection({ grupo, onTaskClick, onToggle, panelOpen }) {
+function GroupSection({ grupo, onTaskClick, onToggle, onDeleteRequest, panelOpen }) {
   const [open, setOpen] = useState(true)
 
   return (
@@ -649,6 +657,7 @@ function GroupSection({ grupo, onTaskClick, onToggle, panelOpen }) {
               tarea={t}
               onClick={onTaskClick}
               onToggle={onToggle}
+              onDeleteRequest={onDeleteRequest}
               panelOpen={panelOpen}
             />
           ))}
@@ -1103,10 +1112,11 @@ export default function Tareas() {
   const [busqueda,     setBusqueda]     = useState('')
   const [groupBy,      setGroupBy]      = useState('Por fecha')
 
-  const [fEstado,    setFEstado]    = useState('Todos')
-  const [fPrioridad, setFPrioridad] = useState('Todas')
-  const [fResp,      setFResp]      = useState('Todas')
-  const [fCategoria, setFCategoria] = useState('Todas')
+  const [fEstado,      setFEstado]      = useState('Todos')
+  const [fPrioridad,   setFPrioridad]   = useState('Todas')
+  const [fResp,        setFResp]        = useState('Todas')
+  const [fCategoria,   setFCategoria]   = useState('Todas')
+  const [deleteTarget, setDeleteTarget] = useState(null)
 
   const panelOpen = !!(seleccionada || showForm)
 
@@ -1192,6 +1202,15 @@ export default function Tareas() {
       setShowForm(false)
     }
   }, [])
+
+  // ── Eliminar tarea ──
+  const handleDelete = useCallback(async () => {
+    if (!deleteTarget) return
+    await supabase.from('tareas').delete().eq('id', deleteTarget.id)
+    setTareas(prev => prev.filter(t => t.id !== deleteTarget.id))
+    if (seleccionada?.id === deleteTarget.id) setSeleccionada(null)
+    setDeleteTarget(null)
+  }, [deleteTarget, seleccionada])
 
   const openTask = (tarea) => { setShowForm(false); setSeleccionada(tarea) }
   const closePanel = () => { setSeleccionada(null); setShowForm(false) }
@@ -1361,6 +1380,7 @@ export default function Tareas() {
                         grupo={g}
                         onTaskClick={openTask}
                         onToggle={handleToggle}
+                        onDeleteRequest={t => setDeleteTarget({ id: t.id, name: t.titulo })}
                         panelOpen={panelOpen}
                       />
                     ))}
@@ -1390,6 +1410,13 @@ export default function Tareas() {
           allCausas={allCausas}
         />
       )}
+
+      <ConfirmDeleteModal
+        open={!!deleteTarget}
+        title={deleteTarget?.name}
+        onConfirm={handleDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   )
 }

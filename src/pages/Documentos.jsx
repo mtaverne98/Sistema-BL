@@ -6,10 +6,11 @@ import {
   File, Layout, Lock, Tag, MessageSquare, History, Info,
   Copy, X, FolderOpen, Layers, Gavel, CheckSquare,
   ArrowUp, ArrowDown, Shield, Database, Link2, Flame,
-  ExternalLink,
+  ExternalLink, Trash2,
 } from 'lucide-react'
 import { PLANTILLAS_INIT } from '../context/SistemaContext'
 import { supabase } from '../lib/supabase'
+import ConfirmDeleteModal from '../components/ConfirmDeleteModal'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const RESPONSABLE_INFO = {
@@ -450,7 +451,7 @@ function QuickAccessStrip({ docs, onSelect }) {
 // ── Table View ────────────────────────────────────────────────────────────────
 const GRID = '28px 1fr 86px 94px 120px 84px 58px 28px'
 
-function TableView({ docs, onSelect, onToggleFav, sortBy, sortDir, onSort }) {
+function TableView({ docs, onSelect, onToggleFav, sortBy, sortDir, onSort, onDeleteRequest }) {
   function SortBtn({ col, label }) {
     const active = sortBy === col
     return (
@@ -539,9 +540,15 @@ function TableView({ docs, onSelect, onToggleFav, sortBy, sortDir, onSort }) {
                 <span className="text-[10.5px] text-gray-400">{formatFechaCorta(doc.fecha_modificacion)}</span>
               </div>
 
-              {/* Responsable */}
-              <div className="flex items-center justify-end opacity-60 group-hover:opacity-100 transition-opacity">
+              {/* Responsable + delete */}
+              <div className="flex items-center justify-end gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
                 <Avatar code={doc.responsable} />
+                <button
+                  onClick={e => { e.stopPropagation(); onDeleteRequest && onDeleteRequest(doc) }}
+                  className="p-1 rounded-lg text-gray-300 hover:text-red-400 hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"
+                  title="Eliminar documento">
+                  <Trash2 size={11}/>
+                </button>
               </div>
             </div>
           )
@@ -556,7 +563,7 @@ function MainContent({
   docs, view,
   selectedCliente, selectedCausa, selectedCategoria, selectedEstado,
   onView, onCliente, onCausa, onCategoria, onEstado,
-  onSelect, onToggleFav, sortBy, sortDir, onSort,
+  onSelect, onToggleFav, sortBy, sortDir, onSort, onDeleteRequest,
 }) {
   const [query, setQuery] = useState('')
 
@@ -666,6 +673,7 @@ function MainContent({
           sortBy={sortBy}
           sortDir={sortDir}
           onSort={onSort}
+          onDeleteRequest={onDeleteRequest}
         />
       </div>
     </div>
@@ -1300,6 +1308,7 @@ export default function Documentos() {
   const [tareas,     setTareas]     = useState([])
   const [audiencias, setAudiencias] = useState([])
   const [reuniones,  setReuniones]  = useState([])
+  const [deleteTarget, setDeleteTarget] = useState(null)
 
   const [view,              setView]              = useState('all')
   const [selectedId,        setSelectedId]        = useState(null)
@@ -1421,6 +1430,14 @@ export default function Documentos() {
     }
   }
 
+  async function handleDeleteDocumento() {
+    if (!deleteTarget) return
+    await supabase.from('documentos').delete().eq('id', deleteTarget.id)
+    setRows(prev => prev.filter(d => d.id !== deleteTarget.id))
+    if (selectedId === deleteTarget.id) setSelectedId(null)
+    setDeleteTarget(null)
+  }
+
   function handleSort(col) {
     if (sortBy === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
     else { setSortBy(col); setSortDir('desc') }
@@ -1514,10 +1531,18 @@ export default function Documentos() {
               sortBy={sortBy}
               sortDir={sortDir}
               onSort={handleSort}
+              onDeleteRequest={doc => setDeleteTarget({ id: doc.id, name: doc.nombre })}
             />
           )}
         </div>
       </div>
+
+      <ConfirmDeleteModal
+        open={!!deleteTarget}
+        title={deleteTarget?.name}
+        onConfirm={handleDeleteDocumento}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   )
 }

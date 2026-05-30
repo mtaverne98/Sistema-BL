@@ -2,9 +2,10 @@ import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import {
   Search, Video, MapPin, Calendar, ChevronDown,
   Copy, ExternalLink, CheckCircle, FileText, Users, Check,
-  Download, Plus, AlignLeft, X, Loader2, AlertCircle,
+  Download, Plus, AlignLeft, X, Loader2, AlertCircle, Trash2,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
+import ConfirmDeleteModal from '../components/ConfirmDeleteModal'
 
 // ── Constantes ────────────────────────────────────────────────────────────────
 const TODAY    = new Date().toISOString().split('T')[0]
@@ -436,14 +437,14 @@ function DateBlock({ fecha, hora }) {
 }
 
 // ── CardAudiencia ─────────────────────────────────────────────────────────────
-function CardAudiencia({ audiencia: aud, onUpdate }) {
+function CardAudiencia({ audiencia: aud, onUpdate, onDeleteRequest }) {
   const [expanded, setExpanded] = useState(false)
   const { indicator } = getDayInfo(aud.fecha)
   const isInactiva    = aud.estado !== 'Programada'
   const eStyles       = ESTADO_AUD[aud.estado] || ESTADO_AUD['Programada']
 
   return (
-    <div className={`bg-white rounded-2xl overflow-hidden transition-all duration-200 ${
+    <div className={`group bg-white rounded-2xl overflow-hidden transition-all duration-200 ${
       indicator === 'hoy'
         ? 'border border-amber-200 shadow-sm shadow-amber-50'
         : indicator === 'manana'
@@ -509,7 +510,14 @@ function CardAudiencia({ audiencia: aud, onUpdate }) {
             })}
           </div>
 
-          {/* Expand icon */}
+          {/* Delete + Expand icon */}
+          <button
+            onClick={e => { e.stopPropagation(); onDeleteRequest && onDeleteRequest(aud) }}
+            className="p-1.5 rounded-lg text-gray-300 hover:text-red-400 hover:bg-red-50 transition-all opacity-0 group-hover:opacity-100"
+            title="Eliminar audiencia"
+          >
+            <Trash2 size={13} />
+          </button>
           <ChevronDown
             size={15}
             className={`text-gray-300 flex-shrink-0 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}
@@ -817,6 +825,7 @@ export default function Audiencias() {
   const [busqueda,         setBusqueda]         = useState('')
   const [filtroEstado,     setFiltroEstado]     = useState('Todas')
   const [filtroFecha,      setFiltroFecha]      = useState('Todas')
+  const [deleteTarget,     setDeleteTarget]     = useState(null)
 
   // ── Fetch audiencias ──
   const fetchAudiencias = useCallback(async () => {
@@ -867,6 +876,14 @@ export default function Audiencias() {
       .eq('id', id)
     if (err) console.error('Error actualizando audiencia:', err.message)
   }, [])
+
+  // ── Eliminar audiencia ──
+  const handleDelete = useCallback(async () => {
+    if (!deleteTarget) return
+    await supabase.from('audiencias').delete().eq('id', deleteTarget.id)
+    setAudiencias(prev => prev.filter(a => a.id !== deleteTarget.id))
+    setDeleteTarget(null)
+  }, [deleteTarget])
 
   // ── Crear audiencia ──
   const handleCrear = useCallback(async (form) => {
@@ -1052,6 +1069,7 @@ export default function Audiencias() {
                     key={aud.id}
                     audiencia={aud}
                     onUpdate={handleUpdate}
+                    onDeleteRequest={a => setDeleteTarget({ id: a.id, name: `${a.tipo || 'audiencia'} · ${a.cliente_nombre}` })}
                   />
                 ))}
               </div>
@@ -1069,6 +1087,13 @@ export default function Audiencias() {
           guardando={guardando}
         />
       )}
+
+      <ConfirmDeleteModal
+        open={!!deleteTarget}
+        title={deleteTarget?.name}
+        onConfirm={handleDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   )
 }

@@ -4,6 +4,7 @@ import {
   CheckCircle2, RotateCcw, Loader2, Trash2, Scale, Users,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
+import ConfirmDeleteModal from '../components/ConfirmDeleteModal'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -235,7 +236,7 @@ function AddTemaForm({ onSave, onCancel }) {
 }
 
 // ── HistorialItem (accordion) ─────────────────────────────────────────────────
-function HistorialItem({ reunion, temas }) {
+function HistorialItem({ reunion, temas, onDeleteReunion }) {
   const [open, setOpen] = useState(false)
   const ts   = temas.filter(t => t.fecha_jueves === reunion.fecha_jueves)
   const disc = ts.filter(t => t.estado === 'discutido').length
@@ -278,6 +279,14 @@ function HistorialItem({ reunion, temas }) {
             <span className="text-[10px] font-semibold text-green-700 bg-green-50 px-2 py-0.5 rounded-full border border-green-200 flex items-center gap-1">
               <CheckCircle2 size={9}/> Realizada
             </span>
+          )}
+          {onDeleteReunion && (
+            <button
+              onClick={e => { e.stopPropagation(); onDeleteReunion(reunion) }}
+              className="p-1 rounded-lg text-gray-300 hover:text-red-400 hover:bg-red-50 transition-colors"
+              title="Eliminar reunión">
+              <Trash2 size={13}/>
+            </button>
           )}
           <ChevronDown size={14} className={`text-gray-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}/>
         </div>
@@ -349,6 +358,7 @@ export default function Reuniones() {
   const [acuerdosDraft,  setAcuerdosDraft]  = useState('')
   const [savingAcuerdos, setSavingAcuerdos] = useState(false)
   const [savedFlash,     setSavedFlash]     = useState(false)
+  const [deleteTarget,   setDeleteTarget]   = useState(null)
 
   const activeThursday = useMemo(() => getActiveThursday(), [])
   const countdown      = useMemo(() => getCountdown(activeThursday), [activeThursday])
@@ -432,6 +442,14 @@ export default function Reuniones() {
   async function handleDelete(temaId) {
     setTemas(prev => prev.filter(t => t.id !== temaId))
     await supabase.from('reunion_temas').delete().eq('id', temaId)
+  }
+
+  async function handleDeleteReunion() {
+    if (!deleteTarget) return
+    await supabase.from('reuniones').delete().eq('id', deleteTarget.id)
+    setReuniones(prev => prev.filter(r => r.id !== deleteTarget.id))
+    setTemas(prev => prev.filter(t => t.fecha_jueves !== deleteTarget.fecha_jueves))
+    setDeleteTarget(null)
   }
 
   async function handleSaveAcuerdos(marcarRealizada = false) {
@@ -675,12 +693,22 @@ export default function Reuniones() {
               </div>
             ) : (
               historial.map(r => (
-                <HistorialItem key={r.id} reunion={r} temas={temas}/>
+                <HistorialItem key={r.id} reunion={r} temas={temas}
+                  onDeleteReunion={r => setDeleteTarget({ id: r.id, fecha_jueves: r.fecha_jueves, name: `la reunión del ${fmtLarga(r.fecha_jueves)}` })}
+                />
               ))
             )}
           </div>
         )}
       </div>
+
+      <ConfirmDeleteModal
+        open={!!deleteTarget}
+        title={deleteTarget?.name}
+        warning="Los temas de esta reunión también se eliminarán."
+        onConfirm={handleDeleteReunion}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   )
 }

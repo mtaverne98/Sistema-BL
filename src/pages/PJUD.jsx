@@ -3,10 +3,11 @@ import {
   ChevronRight, ChevronDown, Search, Plus, ArrowLeft,
   FileText, Clock, CheckCircle2, X, Check, Edit2,
   AlertCircle, Scale, Bell, Users, Briefcase, Landmark,
-  MoreHorizontal, CalendarPlus, ListTodo, Loader2, Table2, Gavel,
+  MoreHorizontal, CalendarPlus, ListTodo, Loader2, Table2, Gavel, Trash2,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import CargaMasivaModal from '../components/CargaMasivaModal'
+import ConfirmDeleteModal from '../components/ConfirmDeleteModal'
 
 const TODAY = new Date().toISOString().slice(0, 10)
 
@@ -632,7 +633,7 @@ function MovimientoDetail({ mov, causaRit, clienteNombre, onUpdate, addTarea, ad
 }
 
 // ── MovimientosTable (table view) ─────────────────────────────────────────────
-function MovimientosTable({ causaData, rowsAll, onUpdate, onAdd, causasInfo, addTarea, addPlazo, onBack }) {
+function MovimientosTable({ causaData, rowsAll, onUpdate, onAdd, onDelete, causasInfo, addTarea, addPlazo, onBack }) {
   const { causa_rit, causaInfo, clienteNombre } = causaData
 
   const movimientos = useMemo(() =>
@@ -640,11 +641,19 @@ function MovimientosTable({ causaData, rowsAll, onUpdate, onAdd, causasInfo, add
       .sort((a, b) => (b.fecha || '').localeCompare(a.fecha || '')),
     [rowsAll, causa_rit, clienteNombre])
 
-  const [expandedId, setExpandedId] = useState(null)
-  const [editingId,  setEditingId]  = useState(null)
-  const [editDraft,  setEditDraft]  = useState({})
-  const [showForm,   setShowForm]   = useState(false)
-  const [search,     setSearch]     = useState('')
+  const [expandedId,   setExpandedId]   = useState(null)
+  const [editingId,    setEditingId]    = useState(null)
+  const [editDraft,    setEditDraft]    = useState({})
+  const [showForm,     setShowForm]     = useState(false)
+  const [search,       setSearch]       = useState('')
+  const [deleteTarget, setDeleteTarget] = useState(null)
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return
+    await supabase.from('pjud').delete().eq('id', deleteTarget.id)
+    onDelete && onDelete(deleteTarget.id)
+    setDeleteTarget(null)
+  }
 
   const filtered = useMemo(() => {
     if (!search.trim()) return movimientos
@@ -860,10 +869,16 @@ function MovimientosTable({ causaData, rowsAll, onUpdate, onAdd, causasInfo, add
                             <p className="text-[11px] text-gray-400 truncate">{r.notas || '—'}</p>
                           </td>
                           <td className="px-3 py-3 pr-4">
-                            <button onClick={e => startEdit(r, e)}
-                              className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg text-gray-300 hover:text-blue-500 hover:bg-blue-50 transition-all">
-                              <Edit2 size={11}/>
-                            </button>
+                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                              <button onClick={e => startEdit(r, e)}
+                                className="p-1.5 rounded-lg text-gray-300 hover:text-blue-500 hover:bg-blue-50 transition-colors">
+                                <Edit2 size={11}/>
+                              </button>
+                              <button onClick={e => { e.stopPropagation(); setDeleteTarget({ id: r.id, name: `el folio ${r.folio || r.id}` }) }}
+                                className="p-1.5 rounded-lg text-gray-300 hover:text-red-400 hover:bg-red-50 transition-colors">
+                                <Trash2 size={11}/>
+                              </button>
+                            </div>
                           </td>
                         </>
                       )}
@@ -901,6 +916,13 @@ function MovimientosTable({ causaData, rowsAll, onUpdate, onAdd, causasInfo, add
           onClose={() => setShowForm(false)}
         />
       )}
+
+      <ConfirmDeleteModal
+        open={!!deleteTarget}
+        title={deleteTarget?.name}
+        onConfirm={handleDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   )
 }
@@ -1133,6 +1155,10 @@ export default function PJUD() {
     if (err) console.error('Error creando tarea:', err.message)
   }, [])
 
+  const handleDeleteRow = useCallback((id) => {
+    setRows(prev => prev.filter(r => r.id !== id))
+  }, [])
+
   const handleAddPlazo = useCallback(async (plazo) => {
     const payload = {
       titulo: plazo.titulo, tipo: plazo.tipo || 'Procesal',
@@ -1166,6 +1192,7 @@ export default function PJUD() {
         rowsAll={rows}
         onUpdate={handleUpdate}
         onAdd={handleAddMovimiento}
+        onDelete={handleDeleteRow}
         causasInfo={causasInfo}
         addTarea={handleAddTarea}
         addPlazo={handleAddPlazo}

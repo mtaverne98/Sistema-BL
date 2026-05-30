@@ -12,6 +12,7 @@ import {
 import { supabase } from '../lib/supabase'
 
 import { useQuickAdd } from '../context/QuickAddContext'
+import ConfirmDeleteModal from '../components/ConfirmDeleteModal'
 
 // ── Exportación vacía para compatibilidad con CMD+K en MainLayout ──────────
 export const CAUSAS = []
@@ -2599,6 +2600,7 @@ export default function Causas() {
   const [seleccionada, setSeleccionada] = useState(null)
   const [mostrarFiltros, setFiltros]  = useState(false)
   const [formulario, setFormulario]   = useState(null) // null | 'nueva' | objeto causa para editar
+  const [deleteTarget, setDeleteTarget] = useState(null)
 
   // ── Fetch ───────────────────────────────────────────────────────────────
   const fetchCausas = useCallback(async () => {
@@ -2680,6 +2682,17 @@ export default function Causas() {
     else {
       setCausas(prev => prev.filter(c => c.id !== seleccionada.id))
       setSeleccionada(null)
+    }
+  }
+
+  const handleEliminarById = async () => {
+    if (!deleteTarget) return
+    const { error: err } = await supabase.from('causas').delete().eq('id', deleteTarget.id)
+    if (err) { alert('Error al eliminar: ' + err.message) }
+    else {
+      setCausas(prev => prev.filter(c => c.id !== deleteTarget.id))
+      if (seleccionada?.id === deleteTarget.id) setSeleccionada(null)
+      setDeleteTarget(null)
     }
   }
 
@@ -2906,7 +2919,7 @@ export default function Causas() {
                         {grupo.map(c => (
                           <tr key={c.id}
                             onClick={() => { setSeleccionada(seleccionada?.id === c.id ? null : c); setFormulario(null) }}
-                            className={`border-b border-gray-50 cursor-pointer transition-colors ${
+                            className={`group border-b border-gray-50 cursor-pointer transition-colors ${
                               seleccionada?.id === c.id ? 'bg-blue-50/40' : 'hover:bg-gray-50/60'
                             } ${CERRADAS.has(c.estado) ? 'opacity-55' : ''}`}>
                             {!clienteActivo && (
@@ -2932,7 +2945,17 @@ export default function Causas() {
                             <td className="px-3 py-2.5"><span className="text-xs text-gray-400">{c.fiscalia ?? '—'}</span></td>
                             <td className="px-3 py-2.5"><AreaBadge area={c.area} /></td>
                             <td className="px-3 py-2.5 max-w-[140px]"><p className="text-xs text-gray-700 truncate">{c.materia}</p></td>
-                            <td className="px-3 py-2.5"><EstadoBadge estado={c.estado} /></td>
+                            <td className="px-3 py-2.5">
+                              <div className="flex items-center gap-2">
+                                <EstadoBadge estado={c.estado} />
+                                <button
+                                  onClick={e => { e.stopPropagation(); setDeleteTarget({ id: c.id, name: c.materia }) }}
+                                  className="opacity-0 group-hover:opacity-100 p-1 rounded-lg text-gray-300 hover:text-red-400 hover:bg-red-50 transition-colors flex-shrink-0"
+                                  title="Eliminar causa">
+                                  <Trash2 size={11} />
+                                </button>
+                              </div>
+                            </td>
                           </tr>
                         ))}
                       </>
@@ -2984,6 +3007,13 @@ export default function Causas() {
           )}
         </div>
       )}
+
+      <ConfirmDeleteModal
+        open={!!deleteTarget}
+        title={`¿Eliminar "${deleteTarget?.name}"?`}
+        onConfirm={handleEliminarById}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   )
 }

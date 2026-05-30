@@ -1,10 +1,11 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import {
   ChevronRight, ChevronDown, Search, Plus, ArrowLeft,
-  FileText, X, Check, Edit2, Loader2, Scale, Table2,
+  FileText, X, Check, Edit2, Loader2, Scale, Table2, Trash2,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import CargaMasivaModal from '../components/CargaMasivaModal'
+import ConfirmDeleteModal from '../components/ConfirmDeleteModal'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const TODAY = new Date().toISOString().slice(0, 10)
@@ -240,17 +241,25 @@ function FormNuevaSolicitud({ causa, causasInfo, globalMode, onSave, onClose }) 
 }
 
 // ── Tabla de solicitudes ──────────────────────────────────────────────────────
-function SolicitudesTable({ grupo, registrosAll, onUpdate, onAdd, causasInfo, onBack, clienteNombre }) {
+function SolicitudesTable({ grupo, registrosAll, onUpdate, onAdd, onDelete, causasInfo, onBack, clienteNombre }) {
   const registros  = useMemo(() =>
     registrosAll.filter(r =>
       r.causa_rit === grupo.causa_rit && r.cliente_nombre === clienteNombre
     ).sort((a, b) => (b.fecha || '').localeCompare(a.fecha || '')),
     [registrosAll, grupo.causa_rit, clienteNombre])
 
-  const [expandedId, setExpandedId] = useState(null)
-  const [editingId,  setEditingId]  = useState(null)
-  const [editDraft,  setEditDraft]  = useState({})
-  const [showForm,   setShowForm]   = useState(false)
+  const [expandedId,   setExpandedId]   = useState(null)
+  const [editingId,    setEditingId]    = useState(null)
+  const [editDraft,    setEditDraft]    = useState({})
+  const [showForm,     setShowForm]     = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState(null)
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return
+    await supabase.from('siau').delete().eq('id', deleteTarget.id)
+    onDelete && onDelete(deleteTarget.id)
+    setDeleteTarget(null)
+  }
 
   const toggleRow   = (id) => { if (editingId === id) return; setExpandedId(p => p === id ? null : id) }
   const startEdit   = (r, e) => { e.stopPropagation(); setEditingId(r.id); setEditDraft({ ...r }); setExpandedId(null) }
@@ -420,10 +429,16 @@ function SolicitudesTable({ grupo, registrosAll, onUpdate, onAdd, causasInfo, on
                             <p className="text-[11px] text-gray-400 truncate">{r.notas || '—'}</p>
                           </td>
                           <td className="px-3 py-3 pr-4">
-                            <button onClick={e => startEdit(r, e)}
-                              className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg text-gray-300 hover:text-blue-500 hover:bg-blue-50 transition-all">
-                              <Edit2 size={11}/>
-                            </button>
+                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                              <button onClick={e => startEdit(r, e)}
+                                className="p-1.5 rounded-lg text-gray-300 hover:text-blue-500 hover:bg-blue-50 transition-colors">
+                                <Edit2 size={11}/>
+                              </button>
+                              <button onClick={e => { e.stopPropagation(); setDeleteTarget({ id: r.id, name: `la solicitud del ${fmtFecha(r.fecha)}` }) }}
+                                className="p-1.5 rounded-lg text-gray-300 hover:text-red-400 hover:bg-red-50 transition-colors">
+                                <Trash2 size={11}/>
+                              </button>
+                            </div>
                           </td>
                         </>
                       )}
@@ -471,6 +486,13 @@ function SolicitudesTable({ grupo, registrosAll, onUpdate, onAdd, causasInfo, on
           onClose={() => setShowForm(false)}
         />
       )}
+
+      <ConfirmDeleteModal
+        open={!!deleteTarget}
+        title={deleteTarget?.name}
+        onConfirm={handleDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   )
 }
@@ -603,6 +625,7 @@ export default function SIAU() {
   }, [])
 
   const handleAdd = useCallback((newReg) => setRegistros(prev => [newReg, ...prev]), [])
+  const handleDeleteReg = useCallback((id) => setRegistros(prev => prev.filter(r => r.id !== id)), [])
 
   // Build client → causas tree
   const clienteGrupos = useMemo(() => {
@@ -684,6 +707,7 @@ export default function SIAU() {
         registrosAll={registros}
         onUpdate={handleUpdate}
         onAdd={handleAdd}
+        onDelete={handleDeleteReg}
         causasInfo={allCausas}
         onBack={handleBack}
         clienteNombre={selCliente}
