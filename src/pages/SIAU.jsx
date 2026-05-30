@@ -105,7 +105,10 @@ function FormNuevaSolicitud({ causa, causasInfo, globalMode, onSave, onClose }) 
   const f = (k, v) => setForm(p => ({ ...p, [k]: v }))
 
   async function handleSave() {
-    if (!form.solicitud.trim() || !causaFinal) return
+    if (!form.solicitud.trim() || !causaFinal) {
+      console.warn('SIAU save blocked — solicitud:', form.solicitud, '| causaFinal:', causaFinal)
+      return
+    }
     setSaving(true)
     setSaveError(null)
     // Payload estrictamente mapeado a las columnas reales de Supabase
@@ -120,16 +123,18 @@ function FormNuevaSolicitud({ causa, causasInfo, globalMode, onSave, onClose }) 
       notas:            form.notas.trim()             || null,
       estado:           form.estado,
       causa_rit:        causaFinal.rit || causaFinal.causa_rit || '',
-      causa_ruc:        causaFinal.ruc || null,
+      causa_ruc:        causaFinal.ruc || causaFinal.causa_ruc || null,
       cliente_nombre:   causaFinal.cliente_nombre    || '',
     }
+    console.log('SIAU inserting payload:', payload)
     const { data, error } = await supabase.from('siau').insert([payload]).select().single()
     if (error) {
       console.error('SIAU insert error:', error)
-      setSaveError(error.message)
+      setSaveError(`Error: ${error.message} (${error.code || ''})`)
       setSaving(false)
       return
     }
+    console.log('SIAU insert success:', data)
     if (data) onSave(mapRow(data))
     setSaving(false)
     onClose()
@@ -625,11 +630,7 @@ export default function SIAU() {
       .select('id,rit,ruc,materia,area,fiscalia,tribunal,cliente_nombre,cliente_id')
       .in('estado', ['En tramitación', 'Abierta'])
       .order('rit')
-    // Filtrar en JS: solo causas penales (área=Penal o fiscalía asignada y no vacía)
-    // Nota: .or() de PostgREST con null-checks no es confiable en todos los casos
-    setAllCausas((data || []).filter(c =>
-      c.area === 'Penal' || (c.fiscalia && c.fiscalia.trim() !== '')
-    ))
+    setAllCausas(data || [])
   }, [])
 
   useEffect(() => { fetchRegistros(); fetchCausas() }, [fetchRegistros, fetchCausas])
