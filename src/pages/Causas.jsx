@@ -2447,8 +2447,15 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate }) {
     {showCargaMasivaSeg && (
       <CargaMasivaModal
         modulo="seguimiento_rev"
-        allCausas={[causa]}
-        defaultCausaRit={causa.rit}
+        causaObj={{
+          rit:            causa.rit,
+          ruc:            causa.ruc   || null,
+          cliente_nombre: causa.cliente_nombre,
+          id:             causa.id    || null,
+          cliente_id:     causa.cliente_id || null,
+          materia:        causa.materia || '',
+          tribunal:       causa.tribunal || '',
+        }}
         onClose={() => setShowCargaMasivaSeg(false)}
         onSuccess={rows => setSegRows(prev => [...rows, ...prev])}
       />

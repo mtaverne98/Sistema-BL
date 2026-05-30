@@ -285,11 +285,12 @@ function SolicitudesTable({ grupo, registrosAll, onUpdate, onAdd, onDelete, caus
     ).sort((a, b) => (b.fecha || '').localeCompare(a.fecha || '')),
     [registrosAll, grupo.causa_rit, clienteNombre])
 
-  const [expandedId,   setExpandedId]   = useState(null)
-  const [editingId,    setEditingId]    = useState(null)
-  const [editDraft,    setEditDraft]    = useState({})
-  const [showForm,     setShowForm]     = useState(false)
-  const [deleteTarget, setDeleteTarget] = useState(null)
+  const [expandedId,      setExpandedId]      = useState(null)
+  const [editingId,       setEditingId]       = useState(null)
+  const [editDraft,       setEditDraft]       = useState({})
+  const [showForm,        setShowForm]        = useState(false)
+  const [showCargaMasiva, setShowCargaMasiva] = useState(false)
+  const [deleteTarget,    setDeleteTarget]    = useState(null)
 
   const handleDelete = async () => {
     if (!deleteTarget) return
@@ -338,6 +339,10 @@ function SolicitudesTable({ grupo, registrosAll, onUpdate, onAdd, onDelete, caus
           </div>
           <div className="flex items-center gap-3">
             <span className="text-[11px] text-gray-400">{registros.length} solicitud{registros.length !== 1 ? 'es' : ''}</span>
+            <button onClick={() => setShowCargaMasiva(true)}
+              className="flex items-center gap-1.5 text-xs font-medium text-gray-500 px-3 py-2 rounded-xl border border-gray-200 hover:bg-gray-50 transition-colors">
+              <Table2 size={13}/> Carga masiva
+            </button>
             <button onClick={() => setShowForm(true)}
               className="flex items-center gap-1.5 text-xs font-semibold bg-[#2570BA] text-white px-3.5 py-2 rounded-xl hover:bg-[#2570BA]/90 transition-colors shadow-sm">
               <Plus size={13}/> Nueva solicitud
@@ -540,6 +545,22 @@ function SolicitudesTable({ grupo, registrosAll, onUpdate, onAdd, onDelete, caus
         onConfirm={handleDelete}
         onCancel={() => setDeleteTarget(null)}
       />
+
+      {showCargaMasiva && (
+        <CargaMasivaModal
+          modulo="siau"
+          causaObj={{
+            rit:            grupo.causaInfo?.rit   || grupo.causa_rit,
+            ruc:            grupo.causaInfo?.ruc   || null,
+            cliente_nombre: clienteNombre,
+            id:             grupo.causaInfo?.id    || null,
+            cliente_id:     grupo.causaInfo?.cliente_id || null,
+            materia:        grupo.causaInfo?.materia || '',
+          }}
+          onClose={() => setShowCargaMasiva(false)}
+          onSuccess={rows => rows.forEach(r => onAdd(mapRow(r)))}
+        />
+      )}
     </div>
   )
 }
@@ -636,7 +657,6 @@ export default function SIAU() {
   const [expandedSet,    setExpanded]       = useState(new Set())
   const [search,         setSearch]         = useState('')
   const [showForm,       setShowForm]       = useState(false)
-  const [showCargaMasiva, setShowCargaMasiva] = useState(false)
 
   // Navigation
   const [view,           setView]            = useState('clientes')
@@ -773,10 +793,6 @@ export default function SIAU() {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={() => setShowCargaMasiva(true)}
-              className="flex items-center gap-2 px-3.5 py-2 border border-gray-200 text-gray-600 text-[13px] font-medium rounded-lg hover:bg-gray-50 transition-colors">
-              <Table2 size={14} /> Carga masiva
-            </button>
             <button onClick={() => setShowForm(true)}
               className="flex items-center gap-1.5 text-xs font-semibold bg-[#2570BA] text-white px-4 py-2 rounded-xl hover:bg-[#2570BA]/90 transition-colors shadow-sm">
               <Plus size={14}/> Nueva solicitud
@@ -830,14 +846,6 @@ export default function SIAU() {
         />
       )}
 
-      {showCargaMasiva && (
-        <CargaMasivaModal
-          modulo="siau"
-          allCausas={allCausas}
-          onClose={() => setShowCargaMasiva(false)}
-          onSuccess={insertedRows => setRegistros(prev => [...insertedRows.map(mapRow), ...prev])}
-        />
-      )}
     </div>
   )
 }

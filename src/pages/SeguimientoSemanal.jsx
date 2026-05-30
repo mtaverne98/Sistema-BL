@@ -1,11 +1,10 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import {
   ChevronRight, ChevronDown, Search, Plus, ArrowLeft,
-  X, Check, Edit2, Loader2, Scale, Table2,
+  X, Check, Edit2, Loader2, Scale,
   CheckCircle2, Clock, AlertCircle, Trash2,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
-import CargaMasivaModal from '../components/CargaMasivaModal'
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -573,7 +572,6 @@ export default function SeguimientoSemanal() {
   const [expandedSet,   setExpanded]      = useState(new Set())
   const [search,        setSearch]        = useState('')
   const [showForm,      setShowForm]      = useState(false)
-  const [showCargaMasiva, setShowCargaMasiva] = useState(false)
 
   // Navigation
   const [view,        setView]       = useState('clientes')
@@ -712,10 +710,6 @@ export default function SeguimientoSemanal() {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={() => setShowCargaMasiva(true)}
-              className="flex items-center gap-2 px-3.5 py-2 border border-gray-200 text-gray-600 text-[13px] font-medium rounded-lg hover:bg-gray-50 transition-colors">
-              <Table2 size={14} /> Carga masiva
-            </button>
             <button onClick={() => setShowForm(true)}
               className="flex items-center gap-2 px-3.5 py-2 bg-[#2570BA] text-white text-[13px] font-medium rounded-lg hover:bg-[#2570BA]/90 transition-colors">
               <Plus size={14} /> Nuevo registro
@@ -798,14 +792,6 @@ export default function SeguimientoSemanal() {
         />
       )}
 
-      {showCargaMasiva && (
-        <CargaMasivaModal
-          modulo="seguimiento"
-          allCausas={allCausas}
-          onClose={() => setShowCargaMasiva(false)}
-          onSuccess={insertedRows => setRegistros(prev => [...insertedRows.map(mapRow), ...prev])}
-        />
-      )}
     </div>
   )
 }

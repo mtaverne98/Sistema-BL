@@ -641,12 +641,13 @@ function MovimientosTable({ causaData, rowsAll, onUpdate, onAdd, onDelete, causa
       .sort((a, b) => (b.fecha || '').localeCompare(a.fecha || '')),
     [rowsAll, causa_rit, clienteNombre])
 
-  const [expandedId,   setExpandedId]   = useState(null)
-  const [editingId,    setEditingId]    = useState(null)
-  const [editDraft,    setEditDraft]    = useState({})
-  const [showForm,     setShowForm]     = useState(false)
-  const [search,       setSearch]       = useState('')
-  const [deleteTarget, setDeleteTarget] = useState(null)
+  const [expandedId,      setExpandedId]      = useState(null)
+  const [editingId,       setEditingId]       = useState(null)
+  const [editDraft,       setEditDraft]       = useState({})
+  const [showForm,        setShowForm]        = useState(false)
+  const [showCargaMasiva, setShowCargaMasiva] = useState(false)
+  const [search,          setSearch]          = useState('')
+  const [deleteTarget,    setDeleteTarget]    = useState(null)
 
   const handleDelete = async () => {
     if (!deleteTarget) return
@@ -724,6 +725,10 @@ function MovimientosTable({ causaData, rowsAll, onUpdate, onAdd, onDelete, causa
                 className="pl-8 pr-3 py-1.5 text-[12px] bg-gray-50 border border-gray-200 rounded-lg w-36 focus:outline-none focus:border-blue-400 focus:bg-white transition-colors"/>
               {search && <button onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><X size={11}/></button>}
             </div>
+            <button onClick={() => setShowCargaMasiva(true)}
+              className="flex items-center gap-1.5 text-xs font-medium text-gray-500 px-3 py-2 rounded-xl border border-gray-200 hover:bg-gray-50 transition-colors">
+              <Table2 size={13}/> Carga masiva
+            </button>
             <button onClick={() => setShowForm(true)}
               className="flex items-center gap-1.5 text-xs font-semibold bg-[#2570BA] text-white px-3.5 py-2 rounded-xl hover:bg-[#2570BA]/90 transition-colors shadow-sm">
               <Plus size={13}/> Nueva entrada
@@ -923,6 +928,23 @@ function MovimientosTable({ causaData, rowsAll, onUpdate, onAdd, onDelete, causa
         onConfirm={handleDelete}
         onCancel={() => setDeleteTarget(null)}
       />
+
+      {showCargaMasiva && (
+        <CargaMasivaModal
+          modulo="pjud"
+          causaObj={{
+            rit:            causaInfo?.rit   || causa_rit,
+            ruc:            causaInfo?.ruc   || null,
+            cliente_nombre: clienteNombre,
+            id:             causaInfo?.id    || null,
+            cliente_id:     causaInfo?.cliente_id || null,
+            materia:        causaInfo?.materia || '',
+            tribunal:       causaInfo?.tribunal || '',
+          }}
+          onClose={() => setShowCargaMasiva(false)}
+          onSuccess={rows => { rows.forEach(r => onAdd(causa_rit, clienteNombre, mapPjudRow(r))) }}
+        />
+      )}
     </div>
   )
 }
@@ -1039,7 +1061,6 @@ export default function PJUD() {
 
   // Modals
   const [showNuevaSolicitud, setShowNuevaSolicitud] = useState(false)
-  const [showCargaMasiva,    setShowCargaMasiva]    = useState(false)
 
   const fetchRows = useCallback(async () => {
     setCargando(true); setError(null)
@@ -1221,10 +1242,6 @@ export default function PJUD() {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={() => setShowCargaMasiva(true)}
-              className="flex items-center gap-2 px-3.5 py-2 border border-gray-200 text-gray-600 text-[13px] font-medium rounded-lg hover:bg-gray-50 transition-colors">
-              <Table2 size={14} /> Carga masiva
-            </button>
             <button onClick={() => setShowNuevaSolicitud(true)}
               className="flex items-center gap-2 px-3.5 py-2 bg-[#2570BA] text-white text-[13px] font-medium rounded-lg hover:bg-[#2570BA]/90 transition-colors">
               <Plus size={14} /> Nueva entrada
@@ -1326,14 +1343,6 @@ export default function PJUD() {
         />
       )}
 
-      {showCargaMasiva && (
-        <CargaMasivaModal
-          modulo="pjud"
-          allCausas={causasInfo}
-          onClose={() => setShowCargaMasiva(false)}
-          onSuccess={insertedRows => setRows(prev => [...insertedRows.map(mapPjudRow), ...prev])}
-        />
-      )}
     </div>
   )
 }
