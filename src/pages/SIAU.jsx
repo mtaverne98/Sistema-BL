@@ -130,7 +130,16 @@ function FormNuevaSolicitud({ causa, causasInfo, globalMode, onSave, onClose }) 
     const { data, error } = await supabase.from('siau').insert([payload]).select().single()
     if (error) {
       console.error('SIAU insert error:', error)
-      setSaveError(`Error: ${error.message} (${error.code || ''})`)
+      // Mensaje amigable para errores comunes
+      let msg = error.message
+      if (error.code === '23505' && error.message.includes('folio')) {
+        msg = `El folio "${payload.folio}" ya existe en la base de datos. Verifica el número o deja el campo vacío.`
+      } else if (error.code === '23505') {
+        msg = 'Ya existe un registro con ese valor. Revisa los datos ingresados.'
+      } else if (error.code === '42501') {
+        msg = 'Sin permisos para guardar. Contacta al administrador.'
+      }
+      setSaveError(msg)
       setSaving(false)
       return
     }
