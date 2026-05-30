@@ -7,12 +7,13 @@ import {
   Mail, Target, Send, Briefcase, AlignLeft,
   Loader2, AlertTriangle, RefreshCw, Trash2, Check,
   Calendar, Activity, Flame, PlusSquare,
-  UserCheck, Upload,
+  UserCheck, Upload, Table2,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 
 import { useQuickAdd } from '../context/QuickAddContext'
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal'
+import CargaMasivaModal from '../components/CargaMasivaModal'
 
 // ── Exportación vacía para compatibilidad con CMD+K en MainLayout ──────────
 export const CAUSAS = []
@@ -793,13 +794,14 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate }) {
   const [toastMsg,      setToastMsg]      = useState(null)
 
   // Seguimiento (tabla simple)
-  const [segRows,       setSegRows]       = useState([])
-  const [loadingSeg,    setLoadingSeg]    = useState(false)
-  const [newSegRow,     setNewSegRow]     = useState(null)
-  const [editSegId,     setEditSegId]     = useState(null)
-  const [editSegDraft,  setEditSegDraft]  = useState({})
-  const [savingSegRow,  setSavingSegRow]  = useState(false)
-  const [confirmDelSeg, setConfirmDelSeg] = useState(null)
+  const [segRows,           setSegRows]           = useState([])
+  const [loadingSeg,        setLoadingSeg]        = useState(false)
+  const [newSegRow,         setNewSegRow]         = useState(null)
+  const [editSegId,         setEditSegId]         = useState(null)
+  const [editSegDraft,      setEditSegDraft]      = useState({})
+  const [savingSegRow,      setSavingSegRow]      = useState(false)
+  const [confirmDelSeg,     setConfirmDelSeg]     = useState(null)
+  const [showCargaMasivaSeg, setShowCargaMasivaSeg] = useState(false)
 
   // Datos rápidos para el resumen (1 fila c/u)
   const [lastPjud,        setLastPjud]        = useState(undefined) // undefined = loading, null = empty
@@ -876,16 +878,24 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate }) {
       .then(({ data }) => { setRevisiones(data ?? []); setLoadingRev(false) })
   }, [tab, causa?.id])
 
+  // Load seguimiento rows — reset cache when causa changes
+  useEffect(() => { setSegRows([]) }, [causa?.id])
+
   // Load seguimiento rows (independent table — no semana_key)
   useEffect(() => {
     if (tab !== 'seguimiento' || !causa?.id) return
-    if (segRows.length > 0) return
     setLoadingSeg(true)
-    supabase.from('revisiones').select('*')
-      .eq('causa_id', causa.id)
-      .is('semana_key', null)
-      .order('fecha_revision', { ascending: false })
-      .then(({ data }) => { setSegRows(data ?? []); setLoadingSeg(false) })
+    // Filter by causa_rit (primary) or causa_id (fallback) to catch all records
+    const query = causa.rit
+      ? supabase.from('revisiones').select('*')
+          .eq('causa_rit', causa.rit)
+          .is('semana_key', null)
+          .order('fecha_revision', { ascending: false })
+      : supabase.from('revisiones').select('*')
+          .eq('causa_id', causa.id)
+          .is('semana_key', null)
+          .order('fecha_revision', { ascending: false })
+    query.then(({ data }) => { setSegRows(data ?? []); setLoadingSeg(false) })
   }, [tab, causa?.id])
 
   // Save new revision
@@ -2249,12 +2259,18 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate }) {
                 <p className="text-[11px] text-gray-400">
                   {segRows.length} entrada{segRows.length !== 1 ? 's' : ''}
                 </p>
-                <button
-                  onClick={() => { setNewSegRow({ fecha_revision: TODAY_C, por_hacer: '', que_se_hizo: 'Pendiente', notas: '' }); setEditSegId(null) }}
-                  disabled={!!newSegRow}
-                  className="flex items-center gap-1.5 text-xs font-semibold bg-[#2570BA] text-white px-3.5 py-2 rounded-xl hover:bg-[#2570BA]/90 disabled:opacity-40 transition-colors shadow-sm">
-                  <Plus size={13}/> Agregar
-                </button>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => setShowCargaMasivaSeg(true)}
+                    className="flex items-center gap-1.5 text-xs font-medium text-gray-500 px-3 py-2 rounded-xl border border-gray-200 hover:bg-gray-50 transition-colors">
+                    <Table2 size={13}/> Carga masiva
+                  </button>
+                  <button
+                    onClick={() => { setNewSegRow({ fecha_revision: TODAY_C, por_hacer: '', que_se_hizo: 'Pendiente', notas: '' }); setEditSegId(null) }}
+                    disabled={!!newSegRow}
+                    className="flex items-center gap-1.5 text-xs font-semibold bg-[#2570BA] text-white px-3.5 py-2 rounded-xl hover:bg-[#2570BA]/90 disabled:opacity-40 transition-colors shadow-sm">
+                    <Plus size={13}/> Agregar
+                  </button>
+                </div>
               </div>
 
               {/* Table */}
@@ -2427,6 +2443,16 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate }) {
 
       </div>
     </div>
+
+    {showCargaMasivaSeg && (
+      <CargaMasivaModal
+        modulo="seguimiento"
+        allCausas={[causa]}
+        defaultCausaRit={causa.rit}
+        onClose={() => setShowCargaMasivaSeg(false)}
+        onSuccess={rows => setSegRows(prev => [...rows, ...prev])}
+      />
+    )}
 
     </>
   )

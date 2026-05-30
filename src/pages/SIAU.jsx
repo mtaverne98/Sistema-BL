@@ -13,15 +13,16 @@ const TODAY = new Date().toISOString().slice(0, 10)
 const DB_FIELDS = new Set([
   'estado','notas','fecha','folio','causa_rit','causa_ruc',
   'cliente_nombre','solicitud','respuesta','documento_nombre','tiene_documento','fecha_respuesta',
+  'tipo_solicitud',
 ])
 
 const TIPO_CONFIG = {
-  'Copia carpeta': 'bg-sky-50 text-sky-700 border-sky-100',
-  'Entrevista':    'bg-violet-50 text-violet-700 border-violet-100',
-  'Diligencias':   'bg-amber-50 text-amber-700 border-amber-100',
-  'Información':   'bg-blue-50 text-blue-700 border-blue-100',
-  'Documento':     'bg-emerald-50 text-emerald-700 border-emerald-100',
-  'Otro':          'bg-gray-100 text-gray-500 border-gray-200',
+  'Copia de carpeta investigativa': 'bg-sky-50 text-sky-700 border-sky-100',
+  'Solicitud de entrevista':        'bg-violet-50 text-violet-700 border-violet-100',
+  'Solicitud de diligencias':       'bg-amber-50 text-amber-700 border-amber-100',
+  'Solicitud de información':       'bg-blue-50 text-blue-700 border-blue-100',
+  'Solicitud de documento':         'bg-emerald-50 text-emerald-700 border-emerald-100',
+  'Otro':                           'bg-gray-100 text-gray-500 border-gray-200',
 }
 const TIPO_OPTS = Object.keys(TIPO_CONFIG)
 
@@ -44,6 +45,7 @@ function mapRow(row) {
     id:               row.id,
     created_at:       row.created_at,
     estado:           row.estado            || 'Pendiente',
+    tipo_solicitud:   row.tipo_solicitud    || '',
     notas:            row.notas             || '',
     fecha:            row.fecha             || '',
     folio:            row.folio             || '',
@@ -85,7 +87,7 @@ function FormNuevaSolicitud({ causa, causasInfo, globalMode, onSave, onClose }) 
   const [form, setForm] = useState({
     fecha: TODAY, folio: '', solicitud: '', respuesta: '',
     fecha_respuesta: '', documento_nombre: '', tiene_documento: false,
-    notas: '', estado: 'Pendiente',
+    notas: '', estado: 'Pendiente', tipo_solicitud: '',
   })
   const [saving, setSaving]         = useState(false)
   const [selCliente, setSelCliente] = useState('')
@@ -122,6 +124,7 @@ function FormNuevaSolicitud({ causa, causasInfo, globalMode, onSave, onClose }) 
       tiene_documento:  !!form.documento_nombre.trim(),
       notas:            form.notas.trim()             || null,
       estado:           form.estado,
+      tipo_solicitud:   form.tipo_solicitud           || null,
       causa_rit:        causaFinal.rit || causaFinal.causa_rit || '',
       causa_ruc:        causaFinal.ruc || causaFinal.causa_ruc || null,
       cliente_nombre:   causaFinal.cliente_nombre    || '',
@@ -305,7 +308,7 @@ function SolicitudesTable({ grupo, registrosAll, onUpdate, onAdd, onDelete, caus
   }
   const ed = (k, v) => setEditDraft(p => ({ ...p, [k]: v }))
 
-  const COLS = ['Fecha','Folio','Tipo solicitud','Solicitud','Respuesta','F. Respuesta','Documentos','Notas','']
+  const COLS = ['Fecha','Folio','Tipo solicitud','Solicitud','Respuesta','F. Respuesta','Documentos','Notas','Estado','']
 
   return (
     <div className="flex flex-col h-full bg-[#fafafa]">
@@ -421,6 +424,13 @@ function SolicitudesTable({ grupo, registrosAll, onUpdate, onAdd, onDelete, caus
                               onClick={e=>e.stopPropagation()}
                               className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 w-full focus:outline-none focus:border-blue-300 bg-white min-w-[120px]"/>
                           </td>
+                          <td className="px-3 py-2">
+                            <select value={editDraft.estado||'Pendiente'} onChange={e=>ed('estado',e.target.value)}
+                              onClick={e=>e.stopPropagation()}
+                              className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:border-blue-300 w-32">
+                              {ESTADO_OPTS.map(o => <option key={o}>{o}</option>)}
+                            </select>
+                          </td>
                           <td className="px-3 py-2 pr-4">
                             <div className="flex items-center gap-1" onClick={e=>e.stopPropagation()}>
                               <button onClick={saveEdit} className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 transition-colors"><Check size={11}/></button>
@@ -457,6 +467,13 @@ function SolicitudesTable({ grupo, registrosAll, onUpdate, onAdd, onDelete, caus
                           </td>
                           <td className="px-3 py-3 max-w-[140px]">
                             <p className="text-[11px] text-gray-400 truncate">{r.notas || '—'}</p>
+                          </td>
+                          <td className="px-3 py-3 whitespace-nowrap">
+                            {r.estado ? (
+                              <span className={`inline-flex text-[10px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap ${ESTADO_CONFIG[r.estado] || 'bg-gray-100 text-gray-500'}`}>
+                                {r.estado}
+                              </span>
+                            ) : <span className="text-gray-300">—</span>}
                           </td>
                           <td className="px-3 py-3 pr-4">
                             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
