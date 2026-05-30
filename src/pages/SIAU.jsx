@@ -11,8 +11,8 @@ import ConfirmDeleteModal from '../components/ConfirmDeleteModal'
 const TODAY = new Date().toISOString().slice(0, 10)
 
 const DB_FIELDS = new Set([
-  'estado','notas','fecha','folio','causa_id','cliente_id','causa_rit',
-  'cliente_nombre','solicitud','respuesta','documentos','fecha_respuesta','tipo_solicitud',
+  'estado','notas','fecha','folio','causa_rit','causa_ruc',
+  'cliente_nombre','solicitud','respuesta','documento_nombre','tiene_documento','fecha_respuesta',
 ])
 
 const TIPO_CONFIG = {
@@ -41,21 +41,20 @@ const ESTADO_OPTS = Object.keys(ESTADO_CONFIG)
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function mapRow(row) {
   return {
-    id:              row.id,
-    created_at:      row.created_at,
-    estado:          row.estado          || 'Pendiente',
-    notas:           row.notas           || '',
-    fecha:           row.fecha           || '',
-    folio:           row.folio           || '',
-    tipo_solicitud:  row.tipo_solicitud  || 'Otro',
-    solicitud:       row.solicitud       || '',
-    respuesta:       row.respuesta       || '',
-    fecha_respuesta: row.fecha_respuesta || null,
-    documentos:      row.documentos      || '',
-    causa_rit:       row.causa_rit       || '',
-    cliente_nombre:  row.cliente_nombre  || '',
-    causa_id:        row.causa_id        || null,
-    cliente_id:      row.cliente_id      || null,
+    id:               row.id,
+    created_at:       row.created_at,
+    estado:           row.estado            || 'Pendiente',
+    notas:            row.notas             || '',
+    fecha:            row.fecha             || '',
+    folio:            row.folio             || '',
+    solicitud:        row.solicitud         || '',
+    respuesta:        row.respuesta         || '',
+    fecha_respuesta:  row.fecha_respuesta   || null,
+    documento_nombre: row.documento_nombre  || '',
+    tiene_documento:  row.tiene_documento   || false,
+    causa_rit:        row.causa_rit         || '',
+    causa_ruc:        row.causa_ruc         || '',
+    cliente_nombre:   row.cliente_nombre    || '',
   }
 }
 
@@ -84,13 +83,14 @@ function TipoBadge({ tipo }) {
 // ── Form: nueva solicitud (modal) ─────────────────────────────────────────────
 function FormNuevaSolicitud({ causa, causasInfo, globalMode, onSave, onClose }) {
   const [form, setForm] = useState({
-    fecha: TODAY, folio: '', tipo_solicitud: 'Copia carpeta',
-    solicitud: '', respuesta: '', fecha_respuesta: '',
-    documentos: '', notas: '', estado: 'Pendiente',
+    fecha: TODAY, folio: '', solicitud: '', respuesta: '',
+    fecha_respuesta: '', documento_nombre: '', tiene_documento: false,
+    notas: '', estado: 'Pendiente',
   })
-  const [saving, setSaving]       = useState(false)
+  const [saving, setSaving]         = useState(false)
   const [selCliente, setSelCliente] = useState('')
   const [selRit, setSelRit]         = useState('')
+  const [saveError, setSaveError]   = useState(null)
 
   const clientes = useMemo(() =>
     [...new Set((causasInfo || []).map(c => c.cliente_nombre).filter(Boolean))].sort(),
@@ -107,16 +107,30 @@ function FormNuevaSolicitud({ causa, causasInfo, globalMode, onSave, onClose }) 
   async function handleSave() {
     if (!form.solicitud.trim() || !causaFinal) return
     setSaving(true)
+    setSaveError(null)
+    // Payload estrictamente mapeado a las columnas reales de Supabase
     const payload = {
-      ...form,
-      causa_rit:       causaFinal.rit || causaFinal.causa_rit || '',
-      cliente_nombre:  causaFinal.cliente_nombre || '',
-      causa_id:        causaFinal.id   || null,
-      cliente_id:      causaFinal.cliente_id || null,
-      fecha_respuesta: form.fecha_respuesta || null,
+      fecha:            form.fecha                    || null,
+      folio:            form.folio.trim()             || null,
+      solicitud:        form.solicitud.trim(),
+      respuesta:        form.respuesta.trim()         || null,
+      fecha_respuesta:  form.fecha_respuesta          || null,
+      documento_nombre: form.documento_nombre.trim()  || null,
+      tiene_documento:  !!form.documento_nombre.trim(),
+      notas:            form.notas.trim()             || null,
+      estado:           form.estado,
+      causa_rit:        causaFinal.rit || causaFinal.causa_rit || '',
+      causa_ruc:        causaFinal.ruc || null,
+      cliente_nombre:   causaFinal.cliente_nombre    || '',
     }
     const { data, error } = await supabase.from('siau').insert([payload]).select().single()
-    if (!error && data) onSave(mapRow(data))
+    if (error) {
+      console.error('SIAU insert error:', error)
+      setSaveError(error.message)
+      setSaving(false)
+      return
+    }
+    if (data) onSave(mapRow(data))
     setSaving(false)
     onClose()
   }
@@ -212,9 +226,9 @@ function FormNuevaSolicitud({ causa, causasInfo, globalMode, onSave, onClose }) 
                 className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 focus:outline-none focus:border-blue-300" />
             </div>
             <div>
-              <L c="Documentos" />
-              <input type="text" value={form.documentos} onChange={e => f('documentos', e.target.value)}
-                placeholder="ej: 2 archivos PDF"
+              <L c="Nombre documento" />
+              <input type="text" value={form.documento_nombre} onChange={e => f('documento_nombre', e.target.value)}
+                placeholder="ej: Carpeta investigativa"
                 className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 focus:outline-none focus:border-blue-300" />
             </div>
           </div>
@@ -226,6 +240,12 @@ function FormNuevaSolicitud({ causa, causasInfo, globalMode, onSave, onClose }) 
               className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 resize-none focus:outline-none focus:border-blue-300" />
           </div>
         </div>
+
+        {saveError && (
+          <div className="px-6 pb-2">
+            <p className="text-[11px] text-red-600 bg-red-50 rounded-lg px-3 py-2">⚠ Error: {saveError}</p>
+          </div>
+        )}
 
         <div className="px-6 py-3.5 border-t border-gray-100 flex gap-2 bg-gray-50/30 flex-shrink-0">
           <button onClick={onClose} className="flex-1 text-xs text-gray-400 py-2.5 rounded-xl hover:bg-gray-100 font-medium">Cancelar</button>
@@ -360,11 +380,7 @@ function SolicitudesTable({ grupo, registrosAll, onUpdate, onAdd, onDelete, caus
                               className="text-xs font-mono border border-gray-200 rounded-lg px-2 py-1.5 w-24 focus:outline-none focus:border-blue-300 bg-white"/>
                           </td>
                           <td className="px-3 py-2">
-                            <select value={editDraft.tipo_solicitud||'Otro'} onChange={e=>ed('tipo_solicitud',e.target.value)}
-                              onClick={e=>e.stopPropagation()}
-                              className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:border-blue-300 bg-white">
-                              {TIPO_OPTS.map(t=><option key={t}>{t}</option>)}
-                            </select>
+                            <span className="text-[11px] text-gray-400">—</span>
                           </td>
                           <td className="px-3 py-2">
                             <textarea value={editDraft.solicitud||''} onChange={e=>ed('solicitud',e.target.value)}
@@ -382,7 +398,7 @@ function SolicitudesTable({ grupo, registrosAll, onUpdate, onAdd, onDelete, caus
                               className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 w-32 focus:outline-none focus:border-blue-300 bg-white"/>
                           </td>
                           <td className="px-3 py-2">
-                            <input type="text" value={editDraft.documentos||''} onChange={e=>ed('documentos',e.target.value)}
+                            <input type="text" value={editDraft.documento_nombre||''} onChange={e=>ed('documento_nombre',e.target.value)}
                               onClick={e=>e.stopPropagation()}
                               className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 w-24 focus:outline-none focus:border-blue-300 bg-white"/>
                           </td>
@@ -423,7 +439,7 @@ function SolicitudesTable({ grupo, registrosAll, onUpdate, onAdd, onDelete, caus
                             <span className="text-[11px] text-gray-500">{fmtFechaCorta(r.fecha_respuesta)}</span>
                           </td>
                           <td className="px-3 py-3 whitespace-nowrap">
-                            <span className="text-[11px] text-gray-400">{r.documentos || '—'}</span>
+                            <span className="text-[11px] text-gray-400">{r.documento_nombre || '—'}</span>
                           </td>
                           <td className="px-3 py-3 max-w-[140px]">
                             <p className="text-[11px] text-gray-400 truncate">{r.notas || '—'}</p>
