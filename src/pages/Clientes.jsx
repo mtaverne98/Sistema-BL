@@ -6,6 +6,7 @@ import {
   Loader2, AlertTriangle, RefreshCw, ChevronDown, Check,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
+import InlineField from '../components/InlineField'
 
 // ── Exportación vacía para compatibilidad con CMD+K en MainLayout ──────────
 export const CLIENTES = []
@@ -100,34 +101,40 @@ function primeraLetra(nombre = '') {
   return nombre.trim().charAt(0).toUpperCase() || '#'
 }
 
-/** Convierte una fila de Supabase al objeto que usa la UI */
+/** Convierte una fila de Supabase al objeto que usa la UI.
+ *  Campos opcionales (rut, telefono, etc.) se almacenan como string vacío
+ *  para que el formulario los muestre en blanco y no reescriba '–' en la BD. */
 function mapCliente(row) {
   return {
     id:            row.id,
     nombre:        row.nombre        ?? '',
-    rut:           row.rut           ?? '–',
+    rut:           row.rut           ?? '',
     claveUnica:    row.clave_unica   ?? '',
-    telefono:      row.telefono      ?? '–',
-    email:         row.email         ?? '–',
-    direccion:     row.direccion     ?? '–',
+    telefono:      row.telefono      ?? '',
+    email:         row.email         ?? '',
+    direccion:     row.direccion     ?? '',
     observaciones: row.observaciones ?? '',
     estado:        row.estado        ?? 'Activo',
     createdAt:     row.created_at    ?? null,
-    // causasActivas se obtiene de la relación con causas (ver PanelCliente)
     causasActivas: row.causas_activas ?? 0,
   }
 }
 
-/** Convierte el formulario al payload para Supabase */
+/** Convierte el formulario al payload para Supabase.
+ *  Campos vacíos o con el placeholder '–' se envían como null para no contaminar la BD. */
 function mapToDb(form) {
+  const clean = v => {
+    const s = (v ?? '').trim()
+    return s === '' || s === '–' ? null : s
+  }
   return {
     nombre:        form.nombre.trim(),
-    rut:           form.rut.trim(),
-    clave_unica:   form.claveUnica.trim(),
-    telefono:      form.telefono.trim(),
-    email:         form.email.trim(),
-    direccion:     form.direccion.trim(),
-    observaciones: form.observaciones.trim(),
+    rut:           clean(form.rut),
+    clave_unica:   clean(form.claveUnica),
+    telefono:      clean(form.telefono),
+    email:         clean(form.email),
+    direccion:     clean(form.direccion),
+    observaciones: clean(form.observaciones),
     estado:        form.estado || 'Activo',
   }
 }
@@ -162,7 +169,7 @@ function ErrorBanner({ mensaje, onRetry }) {
 }
 
 // ── Panel lateral – detalle cliente ───────────────────────────────────────
-function PanelCliente({ cliente, onClose, onEdit, onDelete, onEstadoCambiar }) {
+function PanelCliente({ cliente, onClose, onEdit, onDelete, onEstadoCambiar, onInlineSave }) {
   const [tab, setTab]                   = useState('causas')
   const [causas, setCausas]             = useState([])
   const [loadingCausas, setLoadingCausas] = useState(false)
@@ -182,6 +189,9 @@ function PanelCliente({ cliente, onClose, onEdit, onDelete, onEstadoCambiar }) {
 
   const ini = iniciales(cliente.nombre)
 
+  // Inline save helper — llama al padre con (id, campo, valor)
+  const save = (field) => async (value) => onInlineSave?.(cliente.id, field, value)
+
   return (
     <div className="w-80 flex-shrink-0 border-l border-gray-100 flex flex-col bg-white">
       {/* Header */}
@@ -194,25 +204,34 @@ function PanelCliente({ cliente, onClose, onEdit, onDelete, onEstadoCambiar }) {
             >
               {ini}
             </div>
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-gray-900 truncate">{cliente.nombre}</p>
-              <p className="text-xs text-gray-400">{cliente.rut}</p>
+            <div className="min-w-0 flex-1">
+              {/* Nombre editable inline */}
+              <InlineField
+                value={cliente.nombre}
+                onSave={save('nombre')}
+                placeholder="Nombre del cliente"
+                textClassName="text-sm font-semibold text-gray-900"
+                inputClassName="text-sm font-semibold w-full"
+              />
+              {/* RUT editable inline */}
+              <InlineField
+                value={cliente.rut}
+                onSave={save('rut')}
+                placeholder="Agregar RUT"
+                textClassName="text-xs text-gray-400 font-mono"
+                inputClassName="text-xs font-mono w-24"
+              />
             </div>
           </div>
         </div>
         <div className="flex items-center gap-1 ml-2">
-          <button onClick={onEdit}
-            className="p-1.5 rounded-md hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
-            title="Editar">
-            <Pencil size={13} />
-          </button>
           <button onClick={() => setConfirmDelete(true)}
-            className="p-1.5 rounded-md hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"
+            className="p-1.5 rounded-md hover:bg-red-50 text-gray-300 hover:text-red-500 transition-colors"
             title="Eliminar">
             <Trash2 size={13} />
           </button>
           <button onClick={onClose}
-            className="p-1.5 rounded-md hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors">
+            className="p-1.5 rounded-md hover:bg-gray-100 text-gray-300 hover:text-gray-600 transition-colors">
             <X size={13} />
           </button>
         </div>
@@ -236,41 +255,64 @@ function PanelCliente({ cliente, onClose, onEdit, onDelete, onEstadoCambiar }) {
         </div>
       )}
 
-      {/* Datos generales */}
-      <div className="px-5 py-4 border-b border-gray-50 space-y-2.5">
-        {cliente.telefono !== '–' && (
-          <div className="flex items-center gap-2.5">
-            <Phone size={12} className="text-gray-300 flex-shrink-0" />
-            <span className="text-xs text-gray-600">{cliente.telefono}</span>
-          </div>
-        )}
-        {cliente.email !== '–' && (
-          <div className="flex items-center gap-2.5">
-            <Mail size={12} className="text-gray-300 flex-shrink-0" />
-            <span className="text-xs text-gray-600 truncate">{cliente.email}</span>
-          </div>
-        )}
-        {cliente.direccion !== '–' && (
-          <div className="flex items-start gap-2.5">
-            <Circle size={12} className="text-gray-300 flex-shrink-0 mt-0.5" />
-            <span className="text-xs text-gray-500 leading-snug">{cliente.direccion}</span>
-          </div>
-        )}
-        {cliente.claveUnica && (
-          <div className="flex items-center gap-2.5">
-            <AlertCircle size={12} className="text-gray-300 flex-shrink-0" />
-            <span className="text-xs text-gray-500 font-mono">{cliente.claveUnica}</span>
-            <span className="text-[10px] text-gray-400">Clave Única</span>
-          </div>
-        )}
-        <div className="flex items-center gap-2 pt-1">
-          <ClienteEstadoDropdown
-            estado={cliente.estado}
-            onCambiar={onEstadoCambiar}
+      {/* Propiedades — estilo Notion (icon + campo inline editable) */}
+      <div className="px-5 py-3 border-b border-gray-50 space-y-1.5">
+        {/* Teléfono */}
+        <div className="flex items-center gap-2.5 group/prop">
+          <Phone size={11} className="text-gray-300 flex-shrink-0" />
+          <span className="text-[10px] text-gray-300 w-14 flex-shrink-0">Teléfono</span>
+          <InlineField
+            value={cliente.telefono}
+            onSave={save('telefono')}
+            placeholder="Agregar"
+            textClassName="text-xs text-gray-600"
+            inputClassName="text-xs w-40"
           />
+        </div>
+        {/* Email */}
+        <div className="flex items-center gap-2.5 group/prop">
+          <Mail size={11} className="text-gray-300 flex-shrink-0" />
+          <span className="text-[10px] text-gray-300 w-14 flex-shrink-0">Email</span>
+          <InlineField
+            value={cliente.email}
+            onSave={save('email')}
+            placeholder="Agregar"
+            textClassName="text-xs text-gray-600"
+            inputClassName="text-xs w-44"
+          />
+        </div>
+        {/* Dirección */}
+        <div className="flex items-center gap-2.5 group/prop">
+          <Circle size={11} className="text-gray-300 flex-shrink-0" />
+          <span className="text-[10px] text-gray-300 w-14 flex-shrink-0">Dirección</span>
+          <InlineField
+            value={cliente.direccion}
+            onSave={save('direccion')}
+            placeholder="Agregar"
+            textClassName="text-xs text-gray-500"
+            inputClassName="text-xs w-44"
+          />
+        </div>
+        {/* Clave Única */}
+        <div className="flex items-center gap-2.5 group/prop">
+          <AlertCircle size={11} className="text-gray-300 flex-shrink-0" />
+          <span className="text-[10px] text-gray-300 w-14 flex-shrink-0">Clave Única</span>
+          <InlineField
+            value={cliente.claveUnica}
+            onSave={save('claveUnica')}
+            placeholder="Agregar"
+            textClassName="text-xs text-gray-500 font-mono"
+            inputClassName="text-xs font-mono w-28"
+          />
+        </div>
+        {/* Estado */}
+        <div className="flex items-center gap-2.5 pt-0.5">
+          <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: avatarColor(cliente.estado), marginLeft: 1 }} />
+          <span className="text-[10px] text-gray-300 w-14 flex-shrink-0">Estado</span>
+          <ClienteEstadoDropdown estado={cliente.estado} onCambiar={onEstadoCambiar} />
           {!loadingCausas && (
-            <span className="text-[11px] text-gray-400">
-              {causas.filter(c => c.estado === 'En tramitación' || c.estado === 'Activa').length} causa{causas.length !== 1 ? 's' : ''} activa{causas.length !== 1 ? 's' : ''}
+            <span className="text-[10px] text-gray-300 ml-1">
+              · {causas.filter(c => c.estado === 'En tramitación' || c.estado === 'Activa').length} activa{causas.length !== 1 ? 's' : ''}
             </span>
           )}
         </div>
@@ -278,7 +320,7 @@ function PanelCliente({ cliente, onClose, onEdit, onDelete, onEstadoCambiar }) {
 
       {/* Tabs */}
       <div className="flex border-b border-gray-100 px-5">
-        {[{ key: 'causas', label: 'Causas' }, { key: 'notas', label: 'Observaciones' }].map(t => (
+        {[{ key: 'causas', label: 'Causas' }, { key: 'notas', label: 'Notas' }].map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
             className={`py-2.5 mr-4 text-xs font-medium border-b-2 transition-colors ${
               tab === t.key ? 'border-[#1a2e4a] text-[#1a2e4a]' : 'border-transparent text-gray-400 hover:text-gray-600'
@@ -319,11 +361,19 @@ function PanelCliente({ cliente, onClose, onEdit, onDelete, onEstadoCambiar }) {
         )}
         {tab === 'notas' && (
           <div className="px-5 py-4">
-            <p className="text-xs text-gray-600 leading-relaxed whitespace-pre-line">
-              {cliente.observaciones || 'Sin observaciones.'}
-            </p>
+            {/* Observaciones — textarea inline editable con auto-save */}
+            <p className="text-[10px] font-semibold text-gray-300 uppercase tracking-widest mb-2">Observaciones internas</p>
+            <InlineField
+              value={cliente.observaciones}
+              onSave={save('observaciones')}
+              type="textarea"
+              placeholder="Agrega notas internas sobre este cliente…"
+              debounce={1200}
+              textClassName="text-xs text-gray-600 leading-relaxed whitespace-pre-line"
+              inputClassName="text-xs"
+            />
             {cliente.createdAt && (
-              <p className="text-[11px] text-gray-300 mt-4">
+              <p className="text-[10px] text-gray-300 mt-4">
                 Registrado el {formatFecha(cliente.createdAt)}
               </p>
             )}
@@ -344,12 +394,19 @@ const FORM_FIELDS = [
   { key: 'direccion',  label: 'Dirección',          placeholder: 'Calle, N°, Ciudad' },
 ]
 
-function FormCliente({ inicial, onClose, onGuardar, guardando }) {
+const ESTADOS_VALIDOS = new Set(['Activo', 'Inactivo'])
+
+function FormCliente({ inicial, onClose, onGuardar, guardando, errorMsg }) {
   const esEdicion = !!inicial?.id
-  const [form, setForm] = useState({
-    nombre: '', rut: '', claveUnica: '', telefono: '',
-    email: '', direccion: '', observaciones: '', estado: 'Activo',
-    ...inicial,
+  const [form, setForm] = useState(() => {
+    const base = {
+      nombre: '', rut: '', claveUnica: '', telefono: '',
+      email: '', direccion: '', observaciones: '', estado: 'Activo',
+      ...inicial,
+    }
+    // Si el estado no es reconocido (ej: 'Cerrado'), lo dejamos para que el usuario elija
+    // pero lo guardamos en el form tal cual para mostrarlo como advertencia
+    return base
   })
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
@@ -365,6 +422,14 @@ function FormCliente({ inicial, onClose, onGuardar, guardando }) {
       </div>
 
       <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
+        {/* Banner de error inline — reemplaza el alert() */}
+        {errorMsg && (
+          <div className="flex items-start gap-2 px-3 py-2.5 bg-red-50 border border-red-100 rounded-lg">
+            <AlertCircle size={13} className="text-red-400 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-red-600 leading-snug">{errorMsg}</p>
+          </div>
+        )}
+
         {FORM_FIELDS.map(f => (
           <div key={f.key}>
             <label className="block text-[11px] font-medium text-gray-500 mb-1">{f.label}</label>
@@ -392,6 +457,12 @@ function FormCliente({ inicial, onClose, onGuardar, guardando }) {
               </button>
             ))}
           </div>
+          {/* Si el cliente tiene un estado desconocido (ej: 'Cerrado'), mostrarlo */}
+          {form.estado && form.estado !== 'Activo' && form.estado !== 'Inactivo' && (
+            <p className="mt-1.5 text-[10px] text-amber-600 bg-amber-50 rounded px-2 py-1">
+              Estado actual: <strong>{form.estado}</strong> — al guardar se reemplazará por el seleccionado arriba.
+            </p>
+          )}
         </div>
 
         {/* Observaciones */}
@@ -437,6 +508,7 @@ export default function Clientes() {
   const [filtros, setFiltros]     = useState(new Set())
   const [clienteSeleccionado, setSeleccionado] = useState(null)
   const [formulario, setFormulario] = useState(null) // null | 'nuevo' | objeto cliente
+  const [formError, setFormError] = useState(null)   // error del formulario modal
 
   // ── Fetch ───────────────────────────────────────────────────────────────
   const fetchClientes = useCallback(async () => {
@@ -456,36 +528,62 @@ export default function Clientes() {
 
   useEffect(() => { fetchClientes() }, [fetchClientes])
 
-  // ── Crear ───────────────────────────────────────────────────────────────
+  // ── Crear / Editar via formulario modal ────────────────────────────────
   const handleGuardar = async (form) => {
     if (!form.nombre.trim()) return
     setGuardando(true)
+    setFormError(null)
     const payload = mapToDb(form)
+
+    /** Traduce errores de Postgres a mensajes legibles */
+    function traducirError(err) {
+      if (err.code === '23505') {
+        if (err.message.includes('nombre')) return 'Ya existe otro cliente con ese nombre.'
+        if (err.message.includes('rut'))    return 'Ya existe otro cliente con ese RUT.'
+        return 'Valor duplicado — ya existe otro registro con este dato.'
+      }
+      if (err.code === '23502') return 'Falta un campo obligatorio.'
+      if (err.code === '42501') return 'Sin permisos para editar. Contacta al administrador.'
+      return err.message
+    }
 
     if (formulario === 'nuevo') {
       const { data, error: err } = await supabase
         .from('clientes').insert([payload]).select().single()
       if (err) {
-        alert('Error al guardar: ' + err.message)
+        setFormError(traducirError(err))
       } else {
         const nuevo = mapCliente(data)
         setClientes(prev => [...prev, nuevo].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')))
         setFormulario(null)
+        setFormError(null)
         setSeleccionado(nuevo)
       }
     } else {
-      // Editar
-      const { data, error: err } = await supabase
-        .from('clientes').update(payload).eq('id', formulario.id).select().single()
+      // Editar — usamos .update() sin .select() para evitar errores de RLS en SELECT
+      const { error: err } = await supabase
+        .from('clientes').update(payload).eq('id', formulario.id)
       if (err) {
-        alert('Error al actualizar: ' + err.message)
+        setFormError(traducirError(err))
       } else {
-        const actualizado = mapCliente(data)
+        // Reconstruimos el objeto actualizado combinando los datos previos con el payload
+        const actualizado = {
+          ...formulario,
+          nombre:        payload.nombre        ?? formulario.nombre,
+          rut:           payload.rut           ?? '',
+          claveUnica:    payload.clave_unica   ?? '',
+          telefono:      payload.telefono      ?? '',
+          email:         payload.email         ?? '',
+          direccion:     payload.direccion     ?? '',
+          observaciones: payload.observaciones ?? '',
+          estado:        payload.estado        ?? formulario.estado,
+        }
         setClientes(prev =>
           prev.map(c => c.id === actualizado.id ? actualizado : c)
               .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
         )
         setFormulario(null)
+        setFormError(null)
         setSeleccionado(actualizado)
       }
     }
@@ -504,6 +602,52 @@ export default function Clientes() {
       setSeleccionado(null)
     }
   }
+
+  // ── Edición inline de campo individual ─────────────────────────────────
+  const handleInlineSave = useCallback(async (id, field, value) => {
+    const fieldMap = {
+      nombre: 'nombre', rut: 'rut', claveUnica: 'clave_unica',
+      telefono: 'telefono', email: 'email', direccion: 'direccion',
+      observaciones: 'observaciones',
+    }
+    const dbField = fieldMap[field]
+    if (!dbField) return
+
+    // Validación básica: nombre no puede quedar vacío
+    if (field === 'nombre' && !(value ?? '').trim()) {
+      throw new Error('El nombre no puede estar vacío.')
+    }
+
+    const clean = v => { const s = (v ?? '').trim(); return s === '' ? null : s }
+
+    const { error: err } = await supabase
+      .from('clientes').update({ [dbField]: clean(value) }).eq('id', id)
+
+    if (err) {
+      // Traducir errores comunes de Supabase/Postgres a mensajes legibles
+      let msg = err.message
+      if (err.code === '23505') {
+        if (err.message.includes('nombre'))
+          msg = 'Ya existe otro cliente con ese nombre.'
+        else if (err.message.includes('rut'))
+          msg = 'Ya existe otro cliente con ese RUT.'
+        else
+          msg = 'Valor duplicado — ya existe otro registro con este dato.'
+      } else if (err.code === '23502') {
+        msg = 'Este campo es obligatorio.'
+      } else if (err.code === '42501') {
+        msg = 'Sin permisos para editar. Contacta al administrador.'
+      }
+      // Lanzar para que InlineField muestre el error inline y permanezca abierto
+      throw new Error(msg)
+    }
+
+    // Éxito — actualizar estado local
+    const patch = { [field]: value }
+    setClientes(prev => prev.map(c => c.id === id ? { ...c, ...patch } : c)
+      .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')))
+    setSeleccionado(prev => prev?.id === id ? { ...prev, ...patch } : prev)
+  }, [])
 
   // ── Cambio rápido de estado ─────────────────────────────────────────────
   const handleEstadoCambiar = useCallback(async (nuevoEstado) => {
@@ -561,7 +705,7 @@ export default function Clientes() {
               </p>
             </div>
             <button
-              onClick={() => { setSeleccionado(null); setFormulario('nuevo') }}
+              onClick={() => { setSeleccionado(null); setFormulario('nuevo'); setFormError(null) }}
               className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors hover:opacity-90"
               style={{ backgroundColor: '#2570BA' }}>
               <Plus size={15} />
@@ -651,7 +795,7 @@ export default function Clientes() {
               </p>
               {!busqueda && (
                 <button
-                  onClick={() => { setSeleccionado(null); setFormulario('nuevo') }}
+                  onClick={() => { setSeleccionado(null); setFormulario('nuevo'); setFormError(null) }}
                   className="mt-3 text-xs text-[#2570ba] hover:underline">
                   + Agregar primer cliente
                 </button>
@@ -693,9 +837,9 @@ export default function Clientes() {
                             <span className={`text-sm font-medium ${c.estado === 'Inactivo' ? 'text-gray-400' : 'text-gray-900'}`}>{c.nombre}</span>
                           </div>
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-500 tabular-nums">{c.rut}</td>
-                        <td className="px-4 py-3 text-sm text-gray-500">{c.telefono}</td>
-                        <td className="px-4 py-3 text-sm text-gray-400 truncate max-w-[160px]">{c.email}</td>
+                        <td className="px-4 py-3 text-sm text-gray-500 tabular-nums">{c.rut || '–'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-500">{c.telefono || '–'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-400 truncate max-w-[160px]">{c.email || '–'}</td>
                         <td className="px-4 py-3">
                           <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${ESTADO_BADGE[c.estado] ?? 'bg-gray-100 text-gray-400'}`}>
                             {c.estado}
@@ -734,14 +878,16 @@ export default function Clientes() {
           onEdit={() => setFormulario(clienteSeleccionado)}
           onDelete={handleEliminar}
           onEstadoCambiar={handleEstadoCambiar}
+          onInlineSave={handleInlineSave}
         />
       )}
       {formulario && (
         <FormCliente
           inicial={formulario === 'nuevo' ? null : formulario}
-          onClose={() => setFormulario(null)}
+          onClose={() => { setFormulario(null); setFormError(null) }}
           onGuardar={handleGuardar}
           guardando={guardando}
+          errorMsg={formError}
         />
       )}
     </div>

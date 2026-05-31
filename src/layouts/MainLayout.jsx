@@ -1,12 +1,12 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard,
   Users, Scale, UserSearch,
   Gavel, Calendar, AlertCircle,
   Shield, Database, ClipboardCheck, CheckSquare, MessageSquare, FolderOpen, Receipt,
   BookOpen, LogOut, Settings,
-  Search, Plus, Command, ArrowRight, ChevronRight,
+  Search, Plus, Command, ArrowRight, ChevronRight, ChevronLeft,
   FileText, Clock, RefreshCw, Star, Hash,
   CheckCircle2, CalendarCheck,
 } from 'lucide-react'
@@ -30,45 +30,53 @@ function getUrgenciaLayout(p) {
   return null
 }
 
-// ── sidebar structure ─────────────────────────────────────────────────────────
-const sections = [
-  { label: null,        items: [{ to: '/', icon: LayoutDashboard, label: 'Dashboard' }] },
-  { label: 'Principal', items: [
-    { to: '/clientes',   icon: Users,      label: 'Clientes'   },
-    { to: '/causas',     icon: Scale,      label: 'Causas'     },
-    { to: '/prospectos', icon: UserSearch, label: 'Prospectos' },
+// ── sidebar structure (4 secciones colapsables) ───────────────────────────────
+const SECTIONS = [
+  { key: 'trabajo', label: 'Trabajo', items: [
+    { to: '/',           icon: LayoutDashboard, label: 'Dashboard'  },
+    { to: '/clientes',   icon: Users,           label: 'Clientes'   },
+    { to: '/causas',     icon: Scale,           label: 'Causas'     },
+    { to: '/prospectos', icon: UserSearch,      label: 'Prospectos' },
   ]},
-  { label: 'Agenda',    items: [
-    { to: '/audiencias', icon: Gavel,        label: 'Audiencias' },
-    { to: '/calendario', icon: Calendar,     label: 'Calendario' },
-    { to: '/plazos',     icon: AlertCircle,  label: 'Plazos'     },
-    { to: '/reuniones',  icon: MessageSquare, label: 'Reuniones' },
+  { key: 'agenda', label: 'Agenda', items: [
+    { to: '/audiencias', icon: Gavel,           label: 'Audiencias' },
+    { to: '/calendario', icon: Calendar,        label: 'Calendario' },
+    { to: '/tareas',     icon: CheckSquare,     label: 'Tareas'     },
+    { to: '/plazos',     icon: AlertCircle,     label: 'Plazos'     },
+    { to: '/reuniones',  icon: MessageSquare,   label: 'Reuniones'  },
   ]},
-  { label: 'Gestión',   items: [
-    { to: '/pjud',       icon: Shield,         label: 'PJUD'               },
-    { to: '/siau',       icon: Database,       label: 'SIAU'               },
-    { to: '/revision',   icon: ClipboardCheck, label: 'Revisión de causas' },
-    { to: '/tareas',     icon: CheckSquare,    label: 'Tareas'             },
-    { to: '/documentos', icon: FolderOpen,     label: 'Documentos'         },
+  { key: 'tramitacion', label: 'Tramitación', items: [
+    { to: '/seguimiento', icon: CalendarCheck,  label: 'Seguimiento semanal' },
+    { to: '/pjud',        icon: Shield,         label: 'PJUD'                },
+    { to: '/siau',        icon: Database,       label: 'SIAU'                },
+    { to: '/revision',    icon: ClipboardCheck, label: 'Revisión de causas'  },
+    { to: '/documentos',  icon: FolderOpen,     label: 'Documentos'          },
   ]},
-  { label: 'Notas',     items: [
-    { to: '/apuntes',     icon: BookOpen,     label: 'Agenda diaria'      },
-    { to: '/seguimiento', icon: CalendarCheck, label: 'Seguimiento semanal' },
-    { to: '/gastos',      icon: Receipt,      label: 'Gastos'             },
+  { key: 'notas', label: 'Notas', items: [
+    { to: '/apuntes', icon: BookOpen, label: 'Agenda diaria' },
+    { to: '/gastos',  icon: Receipt,  label: 'Gastos'        },
   ]},
-  { label: 'Sistema',   items: [{ to: '/configuracion', icon: Settings, label: 'Configuración' }] },
+]
+
+// Flat list for CMD+K and recent nav lookup
+const ALL_NAV = [
+  ...SECTIONS.flatMap(s => s.items),
+  { to: '/configuracion', icon: Settings, label: 'Configuración' },
 ]
 
 // currentUser ahora viene de UserContext
 
 // ── NavItem ───────────────────────────────────────────────────────────────────
-function NavItem({ to, icon: Icon, label, badge }) {
+function NavItem({ to, icon: Icon, label, badge, collapsed = false }) {
   return (
     <NavLink
       to={to}
       end={to === '/'}
+      title={collapsed ? label : undefined}
       className={({ isActive }) =>
-        `flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-[13px] transition-all duration-150 group select-none ${
+        `relative flex items-center rounded-md text-[13px] transition-all duration-150 group select-none ${
+          collapsed ? 'justify-center w-9 h-9 mx-auto' : 'gap-2.5 px-2.5 py-1.5'
+        } ${
           isActive
             ? 'bg-[#2570BA] text-white font-medium shadow-sm'
             : 'text-white/60 hover:text-white hover:bg-white/10'
@@ -79,11 +87,14 @@ function NavItem({ to, icon: Icon, label, badge }) {
         <>
           <Icon size={14} strokeWidth={isActive ? 2.2 : 1.75}
             className={isActive ? 'text-white/90 flex-shrink-0' : 'text-white/50 group-hover:text-white/80 flex-shrink-0'} />
-          <span className="truncate leading-none flex-1">{label}</span>
-          {badge > 0 && (
+          {!collapsed && <span className="truncate leading-none flex-1">{label}</span>}
+          {!collapsed && badge > 0 && (
             <span className="flex-shrink-0 min-w-[16px] h-4 px-1 rounded-full text-[9px] font-bold flex items-center justify-center bg-red-400 text-white">
               {badge}
             </span>
+          )}
+          {collapsed && badge > 0 && (
+            <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-red-400 flex-shrink-0" />
           )}
         </>
       )}
@@ -92,25 +103,8 @@ function NavItem({ to, icon: Icon, label, badge }) {
 }
 
 // ── GlobalCmdK ───────────────────────────────────────────────────────────────
-const NAV_ITEMS = [
-  { label: 'Dashboard',           path: '/',              icon: LayoutDashboard },
-  { label: 'Clientes',            path: '/clientes',      icon: Users           },
-  { label: 'Causas',              path: '/causas',        icon: Scale           },
-  { label: 'Prospectos',          path: '/prospectos',    icon: UserSearch      },
-  { label: 'Audiencias',          path: '/audiencias',    icon: Gavel           },
-  { label: 'Calendario',          path: '/calendario',    icon: Calendar        },
-  { label: 'Plazos',              path: '/plazos',        icon: AlertCircle     },
-  { label: 'Reuniones',           path: '/reuniones',     icon: MessageSquare   },
-  { label: 'PJUD',                path: '/pjud',          icon: Shield          },
-  { label: 'SIAU',                path: '/siau',          icon: Database        },
-  { label: 'Revisión de causas',  path: '/revision',      icon: ClipboardCheck  },
-  { label: 'Tareas',              path: '/tareas',        icon: CheckSquare     },
-  { label: 'Documentos',          path: '/documentos',    icon: FolderOpen      },
-  { label: 'Agenda diaria',       path: '/apuntes',       icon: BookOpen        },
-  { label: 'Seguimiento semanal', path: '/seguimiento',   icon: CalendarCheck   },
-  { label: 'Gastos',              path: '/gastos',        icon: Receipt         },
-  { label: 'Configuración',       path: '/configuracion', icon: Settings        },
-]
+// NAV_ITEMS alias (para GlobalCmdK usa ALL_NAV directamente)
+const NAV_ITEMS = ALL_NAV
 
 const RESP_COLOR = { MT: '#2570ba', AB: '#059669', CL: '#7c3aed' }
 const RESP_NAME  = { MT: 'Macarena', AB: 'Angélica', CL: 'Catalina' }
@@ -162,8 +156,8 @@ function GlobalCmdK({ open, onClose }) {
     }
 
     // Navegación
-    const navMatches = NAV_ITEMS.filter(n => n.label.toLowerCase().includes(lq))
-    navMatches.forEach(n => items.push({ group: 'MÓDULO', type: 'nav', label: n.label, path: n.path, icon: n.icon }))
+    const navMatches = ALL_NAV.filter(n => n.label.toLowerCase().includes(lq))
+    navMatches.forEach(n => items.push({ group: 'MÓDULO', type: 'nav', label: n.label, path: n.to ?? n.path, icon: n.icon }))
 
     // Clientes
     CLIENTES.filter(c => {
@@ -393,8 +387,59 @@ function GlobalCmdK({ open, onClose }) {
 export default function MainLayout() {
   const { plazos } = useSistema()
   const { user, setUser } = useUser()
+  const location = useLocation()
   const [cmdOpen, setCmdOpen] = useState(false)
+
+  // Sidebar state — persisted in localStorage
+  const [sbCollapsed, setSbCollapsed] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('sb-collapsed') ?? 'false') } catch { return false }
+  })
+  const [closedSections, setClosedSections] = useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem('sb-closed-sections') ?? '[]')) } catch { return new Set() }
+  })
+  const [recentNav, setRecentNav] = useState(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem('sb-recent-nav') ?? '[]')
+      // Los íconos no se pueden serializar a JSON — re-asociarlos desde ALL_NAV
+      return stored.map(item => {
+        const navItem = ALL_NAV.find(n => n.to === item.to)
+        return navItem ? { ...navItem } : null
+      }).filter(Boolean)
+    } catch { return [] }
+  })
+
   const plazosAlerta = plazos.filter(p => !!getUrgenciaLayout(p)).length
+
+  // Track recent navigation
+  useEffect(() => {
+    const current = ALL_NAV.find(item =>
+      item.to === '/' ? location.pathname === '/' : location.pathname.startsWith(item.to)
+    )
+    if (!current) return
+    setRecentNav(prev => {
+      const filtered = prev.filter(n => n.to !== current.to)
+      const next = [current, ...filtered].slice(0, 3)
+      try { localStorage.setItem('sb-recent-nav', JSON.stringify(next)) } catch {}
+      return next
+    })
+  }, [location.pathname])
+
+  function toggleSection(key) {
+    setClosedSections(prev => {
+      const next = new Set(prev)
+      next.has(key) ? next.delete(key) : next.add(key)
+      try { localStorage.setItem('sb-closed-sections', JSON.stringify([...next])) } catch {}
+      return next
+    })
+  }
+
+  function toggleCollapsed() {
+    setSbCollapsed(v => {
+      const next = !v
+      try { localStorage.setItem('sb-collapsed', JSON.stringify(next)) } catch {}
+      return next
+    })
+  }
 
   // Global CMD+K shortcut
   useEffect(() => {
@@ -412,82 +457,148 @@ export default function MainLayout() {
     <div className="flex h-screen bg-white overflow-hidden">
 
       {/* ── Sidebar ── */}
-      <aside className="flex-shrink-0 flex flex-col" style={{ width: 224, backgroundColor: '#1A2E4A' }}>
+      <aside
+        className="flex-shrink-0 flex flex-col overflow-hidden transition-all duration-200"
+        style={{ width: sbCollapsed ? 56 : 224, backgroundColor: '#1A2E4A' }}
+      >
 
-        {/* Logo */}
-        <div className="px-4 pt-4 pb-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-          <img
-            src="/logo.jpg"
-            alt="Bianchi Leiva Abogadas"
-            className="w-full object-contain rounded-lg"
-            style={{ maxHeight: 56 }}
-          />
-        </div>
-
-        {/* CMD+K search bar */}
-        <div className="px-3 py-2.5" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-          <button
-            onClick={() => setCmdOpen(true)}
-            className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg transition-all text-left group"
-            style={{ backgroundColor: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)' }}
-          >
-            <Search size={12} className="text-white/40 flex-shrink-0" />
-            <span className="text-[12px] text-white/40 flex-1">Buscar...</span>
-            <div className="flex items-center gap-0.5">
-              <kbd className="text-[9px] text-white/25 rounded px-1 py-0.5 font-mono" style={{ backgroundColor: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)' }}>⌘</kbd>
-              <kbd className="text-[9px] text-white/25 rounded px-1 py-0.5 font-mono" style={{ backgroundColor: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)' }}>K</kbd>
+        {/* Logo row + colapsar */}
+        <div
+          className="flex-shrink-0 flex items-center"
+          style={{
+            borderBottom: '1px solid rgba(255,255,255,0.08)',
+            padding: sbCollapsed ? '10px 8px' : '10px 8px 10px 14px',
+            gap: 6,
+            minHeight: 56,
+          }}
+        >
+          {!sbCollapsed && (
+            <img src="/logo.jpg" alt="Bianchi Leiva Abogadas"
+              className="flex-1 object-contain rounded-lg min-w-0"
+              style={{ maxHeight: 40 }}
+            />
+          )}
+          {sbCollapsed && (
+            <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center mx-auto flex-shrink-0">
+              <Scale size={14} className="text-white/70" />
             </div>
+          )}
+          <button
+            onClick={toggleCollapsed}
+            title={sbCollapsed ? 'Expandir sidebar' : 'Colapsar sidebar'}
+            className="flex-shrink-0 p-1.5 rounded-md hover:bg-white/10 transition-colors"
+          >
+            {sbCollapsed
+              ? <ChevronRight size={12} className="text-white/35" />
+              : <ChevronLeft  size={12} className="text-white/35" />
+            }
           </button>
         </div>
 
-        {/* Quick Add hint */}
-        <div className="px-3 py-2" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-          <div className="flex items-center justify-between px-2.5">
-            <span className="text-[10px] text-white/35">Crear nuevo</span>
-            <div className="flex items-center gap-0.5">
-              <kbd className="text-[9px] text-white/25 rounded px-1 py-0.5 font-mono" style={{ backgroundColor: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)' }}>⌘</kbd>
-              <kbd className="text-[9px] text-white/25 rounded px-1 py-0.5 font-mono" style={{ backgroundColor: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)' }}>⇧N</kbd>
-            </div>
-          </div>
+        {/* CMD+K */}
+        <div className="flex-shrink-0" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', padding: sbCollapsed ? '8px 6px' : '8px 10px' }}>
+          {!sbCollapsed ? (
+            <button
+              onClick={() => setCmdOpen(true)}
+              className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg transition-all text-left"
+              style={{ backgroundColor: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)' }}
+            >
+              <Search size={12} className="text-white/40 flex-shrink-0" />
+              <span className="text-[12px] text-white/40 flex-1">Buscar...</span>
+              <kbd className="text-[9px] text-white/20 rounded px-1 py-0.5 font-mono" style={{ backgroundColor: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' }}>⌘K</kbd>
+            </button>
+          ) : (
+            <button onClick={() => setCmdOpen(true)} title="Buscar (⌘K)"
+              className="w-9 h-7 flex items-center justify-center mx-auto rounded-md hover:bg-white/10 transition-colors">
+              <Search size={13} className="text-white/40" />
+            </button>
+          )}
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-4" style={{ scrollbarWidth: 'none' }}>
-          {sections.map((section, si) => (
-            <div key={si}>
-              {section.label && (
-                <p className="px-2.5 mb-1 text-[10px] font-semibold uppercase tracking-widest select-none text-white/30">
-                  {section.label}
-                </p>
-              )}
+        <nav className="flex-1 overflow-y-auto" style={{ scrollbarWidth: 'none', padding: sbCollapsed ? '8px 4px' : '8px 6px' }}>
+
+          {/* Recientes (solo expandido) */}
+          {!sbCollapsed && recentNav.length > 0 && (
+            <div className="mb-3">
+              <p className="px-2 mb-1 text-[9px] font-semibold uppercase tracking-widest select-none text-white/20">
+                Recientes
+              </p>
               <div className="space-y-0.5">
-                {section.items.map(item => (
-                  <NavItem
-                    key={item.to}
-                    {...item}
-                    badge={item.to === '/plazos' ? plazosAlerta : 0}
-                  />
+                {recentNav.map(item => (
+                  <NavItem key={`recent-${item.to}`} {...item} badge={item.to === '/plazos' ? plazosAlerta : 0} collapsed={false} />
                 ))}
               </div>
             </div>
-          ))}
+          )}
+
+          {/* Secciones colapsables */}
+          <div className="space-y-0.5">
+            {SECTIONS.map(section => {
+              const isClosed = closedSections.has(section.key)
+              return (
+                <div key={section.key} className="mb-1">
+                  {/* Section header — solo visible cuando expandido */}
+                  {!sbCollapsed && (
+                    <button
+                      onClick={() => toggleSection(section.key)}
+                      className="w-full flex items-center gap-1.5 px-2 py-1 rounded-md hover:bg-white/5 transition-colors group select-none"
+                    >
+                      <ChevronRight
+                        size={10}
+                        className={`text-white/20 transition-transform duration-150 flex-shrink-0 group-hover:text-white/35 ${isClosed ? '' : 'rotate-90'}`}
+                      />
+                      <span className="text-[9px] font-semibold uppercase tracking-widest text-white/25 group-hover:text-white/40 transition-colors">
+                        {section.label}
+                      </span>
+                    </button>
+                  )}
+
+                  {/* Items — siempre visibles cuando colapsado */}
+                  {(!isClosed || sbCollapsed) && (
+                    <div className="space-y-0.5 mt-0.5">
+                      {section.items.map(item => (
+                        <NavItem
+                          key={item.to}
+                          {...item}
+                          badge={item.to === '/plazos' ? plazosAlerta : 0}
+                          collapsed={sbCollapsed}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+
+            {/* Configuración siempre al fondo */}
+            <div className="pt-1" style={{ borderTop: '1px solid rgba(255,255,255,0.06)', marginTop: 4 }}>
+              <NavItem to="/configuracion" icon={Settings} label="Configuración" collapsed={sbCollapsed} />
+            </div>
+          </div>
         </nav>
 
         {/* User */}
-        <div className="px-2 pb-4 pt-2" style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+        <div className="flex-shrink-0" style={{ borderTop: '1px solid rgba(255,255,255,0.08)', padding: sbCollapsed ? '8px 4px' : '8px 6px' }}>
           <button
             onClick={() => setUser(null)}
-            className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md cursor-pointer group transition-colors hover:bg-white/10"
-            title="Cambiar usuario"
+            title={sbCollapsed ? `${user?.nombre || 'Usuario'} — Cambiar` : 'Cambiar usuario'}
+            className={`w-full flex items-center rounded-md cursor-pointer group transition-colors hover:bg-white/10 ${
+              sbCollapsed ? 'justify-center p-1.5' : 'gap-2.5 px-2.5 py-2'
+            }`}
           >
             <div className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0"
               style={{ backgroundColor: user?.color || '#2570BA' }}>
               {user?.id || 'MT'}
             </div>
-            <span className="text-[13px] text-white/70 flex-1 truncate text-left">
-              {user ? `${user.nombre} ${user.apellido}` : 'Macarena T.'}
-            </span>
-            <LogOut size={13} className="text-white/25 group-hover:text-white/50 flex-shrink-0 transition-colors" />
+            {!sbCollapsed && (
+              <>
+                <span className="text-[13px] text-white/70 flex-1 truncate text-left">
+                  {user ? `${user.nombre} ${user.apellido}` : 'Macarena T.'}
+                </span>
+                <LogOut size={13} className="text-white/25 group-hover:text-white/50 flex-shrink-0 transition-colors" />
+              </>
+            )}
           </button>
         </div>
       </aside>
