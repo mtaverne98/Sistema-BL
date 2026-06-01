@@ -31,9 +31,11 @@ function getUrgenciaLayout(p) {
 }
 
 // ── sidebar structure (4 secciones colapsables) ───────────────────────────────
+// Dashboard va solo, arriba de todo — separado de las secciones
+const DASHBOARD_ITEM = { to: '/', icon: LayoutDashboard, label: 'Dashboard' }
+
 const SECTIONS = [
   { key: 'trabajo', label: 'Trabajo', items: [
-    { to: '/',           icon: LayoutDashboard, label: 'Dashboard'  },
     { to: '/clientes',   icon: Users,           label: 'Clientes'   },
     { to: '/causas',     icon: Scale,           label: 'Causas'     },
     { to: '/prospectos', icon: UserSearch,      label: 'Prospectos' },
@@ -58,8 +60,9 @@ const SECTIONS = [
   ]},
 ]
 
-// Flat list for CMD+K and recent nav lookup
+// Flat list for CMD+K
 const ALL_NAV = [
+  DASHBOARD_ITEM,
   ...SECTIONS.flatMap(s => s.items),
   { to: '/configuracion', icon: Settings, label: 'Configuración' },
 ]
@@ -393,12 +396,52 @@ export default function MainLayout() {
   const [sbCollapsed, setSbCollapsed] = useState(() => {
     try { return JSON.parse(localStorage.getItem('sb-collapsed') ?? 'false') } catch { return false }
   })
+  const [sbWidth, setSbWidth] = useState(() => {
+    try { return parseInt(localStorage.getItem('sb-width') ?? '240', 10) } catch { return 240 }
+  })
+  const [isResizing, setIsResizing] = useState(false)
+  const dragRef = useRef({ active: false, startX: 0, startWidth: 0, lastWidth: 240 })
+
   const [closedSections, setClosedSections] = useState(() => {
     try { return new Set(JSON.parse(localStorage.getItem('sb-closed-sections') ?? '[]')) } catch { return new Set() }
   })
 
   // Limpiar clave legacy de recientes (si existía de versiones anteriores)
   useEffect(() => { try { localStorage.removeItem('sb-recent-nav') } catch {} }, [])
+
+  // ── Resize drag listeners ──────────────────────────────────────────────────
+  useEffect(() => {
+    function onMove(e) {
+      if (!dragRef.current.active) return
+      const delta = e.clientX - dragRef.current.startX
+      const w = Math.min(320, Math.max(180, dragRef.current.startWidth + delta))
+      dragRef.current.lastWidth = w
+      setSbWidth(w)
+    }
+    function onUp() {
+      if (!dragRef.current.active) return
+      dragRef.current.active = false
+      setIsResizing(false)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+      try { localStorage.setItem('sb-width', String(dragRef.current.lastWidth)) } catch {}
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    return () => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+  }, [])
+
+  function handleResizeMouseDown(e) {
+    if (sbCollapsed) return
+    e.preventDefault()
+    dragRef.current = { active: true, startX: e.clientX, startWidth: sbWidth, lastWidth: sbWidth }
+    setIsResizing(true)
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+  }
 
   const plazosAlerta = plazos.filter(p => !!getUrgenciaLayout(p)).length
 
@@ -419,6 +462,8 @@ export default function MainLayout() {
     })
   }
 
+  const currentSbWidth = sbCollapsed ? 56 : sbWidth
+
   // Global CMD+K shortcut
   useEffect(() => {
     const fn = e => {
@@ -436,8 +481,12 @@ export default function MainLayout() {
 
       {/* ── Sidebar ── */}
       <aside
-        className="flex-shrink-0 flex flex-col overflow-hidden transition-all duration-200"
-        style={{ width: sbCollapsed ? 56 : 224, backgroundColor: '#1A2E4A' }}
+        className="flex-shrink-0 flex flex-col overflow-hidden relative"
+        style={{
+          width: currentSbWidth,
+          backgroundColor: '#1A2E4A',
+          transition: isResizing ? 'none' : 'width 0.2s ease',
+        }}
       >
 
         {/* Logo row + colapsar */}
@@ -493,8 +542,40 @@ export default function MainLayout() {
           )}
         </div>
 
+        {/* ── Resize handle ── */}
+        <div
+          onMouseDown={handleResizeMouseDown}
+          onDoubleClick={toggleCollapsed}
+          title="Arrastrar para redimensionar · Doble clic para colapsar"
+          className="absolute right-0 top-0 bottom-0 z-10 flex items-center justify-center group/resize"
+          style={{ width: 6, cursor: sbCollapsed ? 'default' : 'col-resize' }}
+        >
+          <div
+            className="h-full w-px transition-colors duration-150"
+            style={{
+              backgroundColor: isResizing
+                ? 'rgba(255,255,255,0.35)'
+                : undefined,
+            }}
+          />
+          {/* Línea visible al hover */}
+          <div
+            className="absolute inset-y-0 right-0 w-px opacity-0 group-hover/resize:opacity-100 transition-opacity"
+            style={{ backgroundColor: 'rgba(255,255,255,0.2)' }}
+          />
+        </div>
+
         {/* Nav */}
         <nav className="flex-1 overflow-y-auto" style={{ scrollbarWidth: 'none', padding: sbCollapsed ? '8px 4px' : '8px 6px' }}>
+
+          {/* Dashboard — solo, arriba de todo */}
+          <div className="mb-1">
+            <NavItem {...DASHBOARD_ITEM} collapsed={sbCollapsed} />
+          </div>
+          {!sbCollapsed && (
+            <div className="mx-2 mb-2" style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.06)' }} />
+          )}
+          {sbCollapsed && <div style={{ height: 4 }} />}
 
           {/* Secciones colapsables */}
           <div className="space-y-0.5">
