@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
-import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
+import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard,
   Users, Scale, UserSearch,
@@ -387,7 +387,6 @@ function GlobalCmdK({ open, onClose }) {
 export default function MainLayout() {
   const { plazos } = useSistema()
   const { user, setUser } = useUser()
-  const location = useLocation()
   const [cmdOpen, setCmdOpen] = useState(false)
 
   // Sidebar state — persisted in localStorage
@@ -397,32 +396,11 @@ export default function MainLayout() {
   const [closedSections, setClosedSections] = useState(() => {
     try { return new Set(JSON.parse(localStorage.getItem('sb-closed-sections') ?? '[]')) } catch { return new Set() }
   })
-  const [recentNav, setRecentNav] = useState(() => {
-    try {
-      const stored = JSON.parse(localStorage.getItem('sb-recent-nav') ?? '[]')
-      // Los íconos no se pueden serializar a JSON — re-asociarlos desde ALL_NAV
-      return stored.map(item => {
-        const navItem = ALL_NAV.find(n => n.to === item.to)
-        return navItem ? { ...navItem } : null
-      }).filter(Boolean)
-    } catch { return [] }
-  })
+
+  // Limpiar clave legacy de recientes (si existía de versiones anteriores)
+  useEffect(() => { try { localStorage.removeItem('sb-recent-nav') } catch {} }, [])
 
   const plazosAlerta = plazos.filter(p => !!getUrgenciaLayout(p)).length
-
-  // Track recent navigation
-  useEffect(() => {
-    const current = ALL_NAV.find(item =>
-      item.to === '/' ? location.pathname === '/' : location.pathname.startsWith(item.to)
-    )
-    if (!current) return
-    setRecentNav(prev => {
-      const filtered = prev.filter(n => n.to !== current.to)
-      const next = [current, ...filtered].slice(0, 3)
-      try { localStorage.setItem('sb-recent-nav', JSON.stringify(next)) } catch {}
-      return next
-    })
-  }, [location.pathname])
 
   function toggleSection(key) {
     setClosedSections(prev => {
@@ -517,20 +495,6 @@ export default function MainLayout() {
 
         {/* Nav */}
         <nav className="flex-1 overflow-y-auto" style={{ scrollbarWidth: 'none', padding: sbCollapsed ? '8px 4px' : '8px 6px' }}>
-
-          {/* Recientes (solo expandido) */}
-          {!sbCollapsed && recentNav.length > 0 && (
-            <div className="mb-3">
-              <p className="px-2 mb-1 text-[9px] font-semibold uppercase tracking-widest select-none text-white/20">
-                Recientes
-              </p>
-              <div className="space-y-0.5">
-                {recentNav.map(item => (
-                  <NavItem key={`recent-${item.to}`} {...item} badge={item.to === '/plazos' ? plazosAlerta : 0} collapsed={false} />
-                ))}
-              </div>
-            </div>
-          )}
 
           {/* Secciones colapsables */}
           <div className="space-y-0.5">
