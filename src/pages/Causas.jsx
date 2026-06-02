@@ -13,6 +13,7 @@ import { supabase } from '../lib/supabase'
 
 import { useQuickAdd } from '../context/QuickAddContext'
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal'
+import InlineField from '../components/InlineField'
 import CargaMasivaModal from '../components/CargaMasivaModal'
 
 // ── Exportación vacía para compatibilidad con CMD+K en MainLayout ──────────
@@ -756,8 +757,7 @@ function FormCausa({ inicial, onClose, onGuardar, guardando, clientes = [], onCr
 
 // ── CausaView — Vista completa de expediente jurídico ──────────────────────
 function CausaView({ causa, onClose, onEdit, onDelete, onUpdate }) {
-  const [tab, setTab]               = useState('resumen')
-  const [confirmDelete, setConfirm] = useState(false)
+  const [tab, setTab] = useState('resumen')
 
   // ── Exponer contexto al Quick Add global ──
   const { setCtx } = useQuickAdd()
@@ -1052,20 +1052,13 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate }) {
             >
               <Pencil size={11} /> Editar
             </button>
-            {!confirmDelete ? (
-              <button
-                onClick={() => setConfirm(true)}
-                className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
-              >
-                <Trash2 size={13} />
-              </button>
-            ) : (
-              <div className="flex items-center gap-2 bg-red-50 border border-red-100 rounded-lg px-3 py-1.5">
-                <span className="text-[11px] text-red-700 font-medium">¿Eliminar?</span>
-                <button onClick={onDelete} className="text-[11px] font-semibold text-red-600 hover:text-red-800">Sí</button>
-                <button onClick={() => setConfirm(false)} className="text-[11px] text-gray-400 hover:text-gray-600 ml-1">No</button>
-              </div>
-            )}
+            <button
+              onClick={onDelete}
+              className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+              title="Eliminar causa"
+            >
+              <Trash2 size={13} />
+            </button>
           </div>
         </div>
 
@@ -1385,14 +1378,21 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate }) {
               </div>
 
               <div className="space-y-5">
-                {causa.observaciones && (
-                  <div>
-                    <p className="text-[10px] font-semibold text-gray-300 uppercase tracking-widest mb-2">Observaciones</p>
-                    <p className="text-[12px] text-gray-700 leading-relaxed bg-gray-50 rounded-xl p-3.5">
-                      {causa.observaciones}
-                    </p>
+                {/* Notas libres — siempre visible, editable inline */}
+                <div>
+                  <p className="text-[10px] font-semibold text-gray-300 uppercase tracking-widest mb-2">Notas</p>
+                  <div className="bg-gray-50 rounded-xl p-3.5">
+                    <InlineField
+                      value={causa.observaciones}
+                      onSave={v => onUpdate?.({ observaciones: v || null })}
+                      type="textarea"
+                      placeholder="Agrega notas sobre esta causa…"
+                      debounce={1200}
+                      textClassName="text-[12px] text-gray-700 leading-relaxed whitespace-pre-line"
+                      inputClassName="text-[12px] bg-transparent"
+                    />
                   </div>
-                )}
+                </div>
 
                 {/* Tareas pendientes compactas */}
                 {tareasPend > 0 && (
@@ -2633,7 +2633,8 @@ export default function Causas() {
   const [seleccionada, setSeleccionada] = useState(null)
   const [mostrarFiltros, setFiltros]  = useState(false)
   const [formulario, setFormulario]   = useState(null) // null | 'nueva' | objeto causa para editar
-  const [deleteTarget, setDeleteTarget] = useState(null)
+  const [deleteTarget, setDeleteTarget] = useState(null) // { causa, fromView }
+  const [deleteError, setDeleteError]   = useState(null)
 
   // ── Fetch ───────────────────────────────────────────────────────────────
   const fetchCausas = useCallback(async () => {
@@ -2708,25 +2709,66 @@ export default function Causas() {
   }, [seleccionada])
 
   // ── Eliminar ────────────────────────────────────────────────────────────
-  const handleEliminar = async () => {
-    if (!seleccionada) return
-    const { error: err } = await supabase.from('causas').delete().eq('id', seleccionada.id)
-    if (err) { alert('Error al eliminar: ' + err.message) }
-    else {
-      setCausas(prev => prev.filter(c => c.id !== seleccionada.id))
-      setSeleccionada(null)
+  /** Abre el modal de confirmación para una causa */
+  const handleRequestDelete = useCallback((causa) => {
+    setDeleteTarget({ causa })
+    setDeleteError(null)
+  }, [])
+
+  /** Hace el borrado en cascada (siau/pjud por rit/ruc, revisiones por causa_id) */
+  const handleEliminarCausa = async (causa) => {
+    const rit = causa.rit
+    const ruc = causa.ruc
+
+    // 1. Borrar tablas sin FK (siau, pjud) por rit y ruc
+    const byRit = rit ? [
+      supabase.from('siau').delete().eq('causa_rit', rit),
+      supabase.from('pjud').delete().eq('causa_rit', rit),
+    ] : []
+    const byRuc = ruc ? [
+      supabase.from('siau').delete().eq('causa_ruc', ruc),
+      supabase.from('pjud').delete().eq('causa_ruc', ruc),
+    ] : []
+    // revisiones usa causa_id (FK con cascade, pero lo borramos explícitamente por seguridad)
+    await Promise.all([
+      ...byRit, ...byRuc,
+      supabase.from('revisiones').delete().eq('causa_id', causa.id),
+    ])
+
+    // 2. Borrar causa (cascade elimina audiencias, tareas, plazos, documentos)
+    const { error: err } = await supabase.from('causas').delete().eq('id', causa.id)
+    if (err) {
+      setDeleteError('Error al eliminar: ' + err.message)
+      return false
+    }
+    return true
+  }
+
+  const handleEliminarConfirm = async () => {
+    const { causa } = deleteTarget
+    if (!causa) return
+    const ok = await handleEliminarCausa(causa)
+    if (ok) {
+      setCausas(prev => prev.filter(c => c.id !== causa.id))
+      if (seleccionada?.id === causa.id) setSeleccionada(null)
+      setDeleteTarget(null)
     }
   }
 
-  const handleEliminarById = async () => {
-    if (!deleteTarget) return
-    const { error: err } = await supabase.from('causas').delete().eq('id', deleteTarget.id)
-    if (err) { alert('Error al eliminar: ' + err.message) }
-    else {
-      setCausas(prev => prev.filter(c => c.id !== deleteTarget.id))
-      if (seleccionada?.id === deleteTarget.id) setSeleccionada(null)
-      setDeleteTarget(null)
+  /** Archiva la causa (pasa a 'Archivada') sin borrar datos */
+  const handleArchivar = async () => {
+    const { causa } = deleteTarget
+    if (!causa) return
+    const { error: err } = await supabase
+      .from('causas').update({ estado: 'Archivada' }).eq('id', causa.id)
+    if (!err) {
+      setCausas(prev => prev.map(c =>
+        c.id === causa.id ? { ...c, estado: 'Archivada' } : c
+      ))
+      if (seleccionada?.id === causa.id)
+        setSeleccionada(prev => ({ ...prev, estado: 'Archivada' }))
     }
+    setDeleteTarget(null)
   }
 
   // ── Filtrado ────────────────────────────────────────────────────────────
@@ -2791,7 +2833,7 @@ export default function Causas() {
             causa={seleccionada}
             onClose={() => setSeleccionada(null)}
             onEdit={() => setFormulario(seleccionada)}
-            onDelete={handleEliminar}
+            onDelete={() => handleRequestDelete(seleccionada)}
             onUpdate={handleCausaUpdate}
           />
           {formulario && (
@@ -2982,7 +3024,7 @@ export default function Causas() {
                               <div className="flex items-center gap-2">
                                 <EstadoBadge estado={c.estado} />
                                 <button
-                                  onClick={e => { e.stopPropagation(); setDeleteTarget({ id: c.id, name: c.materia }) }}
+                                  onClick={e => { e.stopPropagation(); handleRequestDelete(c) }}
                                   className="opacity-0 group-hover:opacity-100 p-1 rounded-lg text-gray-300 hover:text-red-400 hover:bg-red-50 transition-colors flex-shrink-0"
                                   title="Eliminar causa">
                                   <Trash2 size={11} />
@@ -3043,9 +3085,16 @@ export default function Causas() {
 
       <ConfirmDeleteModal
         open={!!deleteTarget}
-        title={`¿Eliminar "${deleteTarget?.name}"?`}
-        onConfirm={handleEliminarById}
-        onCancel={() => setDeleteTarget(null)}
+        title={deleteTarget?.causa?.materia ?? deleteTarget?.causa?.rit ?? ''}
+        warning={
+          deleteTarget?.causa
+            ? `Se eliminarán los movimientos de PJUD/SIAU, audiencias, tareas, plazos y documentos de esta causa.`
+            : null
+        }
+        onConfirm={handleEliminarConfirm}
+        onCancel={() => { setDeleteTarget(null); setDeleteError(null) }}
+        onArchive={handleArchivar}
+        archiveLabel="Archivar causa"
       />
     </div>
   )

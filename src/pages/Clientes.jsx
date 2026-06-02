@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import InlineField from '../components/InlineField'
+import ConfirmDeleteModal from '../components/ConfirmDeleteModal'
 
 // ── Exportación vacía para compatibilidad con CMD+K en MainLayout ──────────
 export const CLIENTES = []
@@ -169,11 +170,10 @@ function ErrorBanner({ mensaje, onRetry }) {
 }
 
 // ── Panel lateral – detalle cliente ───────────────────────────────────────
-function PanelCliente({ cliente, onClose, onEdit, onDelete, onEstadoCambiar, onInlineSave }) {
+function PanelCliente({ cliente, onClose, onEstadoCambiar, onInlineSave, onRequestDelete }) {
   const [tab, setTab]                   = useState('causas')
   const [causas, setCausas]             = useState([])
   const [loadingCausas, setLoadingCausas] = useState(false)
-  const [confirmDelete, setConfirmDelete] = useState(false)
 
   useEffect(() => {
     setLoadingCausas(true)
@@ -225,9 +225,11 @@ function PanelCliente({ cliente, onClose, onEdit, onDelete, onEstadoCambiar, onI
           </div>
         </div>
         <div className="flex items-center gap-1 ml-2">
-          <button onClick={() => setConfirmDelete(true)}
+          <button
+            onClick={() => onRequestDelete?.(cliente, causas.length)}
             className="p-1.5 rounded-md hover:bg-red-50 text-gray-300 hover:text-red-500 transition-colors"
-            title="Eliminar">
+            title="Eliminar cliente"
+          >
             <Trash2 size={13} />
           </button>
           <button onClick={onClose}
@@ -236,24 +238,6 @@ function PanelCliente({ cliente, onClose, onEdit, onDelete, onEstadoCambiar, onI
           </button>
         </div>
       </div>
-
-      {/* Confirm delete */}
-      {confirmDelete && (
-        <div className="mx-4 my-3 p-3 bg-red-50 border border-red-100 rounded-lg text-xs text-red-700 space-y-2">
-          <p className="font-medium">¿Eliminar a {cliente.nombre}?</p>
-          <p className="text-red-500">Esta acción no se puede deshacer.</p>
-          <div className="flex gap-2 pt-1">
-            <button onClick={() => setConfirmDelete(false)}
-              className="flex-1 px-2 py-1.5 border border-red-200 rounded-md hover:bg-red-100 transition-colors">
-              Cancelar
-            </button>
-            <button onClick={onDelete}
-              className="flex-1 px-2 py-1.5 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors font-medium">
-              Eliminar
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Propiedades — estilo Notion (icon + campo inline editable) */}
       <div className="px-5 py-3 border-b border-gray-50 space-y-1.5">
@@ -509,6 +493,7 @@ export default function Clientes() {
   const [clienteSeleccionado, setSeleccionado] = useState(null)
   const [formulario, setFormulario] = useState(null) // null | 'nuevo' | objeto cliente
   const [formError, setFormError] = useState(null)   // error del formulario modal
+  const [deleteModal, setDeleteModal] = useState(null) // null | { cliente, causasCount }
 
   // ── Fetch ───────────────────────────────────────────────────────────────
   const fetchClientes = useCallback(async () => {
@@ -591,16 +576,53 @@ export default function Clientes() {
   }
 
   // ── Eliminar ────────────────────────────────────────────────────────────
+  /** Abre el modal de confirmación (llamado desde PanelCliente) */
+  const handleRequestDelete = useCallback((cliente, causasCount = 0) => {
+    setDeleteModal({ cliente, causasCount })
+  }, [])
+
+  /** Elimina el cliente + tablas sin FK (siau, pjud, revisiones) */
   const handleEliminar = async () => {
-    if (!clienteSeleccionado) return
+    const { cliente } = deleteModal
+    if (!cliente) return
+    const nombre = cliente.nombre
+
+    // 1. Borrar registros sin FK en siau / pjud / revisiones por nombre
+    await Promise.all([
+      supabase.from('siau').delete().eq('cliente_nombre', nombre),
+      supabase.from('pjud').delete().eq('cliente_nombre', nombre),
+      supabase.from('revisiones').delete().eq('cliente_nombre', nombre),
+    ])
+
+    // 2. Borrar cliente (cascade elimina causas, audiencias, tareas, plazos, documentos)
     const { error: err } = await supabase
-      .from('clientes').delete().eq('id', clienteSeleccionado.id)
+      .from('clientes').delete().eq('id', cliente.id)
+
     if (err) {
-      alert('Error al eliminar: ' + err.message)
-    } else {
-      setClientes(prev => prev.filter(c => c.id !== clienteSeleccionado.id))
-      setSeleccionado(null)
+      setDeleteModal(null)
+      setFormError('Error al eliminar: ' + err.message)
+      return
     }
+
+    setClientes(prev => prev.filter(c => c.id !== cliente.id))
+    if (clienteSeleccionado?.id === cliente.id) setSeleccionado(null)
+    setDeleteModal(null)
+  }
+
+  /** Archiva el cliente (pasa a Inactivo sin borrar datos) */
+  const handleArchivar = async () => {
+    const { cliente } = deleteModal
+    if (!cliente) return
+    const { error: err } = await supabase
+      .from('clientes').update({ estado: 'Inactivo' }).eq('id', cliente.id)
+    if (!err) {
+      setClientes(prev => prev.map(c =>
+        c.id === cliente.id ? { ...c, estado: 'Inactivo' } : c
+      ))
+      if (clienteSeleccionado?.id === cliente.id)
+        setSeleccionado(prev => ({ ...prev, estado: 'Inactivo' }))
+    }
+    setDeleteModal(null)
   }
 
   // ── Edición inline de campo individual ─────────────────────────────────
@@ -688,6 +710,7 @@ export default function Clientes() {
   }, [filtrados])
 
   return (
+    <>
     <div className="flex h-full min-h-screen">
 
       {/* ── Área principal ── */}
@@ -851,8 +874,7 @@ export default function Clientes() {
                             <button
                               onClick={e => {
                                 e.stopPropagation()
-                                setSeleccionado(c)
-                                setFormulario(null)
+                                handleRequestDelete(c, 0)
                               }}
                               className="opacity-0 group-hover:opacity-100 p-1 rounded-lg text-gray-300 hover:text-red-400 hover:bg-red-50 transition-colors flex-shrink-0"
                               title="Eliminar cliente">
@@ -875,10 +897,9 @@ export default function Clientes() {
         <PanelCliente
           cliente={clienteSeleccionado}
           onClose={() => setSeleccionado(null)}
-          onEdit={() => setFormulario(clienteSeleccionado)}
-          onDelete={handleEliminar}
           onEstadoCambiar={handleEstadoCambiar}
           onInlineSave={handleInlineSave}
+          onRequestDelete={handleRequestDelete}
         />
       )}
       {formulario && (
@@ -891,5 +912,21 @@ export default function Clientes() {
         />
       )}
     </div>
+
+    {/* ── Modal eliminar cliente ── */}
+    <ConfirmDeleteModal
+      open={!!deleteModal}
+      title={deleteModal?.cliente?.nombre}
+      warning={
+        deleteModal?.causasCount > 0
+          ? `Este cliente tiene ${deleteModal.causasCount} causa${deleteModal.causasCount !== 1 ? 's' : ''} que también se eliminarán.`
+          : null
+      }
+      onCancel={() => setDeleteModal(null)}
+      onConfirm={handleEliminar}
+      onArchive={handleArchivar}
+      archiveLabel="Marcar inactivo"
+    />
+    </>
   )
 }

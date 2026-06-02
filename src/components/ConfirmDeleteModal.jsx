@@ -1,16 +1,22 @@
-import { Trash2, X } from 'lucide-react'
+import { Trash2, Archive } from 'lucide-react'
 
 /**
  * ConfirmDeleteModal — shared across all modules
  *
  * Props:
- *   open      : boolean
- *   title     : string  — what is being deleted (e.g. "esta audiencia")
- *   warning   : string? — optional extra warning line (e.g. "Este cliente tiene 3 causas asociadas que también se eliminarán")
- *   onConfirm : () => void
- *   onCancel  : () => void
+ *   open         : boolean
+ *   title        : string  — nombre del objeto a eliminar
+ *   warning      : string? — línea de advertencia adicional
+ *   onConfirm    : () => void  — eliminar definitivamente
+ *   onCancel     : () => void
+ *   onArchive    : (() => void) | null  — archivar en vez de eliminar (opcional)
+ *   archiveLabel : string  — texto del botón Archivar (default 'Archivar')
  */
-export default function ConfirmDeleteModal({ open, title, warning, onConfirm, onCancel }) {
+export default function ConfirmDeleteModal({
+  open, title, warning,
+  onConfirm, onCancel,
+  onArchive, archiveLabel = 'Archivar',
+}) {
   if (!open) return null
   return (
     <div className="fixed inset-0 z-[9998] flex items-center justify-center p-4">
@@ -23,14 +29,19 @@ export default function ConfirmDeleteModal({ open, title, warning, onConfirm, on
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-[14px] font-semibold text-gray-900 leading-snug">
-                ¿Estás segura de que quieres eliminar {title}?
+                ¿Eliminar <span className="text-gray-700">{title}</span>?
+              </p>
+              <p className="text-[12px] text-gray-500 mt-1 leading-snug">
+                Se eliminarán todos sus datos asociados.
               </p>
               {warning && (
                 <p className="text-[12px] text-amber-600 mt-2 leading-snug bg-amber-50 rounded-lg px-2.5 py-1.5">
                   ⚠ {warning}
                 </p>
               )}
-              <p className="text-[12px] text-gray-400 mt-2">Esta acción no se puede deshacer.</p>
+              <p className="text-[12px] text-red-400 font-medium mt-2">
+                Esta acción no se puede deshacer.
+              </p>
             </div>
           </div>
         </div>
@@ -41,6 +52,14 @@ export default function ConfirmDeleteModal({ open, title, warning, onConfirm, on
           >
             Cancelar
           </button>
+          {onArchive && (
+            <button
+              onClick={onArchive}
+              className="flex-1 text-[13px] font-medium text-amber-700 py-2.5 rounded-xl border border-amber-200 bg-amber-50 hover:bg-amber-100 transition-colors flex items-center justify-center gap-1.5"
+            >
+              <Archive size={13} /> {archiveLabel}
+            </button>
+          )}
           <button
             onClick={onConfirm}
             className="flex-1 text-[13px] font-medium text-white py-2.5 rounded-xl bg-red-500 hover:bg-red-600 transition-colors flex items-center justify-center gap-1.5"
