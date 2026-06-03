@@ -612,6 +612,101 @@ function MetricCard({ label, value, sub, color = 'text-[#1a2e4a]', Icon }) {
   )
 }
 
+// ── ClienteSearchSelect ───────────────────────────────────────────────────────
+/**
+ * Combobox con buscador para seleccionar un cliente.
+ * Props: clientes[], value (nombre), onSelect(clienteObj|null)
+ */
+function ClienteSearchSelect({ clientes, value, onSelect, inputCls }) {
+  const [query,    setQuery]    = useState(value || '')
+  const [open,     setOpen]     = useState(false)
+  const wrapRef = useRef(null)
+
+  // Sincronizar si el padre borra el valor
+  useEffect(() => { setQuery(value || '') }, [value])
+
+  // Cerrar al hacer clic fuera
+  useEffect(() => {
+    const h = e => { if (!wrapRef.current?.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [])
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    return clientes
+      .filter(c => !q || c.nombre.toLowerCase().includes(q))
+      .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
+  }, [clientes, query])
+
+  function handleSelect(cliente) {
+    setQuery(cliente.nombre)
+    setOpen(false)
+    onSelect(cliente)
+  }
+
+  function handleChange(e) {
+    const v = e.target.value
+    setQuery(v)
+    setOpen(true)
+    if (!v.trim()) onSelect(null)
+  }
+
+  function handleClear() {
+    setQuery('')
+    setOpen(false)
+    onSelect(null)
+  }
+
+  return (
+    <div ref={wrapRef} className="relative">
+      <div className="relative">
+        <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300 pointer-events-none" />
+        <input
+          value={query}
+          onChange={handleChange}
+          onFocus={() => setOpen(true)}
+          placeholder="Buscar cliente activo..."
+          className={`${inputCls} pl-8 pr-7`}
+          autoComplete="off"
+        />
+        {query && (
+          <button
+            type="button"
+            onClick={handleClear}
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500 transition-colors"
+          >
+            <X size={11} />
+          </button>
+        )}
+      </div>
+
+      {open && (
+        <div className="absolute z-[200] top-full mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden">
+          <div className="max-h-48 overflow-y-auto" style={{ scrollbarWidth: 'thin' }}>
+            {filtered.length === 0 ? (
+              <p className="px-3 py-2.5 text-xs text-gray-400 italic">
+                {query ? 'Sin resultados' : 'No hay clientes activos'}
+              </p>
+            ) : (
+              filtered.map(c => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onMouseDown={e => { e.preventDefault(); handleSelect(c) }}
+                  className="w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition-colors"
+                >
+                  {c.nombre}
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── FormAudiencia ─────────────────────────────────────────────────────────────
 const FORM_VACIO = {
   tipo: '', fecha: '', hora: '', tribunal: '', sala: '',
@@ -619,35 +714,69 @@ const FORM_VACIO = {
   cliente_nombre: '', causa_rit: '', cliente_id: null, causa_id: null,
 }
 
-function FormAudiencia({ inicial, causas, onGuardar, onCancelar, guardando }) {
+function FormAudiencia({ inicial, clientes, onGuardar, onCancelar, guardando }) {
   const [form, setForm] = useState(inicial || FORM_VACIO)
+  const [causasCliente, setCausasCliente] = useState([])
+  const [loadingCausas, setLoadingCausas] = useState(false)
 
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }))
 
-  // Autocompletar cliente_nombre y causa_id al elegir RIT
-  const handleCausaChange = (e) => {
-    const rit = e.target.value
-    set('causa_rit', rit)
-    const causa = causas.find(c => c.rit === rit)
+  // Al editar, cargar las causas del cliente inicial
+  useEffect(() => {
+    if (inicial?.cliente_id) cargarCausas(inicial.cliente_id)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  async function cargarCausas(clienteId) {
+    setLoadingCausas(true)
+    const { data } = await supabase
+      .from('causas')
+      .select('id, rit, ruc, materia, tribunal')
+      .eq('cliente_id', clienteId)
+      .order('rit', { nullsFirst: false })
+    setCausasCliente(data || [])
+    setLoadingCausas(false)
+  }
+
+  // Selector de cliente
+  function handleClienteSelect(cliente) {
+    setForm(p => ({
+      ...p,
+      cliente_nombre: cliente?.nombre || '',
+      cliente_id:     cliente?.id     || null,
+      // limpiar causa al cambiar cliente
+      causa_rit: '',
+      causa_id:  null,
+      tribunal:  p.tribunal,
+    }))
+    setCausasCliente([])
+    if (cliente?.id) cargarCausas(cliente.id)
+  }
+
+  // Selector de causa
+  function handleCausaChange(e) {
+    const causaId = e.target.value
+    if (!causaId) {
+      setForm(p => ({ ...p, causa_rit: '', causa_id: null }))
+      return
+    }
+    const causa = causasCliente.find(c => c.id === causaId)
     if (causa) {
       setForm(p => ({
         ...p,
-        causa_rit:      causa.rit,
-        causa_id:       causa.id,
-        cliente_nombre: causa.cliente_nombre || p.cliente_nombre,
-        cliente_id:     causa.cliente_id     || p.cliente_id,
-        tribunal:       causa.tribunal       || p.tribunal,
+        causa_rit: causa.rit  || '',
+        causa_id:  causa.id,
+        tribunal:  causa.tribunal || p.tribunal,
       }))
     }
   }
 
-  const handleSubmit = (e) => {
-    e.preventDefault()
-    onGuardar(form)
-  }
+  const handleSubmit = (e) => { e.preventDefault(); onGuardar(form) }
 
   const inputCls = "w-full text-xs text-gray-700 border border-gray-100 rounded-xl px-3 py-2.5 focus:outline-none focus:border-blue-200 bg-gray-50/60 placeholder:text-gray-300"
   const labelCls = "text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1 block"
+
+  const clienteSeleccionado = !!form.cliente_id
 
   return (
     <div
@@ -671,41 +800,51 @@ function FormAudiencia({ inicial, causas, onGuardar, onCancelar, guardando }) {
         {/* Body */}
         <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4 overflow-y-auto max-h-[70vh]">
 
-          {/* Causa / RIT */}
+          {/* 1. Cliente — buscador */}
           <div>
-            <label className={labelCls}>Causa (RIT)</label>
-            {causas.length > 0 ? (
+            <label className={labelCls}>Cliente</label>
+            <ClienteSearchSelect
+              clientes={clientes}
+              value={form.cliente_nombre}
+              onSelect={handleClienteSelect}
+              inputCls={inputCls}
+            />
+          </div>
+
+          {/* 2. Causa — select dependiente del cliente */}
+          <div>
+            <label className={`${labelCls} ${!clienteSeleccionado ? 'opacity-40' : ''}`}>
+              Causa
+            </label>
+            {loadingCausas ? (
+              <div className={`${inputCls} flex items-center gap-2 text-gray-400`}>
+                <Loader2 size={12} className="animate-spin" />
+                <span>Cargando causas…</span>
+              </div>
+            ) : !clienteSeleccionado ? (
+              <div className={`${inputCls} text-gray-300 italic cursor-not-allowed`}>
+                Selecciona primero un cliente
+              </div>
+            ) : causasCliente.length === 0 ? (
+              <div className={`${inputCls} text-amber-500 text-xs`}>
+                Este cliente no tiene causas registradas
+              </div>
+            ) : (
               <select
-                value={form.causa_rit}
+                value={form.causa_id || ''}
                 onChange={handleCausaChange}
                 className={inputCls}
               >
                 <option value="">— Seleccionar causa —</option>
-                {causas.map(c => (
-                  <option key={c.id} value={c.rit}>
-                    {c.rit}{c.cliente_nombre ? ` · ${c.cliente_nombre}` : ''}
+                {causasCliente.map(c => (
+                  <option key={c.id} value={c.id}>
+                    {c.materia}
+                    {c.rit  ? ` · RIT ${c.rit}`  : ''}
+                    {!c.rit && c.ruc ? ` · RUC ${c.ruc}` : ''}
                   </option>
                 ))}
               </select>
-            ) : (
-              <input
-                value={form.causa_rit}
-                onChange={e => set('causa_rit', e.target.value)}
-                placeholder="Ej: C-1234-2024"
-                className={inputCls}
-              />
             )}
-          </div>
-
-          {/* Cliente */}
-          <div>
-            <label className={labelCls}>Cliente</label>
-            <input
-              value={form.cliente_nombre}
-              onChange={e => set('cliente_nombre', e.target.value)}
-              placeholder="Nombre del cliente"
-              className={inputCls}
-            />
           </div>
 
           {/* Tipo */}
@@ -817,7 +956,7 @@ function FormAudiencia({ inicial, causas, onGuardar, onCancelar, guardando }) {
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function Audiencias() {
   const [audiencias,       setAudiencias]       = useState([])
-  const [causas,           setCausas]           = useState([])
+  const [clientesActivos,  setClientesActivos]  = useState([])
   const [cargando,         setCargando]         = useState(true)
   const [error,            setError]            = useState(null)
   const [mostrarForm,      setMostrarForm]      = useState(false)
@@ -844,19 +983,20 @@ export default function Audiencias() {
     setCargando(false)
   }, [])
 
-  // ── Fetch causas para el formulario ──
-  const fetchCausas = useCallback(async () => {
+  // ── Fetch clientes activos para el selector del formulario ──
+  const fetchClientes = useCallback(async () => {
     const { data } = await supabase
-      .from('causas')
-      .select('id, rit, cliente_nombre, cliente_id, tribunal')
-      .order('rit')
-    setCausas(data || [])
+      .from('clientes')
+      .select('id, nombre')
+      .eq('estado', 'Activo')
+      .order('nombre')
+    setClientesActivos(data || [])
   }, [])
 
   useEffect(() => {
     fetchAudiencias()
-    fetchCausas()
-  }, [fetchAudiencias, fetchCausas])
+    fetchClientes()
+  }, [fetchAudiencias, fetchClientes])
 
   // ── Actualizar audiencia ──
   // persist=true → guarda en BD; persist=false → solo actualiza estado local (UI-only)
@@ -1081,7 +1221,7 @@ export default function Audiencias() {
       {/* Modal nueva audiencia */}
       {mostrarForm && (
         <FormAudiencia
-          causas={causas}
+          clientes={clientesActivos}
           onGuardar={handleCrear}
           onCancelar={() => setMostrarForm(false)}
           guardando={guardando}
