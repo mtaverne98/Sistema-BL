@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   Search, Plus, X, Check, ChevronDown, ChevronRight,
   Calendar, Clock, Flag, CheckSquare, Activity,
@@ -6,6 +7,7 @@ import {
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal'
+import { useNavigation } from '../context/NavigationContext'
 
 // ── Constantes ────────────────────────────────────────────────────────────────
 const TODAY      = new Date().toISOString().split('T')[0]
@@ -520,7 +522,7 @@ function DropdownSelect({ value, onChange, options, getStyle, label, compact = f
 }
 
 // ── TaskRow ───────────────────────────────────────────────────────────────────
-function TaskRow({ tarea, onClick, onToggle, onDeleteRequest, panelOpen }) {
+function TaskRow({ tarea, onClick, onToggle, onDeleteRequest, panelOpen, onOpenCausa }) {
   const eE    = efectivoEstado(tarea)
   const eS    = ESTADO_STYLES[eE]     || ESTADO_STYLES['Pendiente']
   const pS    = PRIORIDAD_STYLES[tarea.prioridad] || PRIORIDAD_STYLES['Media']
@@ -570,11 +572,15 @@ function TaskRow({ tarea, onClick, onToggle, onDeleteRequest, panelOpen }) {
         </span>
       </div>
 
-      {/* RIT chip */}
+      {/* RIT chip — clickeable para ir a la causa */}
       {tarea.causa_rit && (
-        <span className="flex-shrink-0 text-[10px] font-semibold text-violet-500 bg-violet-50 px-2 py-0.5 rounded-md hidden sm:block tracking-wide">
+        <button
+          onClick={e => { e.stopPropagation(); onOpenCausa?.(tarea) }}
+          className="flex-shrink-0 text-[10px] font-semibold text-violet-500 bg-violet-50 hover:bg-violet-100 hover:text-violet-700 px-2 py-0.5 rounded-md hidden sm:block tracking-wide transition-colors"
+          title={`Abrir causa ${tarea.causa_rit}`}
+        >
           {tarea.causa_rit}
-        </span>
+        </button>
       )}
 
       {/* Fecha */}
@@ -631,7 +637,7 @@ function TaskRow({ tarea, onClick, onToggle, onDeleteRequest, panelOpen }) {
 }
 
 // ── GroupSection ──────────────────────────────────────────────────────────────
-function GroupSection({ grupo, onTaskClick, onToggle, onDeleteRequest, panelOpen }) {
+function GroupSection({ grupo, onTaskClick, onToggle, onDeleteRequest, panelOpen, onOpenCausa }) {
   const [open, setOpen] = useState(true)
 
   return (
@@ -659,6 +665,7 @@ function GroupSection({ grupo, onTaskClick, onToggle, onDeleteRequest, panelOpen
               onToggle={onToggle}
               onDeleteRequest={onDeleteRequest}
               panelOpen={panelOpen}
+              onOpenCausa={onOpenCausa}
             />
           ))}
         </div>
@@ -1103,6 +1110,9 @@ function MetricCard({ label, value, sub, color = 'text-[#1a2e4a]', alert = false
 
 // ── Main Tareas ───────────────────────────────────────────────────────────────
 export default function Tareas() {
+  const navigate = useNavigate()
+  const { setActiveCausa } = useNavigation()
+
   const [tareas,       setTareas]       = useState([])
   const [allCausas,    setAllCausas]    = useState([])
   const [cargando,     setCargando]     = useState(true)
@@ -1119,6 +1129,21 @@ export default function Tareas() {
   const [deleteTarget, setDeleteTarget] = useState(null)
 
   const panelOpen = !!(seleccionada || showForm)
+
+  // ── Navegar a la causa desde una tarea ──────────────────────────────────
+  const handleOpenCausa = useCallback((tarea) => {
+    if (!tarea.causa_id) return
+    setActiveCausa({
+      id:             tarea.causa_id,
+      rit:            tarea.causa_rit || null,
+      ruc:            null,
+      materia:        tarea.causa_rit || '',
+      cliente_nombre: tarea.cliente_nombre || '',
+      cliente_id:     tarea.cliente_id || null,
+      causa_key:      tarea.causa_id,
+    })
+    navigate('/causas')
+  }, [navigate, setActiveCausa])
 
   // ── Fetch tareas ──
   const fetchTareas = useCallback(async () => {
@@ -1382,6 +1407,7 @@ export default function Tareas() {
                         onToggle={handleToggle}
                         onDeleteRequest={t => setDeleteTarget({ id: t.id, name: t.titulo })}
                         panelOpen={panelOpen}
+                        onOpenCausa={handleOpenCausa}
                       />
                     ))}
                   </div>

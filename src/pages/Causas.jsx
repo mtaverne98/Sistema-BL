@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   Search, Plus, X, Scale, Gavel, FileText,
   CheckSquare, BookOpen, Clock, Filter,
@@ -7,11 +8,12 @@ import {
   Mail, Target, Send, Briefcase, AlignLeft,
   Loader2, AlertTriangle, RefreshCw, Trash2, Check,
   Calendar, Activity, Flame, PlusSquare,
-  UserCheck, Upload, Table2, Database, Shield,
+  UserCheck, Upload, Table2, Database, Shield, ExternalLink,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 
 import { useQuickAdd } from '../context/QuickAddContext'
+import { useNavigation } from '../context/NavigationContext'
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal'
 import InlineField from '../components/InlineField'
 import CargaMasivaModal from '../components/CargaMasivaModal'
@@ -758,6 +760,8 @@ function FormCausa({ inicial, onClose, onGuardar, guardando, clientes = [], onCr
 // ── CausaView — Vista completa de expediente jurídico ──────────────────────
 function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCliente }) {
   const [tab, setTab] = useState('resumen')
+  const navigate = useNavigate()
+  const { setActiveCausa } = useNavigation()
 
   // ── Exponer contexto al Quick Add global ──
   const { setCtx } = useQuickAdd()
@@ -767,6 +771,21 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
     }
     return () => setCtx(null)
   }, [causa?.id])
+
+  // ── Establecer causa activa en NavigationContext (para PJUD/SIAU/etc.) ──
+  useEffect(() => {
+    if (causa?.id) {
+      setActiveCausa({
+        id:             causa.id,
+        rit:            causa.rit            || null,
+        ruc:            causa.ruc            || null,
+        materia:        causa.materia        || '',
+        cliente_nombre: causa.cliente_nombre || '',
+        cliente_id:     causa.cliente_id     || null,
+        causa_key:      causa.id,            // alias para PJUD/SIAU
+      })
+    }
+  }, [causa?.id, setActiveCausa])
 
   // Data states
   const [audiencias,    setAudiencias]    = useState([])
@@ -1062,14 +1081,30 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
             )}
           </div>
 
-          {/* Solo botón eliminar — edición es inline */}
-          <button
-            onClick={onDelete}
-            className="p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors flex-shrink-0"
-            title="Eliminar causa"
-          >
-            <Trash2 size={13} />
-          </button>
+          {/* Accesos directos cross-módulo */}
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => navigate('/pjud')}
+              title="Ver movimientos PJUD de esta causa"
+              className="flex items-center gap-1 text-[11px] font-medium text-gray-400 hover:text-[#2570ba] hover:bg-blue-50 px-2 py-1 rounded-lg transition-colors"
+            >
+              <Shield size={11} /> PJUD
+            </button>
+            <button
+              onClick={() => navigate('/siau')}
+              title="Ver solicitudes SIAU de esta causa"
+              className="flex items-center gap-1 text-[11px] font-medium text-gray-400 hover:text-[#2570ba] hover:bg-blue-50 px-2 py-1 rounded-lg transition-colors"
+            >
+              <Database size={11} /> SIAU
+            </button>
+            <button
+              onClick={onDelete}
+              className="p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors ml-1"
+              title="Eliminar causa"
+            >
+              <Trash2 size={13} />
+            </button>
+          </div>
         </div>
 
         {/* Cliente como link + materia editable inline */}
@@ -2705,6 +2740,8 @@ export default function Causas() {
   const [deleteTarget, setDeleteTarget] = useState(null) // { causa, fromView }
   const [deleteError, setDeleteError]   = useState(null)
 
+  const { activeCausa } = useNavigation()
+
   // ── Fetch ───────────────────────────────────────────────────────────────
   const fetchCausas = useCallback(async () => {
     setLoading(true)
@@ -2730,6 +2767,19 @@ export default function Causas() {
   }, [])
 
   useEffect(() => { fetchCausas(); fetchListaClientes() }, [fetchCausas, fetchListaClientes])
+
+  // ── Restaurar causa activa al volver desde PJUD/SIAU ──────────────────
+  useEffect(() => {
+    if (!activeCausa?.id || causas.length === 0) return
+    // Solo restaurar si no hay causa seleccionada (venimos de otro módulo)
+    if (seleccionada?.id === activeCausa.id) return
+    const causa = causas.find(c => c.id === activeCausa.id)
+    if (causa) {
+      setSeleccionada(causa)
+      if (causa.cliente_nombre) setCliente(causa.cliente_nombre)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [causas, activeCausa?.id])
 
   // Mapa clienteId → estado para colorear avatares y filtrar por estado de cliente
   const clienteEstadoMap = useMemo(() => {

@@ -1,13 +1,15 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   ChevronRight, ChevronDown, Search, Plus, ArrowLeft,
   FileText, Clock, CheckCircle2, X, Check, Edit2,
   AlertCircle, Scale, Bell, Users, Briefcase, Landmark,
-  MoreHorizontal, CalendarPlus, ListTodo, Loader2, Table2, Gavel, Trash2,
+  MoreHorizontal, CalendarPlus, ListTodo, Loader2, Table2, Gavel, Trash2, ChevronLeft,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import CargaMasivaModal from '../components/CargaMasivaModal'
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal'
+import { useNavigation } from '../context/NavigationContext'
 
 const TODAY = new Date().toISOString().slice(0, 10)
 
@@ -1066,6 +1068,9 @@ function ClienteRow({ clienteData, rowsAll, isExpanded, onToggle, onSelectCausa 
 
 // ── Main PJUD ──────────────────────────────────────────────────────────────────
 export default function PJUD() {
+  const navigate = useNavigate()
+  const { activeCausa } = useNavigation()
+
   const [rows,       setRows]       = useState([])
   const [causasInfo, setCausasInfo] = useState([])
   const [cargando,   setCargando]   = useState(true)
@@ -1075,6 +1080,7 @@ export default function PJUD() {
   const [view,        setView]       = useState('clientes')
   const [selCliente,  setSelCliente] = useState(null)   // string
   const [selCausaKey, setSelCausaKey] = useState(null)  // UUID (causa.id)
+  const [fromCausa,   setFromCausa]  = useState(false)  // vinimos desde CausaView
 
   // Accordion
   const [expandedSet, setExpanded] = useState(new Set())
@@ -1145,6 +1151,20 @@ export default function PJUD() {
     })
     return Object.entries(map).sort(([a], [b]) => a.localeCompare(b))
   }, [filteredGrupos])
+
+  // ── Auto-seleccionar causa al venir desde CausaView ──────────────────────
+  useEffect(() => {
+    if (!activeCausa?.id || !clienteGrupos.length) return
+    if (selCausaKey === activeCausa.id) return // ya seleccionada
+    const grupo = clienteGrupos.find(g => g.clienteNombre === activeCausa.cliente_nombre)
+    const causaData = grupo?.causasData.find(c => c.causa_key === activeCausa.id)
+    if (grupo && causaData) {
+      setSelCliente(activeCausa.cliente_nombre)
+      setSelCausaKey(activeCausa.id)
+      setView('tabla')
+      setFromCausa(true)
+    }
+  }, [clienteGrupos, activeCausa?.id])  // eslint-disable-line
 
   // Selected causa (derived)
   const selectedCausaData = useMemo(() => {
@@ -1235,17 +1255,39 @@ export default function PJUD() {
   // ── Tabla view ──
   if (view === 'tabla' && selectedCausaData) {
     return (
-      <MovimientosTable
-        causaData={{ ...selectedCausaData, clienteNombre: selCliente }}
-        rowsAll={rows}
-        onUpdate={handleUpdate}
-        onAdd={handleAddMovimiento}
-        onDelete={handleDeleteRow}
-        causasInfo={causasInfo}
-        addTarea={handleAddTarea}
-        addPlazo={handleAddPlazo}
-        onBack={handleBack}
-      />
+      <div className="flex flex-col h-full">
+        {/* Breadcrumb "← Volver a causa" cuando vinimos desde CausaView */}
+        {fromCausa && activeCausa && (
+          <div className="bg-white border-b border-gray-100 px-5 py-2 flex items-center gap-1.5 flex-shrink-0">
+            <button
+              onClick={() => navigate('/causas')}
+              className="flex items-center gap-1 text-[12px] text-gray-400 hover:text-[#2570ba] transition-colors group"
+            >
+              <ChevronLeft size={13} className="group-hover:-translate-x-0.5 transition-transform" />
+              <span>Causa</span>
+            </button>
+            <span className="text-gray-200 text-[12px]">›</span>
+            <span className="text-[12px] text-gray-500 truncate max-w-[280px]" title={activeCausa.materia}>
+              {activeCausa.materia}
+            </span>
+            <span className="text-gray-200 mx-0.5">›</span>
+            <span className="text-[12px] font-semibold text-[#1a2e4a]">PJUD</span>
+          </div>
+        )}
+        <div className="flex-1 min-h-0">
+          <MovimientosTable
+            causaData={{ ...selectedCausaData, clienteNombre: selCliente }}
+            rowsAll={rows}
+            onUpdate={handleUpdate}
+            onAdd={handleAddMovimiento}
+            onDelete={handleDeleteRow}
+            causasInfo={causasInfo}
+            addTarea={handleAddTarea}
+            addPlazo={handleAddPlazo}
+            onBack={handleBack}
+          />
+        </div>
+      </div>
     )
   }
 

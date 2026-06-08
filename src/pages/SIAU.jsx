@@ -1,11 +1,13 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
-  ChevronRight, ChevronDown, Search, Plus, ArrowLeft,
+  ChevronRight, ChevronDown, ChevronLeft, Search, Plus, ArrowLeft,
   FileText, Clock, AlertCircle, CheckCircle2, X, Check, Edit2, Loader2, Scale, Table2, Trash2,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import CargaMasivaModal from '../components/CargaMasivaModal'
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal'
+import { useNavigation } from '../context/NavigationContext'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const TODAY = new Date().toISOString().slice(0, 10)
@@ -681,6 +683,9 @@ function ClienteRow({ grupo, registrosAll, isExpanded, onToggle, onSelectCausa }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function SIAU() {
+  const navigate = useNavigate()
+  const { activeCausa } = useNavigation()
+
   const [registros,  setRegistros]  = useState([])
   const [allCausas,  setAllCausas]  = useState([])
   const [cargando,   setCargando]   = useState(true)
@@ -692,6 +697,7 @@ export default function SIAU() {
   const [view,           setView]            = useState('clientes')
   const [selCliente,     setSelCliente]      = useState(null) // string
   const [selCausaKey,    setSelCausaKey]     = useState(null) // UUID (causa.id)
+  const [fromCausa,      setFromCausa]       = useState(false)
 
   const fetchRegistros = useCallback(async () => {
     setCargando(true)
@@ -776,6 +782,20 @@ export default function SIAU() {
     return cl?.causasGrupos.find(g => g.causa_key === selCausaKey) || null
   }, [clienteGrupos, selCausaKey, selCliente])
 
+  // ── Auto-seleccionar causa al venir desde CausaView ──────────────────────
+  useEffect(() => {
+    if (!activeCausa?.id || !clienteGrupos.length) return
+    if (selCausaKey === activeCausa.id) return // ya seleccionada
+    const grupo = clienteGrupos.find(g => g.clienteNombre === activeCausa.cliente_nombre)
+    const causaGrupo = grupo?.causasGrupos.find(g => g.causa_key === activeCausa.id)
+    if (grupo && causaGrupo) {
+      setSelCliente(activeCausa.cliente_nombre)
+      setSelCausaKey(activeCausa.id)
+      setView('tabla')
+      setFromCausa(true)
+    }
+  }, [clienteGrupos, activeCausa?.id])  // eslint-disable-line
+
   function handleSelectCausa(clienteNombre, grupo) {
     setSelCliente(clienteNombre)
     setSelCausaKey(grupo.causa_key)
@@ -802,6 +822,26 @@ export default function SIAU() {
   // ── Tabla view ──
   if (view === 'tabla' && selectedGrupo) {
     return (
+      <div className="flex flex-col h-full">
+        {/* Breadcrumb de retorno a causa */}
+        {fromCausa && activeCausa && (
+          <div className="bg-white border-b border-gray-100 px-5 py-2 flex items-center gap-1.5 flex-shrink-0">
+            <button
+              onClick={() => navigate('/causas')}
+              className="flex items-center gap-1 text-[12px] text-gray-400 hover:text-[#2570ba] transition-colors group"
+            >
+              <ChevronLeft size={13} className="group-hover:-translate-x-0.5 transition-transform" />
+              <span>Causa</span>
+            </button>
+            <span className="text-gray-200 text-[12px]">›</span>
+            <span className="text-[12px] text-gray-500 truncate max-w-[280px]" title={activeCausa.materia}>
+              {activeCausa.materia}
+            </span>
+            <span className="text-gray-200 mx-0.5">›</span>
+            <span className="text-[12px] font-semibold text-[#1a2e4a]">SIAU</span>
+          </div>
+        )}
+        <div className="flex-1 min-h-0">
       <SolicitudesTable
         grupo={selectedGrupo}
         registrosAll={registros}
@@ -812,6 +852,8 @@ export default function SIAU() {
         onBack={handleBack}
         clienteNombre={selCliente}
       />
+        </div>
+      </div>
     )
   }
 

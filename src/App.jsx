@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { SistemaProvider } from './context/SistemaContext'
 import { UserProvider, useUser } from './context/UserContext'
 import { QuickAddProvider } from './context/QuickAddContext'
+import { NavigationProvider } from './context/NavigationContext'
 import UserSelector from './components/UserSelector'
 import MainLayout from './layouts/MainLayout'
 import Dashboard from './pages/Dashboard'
@@ -40,6 +41,7 @@ function AppInner() {
   if (!user) return <UserSelector />
 
   return (
+    <NavigationProvider>
     <QuickAddProvider>
     <SistemaProvider>
       <BrowserRouter>
@@ -67,6 +69,7 @@ function AppInner() {
       </BrowserRouter>
     </SistemaProvider>
     </QuickAddProvider>
+    </NavigationProvider>
   )
 }
 
