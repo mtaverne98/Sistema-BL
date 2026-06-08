@@ -464,12 +464,19 @@ export default function MainLayout() {
 
   const currentSbWidth = sbCollapsed ? 56 : sbWidth
 
-  // Global CMD+K shortcut
+  // Global shortcuts
   useEffect(() => {
     const fn = e => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+      const mod = e.metaKey || e.ctrlKey
+      if (!mod) return
+      if (e.key === 'k') {
         e.preventDefault()
         setCmdOpen(v => !v)
+      }
+      if (e.key === 'n') {
+        e.preventDefault()
+        // Cmd+N → dispatch custom event; modules listen and open their "new" form
+        window.dispatchEvent(new CustomEvent('cmd-n'))
       }
     }
     window.addEventListener('keydown', fn)

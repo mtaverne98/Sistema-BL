@@ -759,9 +759,12 @@ function FormCausa({ inicial, onClose, onGuardar, guardando, clientes = [], onCr
 
 // ── CausaView — Vista completa de expediente jurídico ──────────────────────
 function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCliente }) {
-  const [tab, setTab] = useState('resumen')
   const navigate = useNavigate()
-  const { setActiveCausa } = useNavigation()
+  const { setActiveCausa, activeTab, setActiveTab } = useNavigation()
+
+  // Restaurar la tab activa si es la misma causa que estaba abierta
+  const [tab, setTabRaw] = useState(() => activeTab ?? 'resumen')
+  const setTab = useCallback((t) => { setTabRaw(t); setActiveTab(t) }, [setActiveTab])
 
   // ── Exponer contexto al Quick Add global ──
   const { setCtx } = useQuickAdd()
@@ -771,6 +774,21 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
     }
     return () => setCtx(null)
   }, [causa?.id])
+
+  // ── Cmd+N dentro de una causa → acción rápida según tab activa ──────────
+  useEffect(() => {
+    const handler = () => {
+      if (tab === 'revision_semanal') { setShowRevForm(true); return }
+      if (tab === 'seguimiento')      { setNewSegRow({ fecha_revision: TODAY_C, por_hacer: '', que_se_hizo: 'Pendiente' }); return }
+      if (tab === 'pjud')             { navigate('/pjud'); return }
+      if (tab === 'siau')             { navigate('/siau'); return }
+      // Para otros tabs: disparar clic en el botón "+ Nuevo" de esa tab
+      const newBtn = document.querySelector('[data-cmd-n]')
+      newBtn?.click()
+    }
+    window.addEventListener('cmd-n', handler)
+    return () => window.removeEventListener('cmd-n', handler)
+  }, [tab, navigate])
 
   // ── Establecer causa activa en NavigationContext (para PJUD/SIAU/etc.) ──
   useEffect(() => {
@@ -1221,48 +1239,61 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
           })()}
         </div>
 
-        {/* Quick stats — todos clickeables, saltan a la tab */}
-        <div className="flex items-center gap-4 pb-3 text-[11px] text-gray-400">
-          <button
-            onClick={() => setTab('audiencias')}
-            className="flex items-center gap-1.5 hover:text-[#2570ba] transition-colors"
-          >
-            <Gavel size={10} className="text-gray-300" />
-            {audiencias.length} audiencias
-          </button>
-          <button
-            onClick={() => setTab('tareas')}
-            className="flex items-center gap-1.5 hover:text-[#2570ba] transition-colors"
-          >
-            <CheckSquare size={10} className="text-gray-300" />
-            {tareasPend} tareas pendientes
-          </button>
-          <button
-            onClick={() => setTab('plazos')}
-            className="flex items-center gap-1.5 hover:text-[#2570ba] transition-colors"
-          >
-            <Clock size={10} className="text-gray-300" />
-            {plazos.filter(p => p.estado === 'Activo').length} plazos activos
-          </button>
-          {siauRows.length > 0 || lastSiau !== undefined ? (
-            <button
-              onClick={() => setTab('siau')}
-              className="flex items-center gap-1.5 hover:text-[#2570ba] transition-colors"
-            >
-              <Database size={10} className="text-gray-300" />
-              SIAU
-            </button>
-          ) : null}
-          {pjudRows.length > 0 || lastPjud !== undefined ? (
-            <button
-              onClick={() => setTab('pjud')}
-              className="flex items-center gap-1.5 hover:text-[#2570ba] transition-colors"
-            >
-              <Shield size={10} className="text-gray-300" />
-              PJUD
-            </button>
-          ) : null}
-        </div>
+        {/* ── Chips de conteo por tab — accesos rápidos con badge ── */}
+        {(() => {
+          const plazosActivos = plazos.filter(p => p.estado === 'Activo').length
+          const plazosUrgentes = plazos.filter(p => {
+            const dias = Math.round((new Date(p.fecha_vencimiento + 'T00:00:00') - new Date(TODAY_C + 'T00:00:00')) / 86400000)
+            return p.estado === 'Activo' && dias <= 5
+          }).length
+          const tareasUrgentes = tareas.filter(t => t.estado !== 'Completada' && (t.prioridad === 'Alta' || (t.fecha_vencimiento && t.fecha_vencimiento <= TODAY_C))).length
+          const audProximas = audiencias.filter(a => {
+            const dias = Math.round((new Date(a.fecha + 'T00:00:00') - new Date(TODAY_C + 'T00:00:00')) / 86400000)
+            return dias >= 0 && dias <= 7
+          }).length
+
+          const chips = [
+            { key: 'siau',            Icon: Database,    label: 'SIAU',        count: siauRows.length || null,    urgent: siauRows.some(r => r.estado === 'Urgente') },
+            { key: 'pjud',            Icon: Shield,      label: 'PJUD',        count: pjudRows.length || null,    urgent: pjudRows.some(r => r.estado === 'Urgente') },
+            { key: 'audiencias',      Icon: Gavel,       label: 'Audiencias',  count: audiencias.length,          urgent: audProximas > 0 },
+            { key: 'tareas',          Icon: CheckSquare, label: 'Tareas',      count: tareasPend,                 urgent: tareasUrgentes > 0 },
+            { key: 'plazos',          Icon: Clock,       label: 'Plazos',      count: plazosActivos,              urgent: plazosUrgentes > 0 },
+            { key: 'documentos',      Icon: FileText,    label: 'Docs',        count: null,                       urgent: false },
+            { key: 'seguimiento',     Icon: Target,      label: 'Seguimiento', count: segRows.length || null,     urgent: false },
+            { key: 'revision_semanal',Icon: RefreshCw,   label: 'Revisiones',  count: revisiones.filter(r => !r.semana_key?.startsWith('SEG-')).length || null, urgent: false },
+          ]
+          return (
+            <div className="flex items-center gap-1.5 pb-3 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+              {chips.map(({ key, Icon, label, count, urgent }) => (
+                <button
+                  key={key}
+                  onClick={() => setTab(key)}
+                  title={`Ir a ${label}`}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium whitespace-nowrap flex-shrink-0 border transition-all ${
+                    tab === key
+                      ? 'bg-[#1a2e4a] text-white border-[#1a2e4a]'
+                      : urgent
+                        ? 'bg-red-50 text-red-600 border-red-100 hover:bg-red-100'
+                        : 'bg-gray-50 text-gray-500 border-gray-100 hover:bg-gray-100 hover:text-gray-700'
+                  }`}
+                >
+                  <Icon size={11} className="flex-shrink-0" />
+                  {label}
+                  {count !== null && count > 0 && (
+                    <span className={`text-[9px] font-bold min-w-[14px] h-3.5 px-1 rounded-full flex items-center justify-center ${
+                      tab === key ? 'bg-white/25 text-white' : urgent ? 'bg-red-200 text-red-700' : 'bg-gray-200 text-gray-600'
+                    }`}>
+                      {count}
+                    </span>
+                  )}
+                  {urgent && tab !== key && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-red-500 flex-shrink-0" />
+                  )}
+                </button>
+              ))}
+            </div>
+          )
+        })()}
 
         {/* Tabs */}
         <div className="flex items-center overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
@@ -2791,9 +2822,14 @@ export default function Causas() {
   const [clienteActivo, setCliente]   = useState(null)
   const [busquedaSidebar, setSidebar] = useState('')
   const [busqueda, setBusqueda]       = useState('')
-  const [filtroEstado, setEstado]          = useState('')
-  const [filtroArea, setArea]              = useState('')
-  const [filtroClienteEstado, setClEstado] = useState('') // '' | 'Activo' | 'Inactivo'
+  // ── Filtros persistentes en localStorage ──────────────────────────────────
+  const [filtroEstado, setEstadoRaw]          = useState(() => { try { return localStorage.getItem('filtros_causas.estado')    ?? '' } catch { return '' } })
+  const [filtroArea, setAreaRaw]              = useState(() => { try { return localStorage.getItem('filtros_causas.area')      ?? '' } catch { return '' } })
+  const [filtroClienteEstado, setClEstadoRaw] = useState(() => { try { return localStorage.getItem('filtros_causas.clEstado') ?? '' } catch { return '' } }) // '' | 'Activo' | 'Inactivo'
+
+  const setEstado   = useCallback((v) => { setEstadoRaw(v);   try { v ? localStorage.setItem('filtros_causas.estado',    v) : localStorage.removeItem('filtros_causas.estado')    } catch {} }, [])
+  const setArea     = useCallback((v) => { setAreaRaw(v);     try { v ? localStorage.setItem('filtros_causas.area',      v) : localStorage.removeItem('filtros_causas.area')      } catch {} }, [])
+  const setClEstado = useCallback((v) => { setClEstadoRaw(v); try { v ? localStorage.setItem('filtros_causas.clEstado', v) : localStorage.removeItem('filtros_causas.clEstado') } catch {} }, [])
   const [vista, setVista]             = useState('tabla')
   const [seleccionada, setSeleccionada] = useState(null)
   const [mostrarFiltros, setFiltros]  = useState(false)

@@ -603,39 +603,51 @@ function SolicitudesTable({ grupo, registrosAll, onUpdate, onAdd, onDelete, caus
 }
 
 // ── Causa card ────────────────────────────────────────────────────────────────
-function CausaCard({ grupo, registrosAll, clienteNombre, onClick }) {
+function CausaCard({ grupo, registrosAll, clienteNombre, onClick, onOpenCausa }) {
   const count      = registrosAll.filter(r => matchCausa(r, grupo, clienteNombre)).length
   const pendientes = registrosAll.filter(r => matchCausa(r, grupo, clienteNombre) && r.estado === 'Pendiente').length
 
   return (
-    <button onClick={onClick}
-      className="w-full text-left flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-[#1a2e4a]/5 transition-colors group">
-      <div className="w-8 h-8 rounded-lg bg-[#1a2e4a]/8 flex items-center justify-center flex-shrink-0">
-        <Scale size={14} className="text-[#1a2e4a]/50"/>
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <CausaIdentChip causa_rit={grupo.causa_rit} causa_ruc={grupo.causa_ruc} size="sm"/>
+    <div className="group/card flex items-center gap-1 rounded-xl hover:bg-[#1a2e4a]/5 transition-colors">
+      <button onClick={onClick}
+        className="flex-1 text-left flex items-center gap-3 px-4 py-3">
+        <div className="w-8 h-8 rounded-lg bg-[#1a2e4a]/8 flex items-center justify-center flex-shrink-0">
+          <Scale size={14} className="text-[#1a2e4a]/50"/>
         </div>
-        {grupo.causaInfo?.materia && (
-          <p className="text-[11px] text-gray-400 truncate mt-0.5">{grupo.causaInfo.materia}</p>
-        )}
-      </div>
-      <div className="flex items-center gap-2 flex-shrink-0">
-        {pendientes > 0 && (
-          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-100">
-            {pendientes} pend.
-          </span>
-        )}
-        <span className="text-[10px] text-gray-400">{count} sol.</span>
-        <ChevronRight size={13} className="text-gray-300 group-hover:text-[#2570ba] transition-colors"/>
-      </div>
-    </button>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <CausaIdentChip causa_rit={grupo.causa_rit} causa_ruc={grupo.causa_ruc} size="sm"/>
+          </div>
+          {grupo.causaInfo?.materia && (
+            <p className="text-[11px] text-gray-400 truncate mt-0.5">{grupo.causaInfo.materia}</p>
+          )}
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {pendientes > 0 && (
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-100">
+              {pendientes} pend.
+            </span>
+          )}
+          <span className="text-[10px] text-gray-400">{count} sol.</span>
+          <ChevronRight size={13} className="text-gray-300 group-hover/card:text-[#2570ba] transition-colors"/>
+        </div>
+      </button>
+      {/* Link "Ver causa" */}
+      {onOpenCausa && grupo.causa_key && (
+        <button
+          onClick={e => { e.stopPropagation(); onOpenCausa(grupo) }}
+          className="opacity-0 group-hover/card:opacity-100 flex-shrink-0 px-2 py-1 mr-2 text-[9px] font-semibold text-[#2570ba] hover:underline transition-opacity"
+          title="Abrir ficha de la causa"
+        >
+          Ver causa →
+        </button>
+      )}
+    </div>
   )
 }
 
 // ── Cliente accordion row ─────────────────────────────────────────────────────
-function ClienteRow({ grupo, registrosAll, isExpanded, onToggle, onSelectCausa }) {
+function ClienteRow({ grupo, registrosAll, isExpanded, onToggle, onSelectCausa, onOpenCausa }) {
   const { clienteNombre, causasGrupos } = grupo
   const total      = registrosAll.filter(r => r.cliente_nombre === clienteNombre).length
   const pendientes = registrosAll.filter(r => r.cliente_nombre === clienteNombre && r.estado === 'Pendiente').length
@@ -673,6 +685,7 @@ function ClienteRow({ grupo, registrosAll, isExpanded, onToggle, onSelectCausa }
             <CausaCard key={g.causa_key}
               grupo={g} registrosAll={registrosAll} clienteNombre={clienteNombre}
               onClick={() => onSelectCausa(clienteNombre, g)}
+              onOpenCausa={onOpenCausa}
             />
           ))}
         </div>
@@ -684,7 +697,7 @@ function ClienteRow({ grupo, registrosAll, isExpanded, onToggle, onSelectCausa }
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function SIAU() {
   const navigate = useNavigate()
-  const { activeCausa } = useNavigation()
+  const { activeCausa, setActiveCausa } = useNavigation()
 
   const [registros,  setRegistros]  = useState([])
   const [allCausas,  setAllCausas]  = useState([])
@@ -800,6 +813,21 @@ export default function SIAU() {
     setSelCliente(clienteNombre)
     setSelCausaKey(grupo.causa_key)
     setView('tabla')
+  }
+
+  /** Navega directamente a la ficha de la causa */
+  function handleOpenCausa(grupo) {
+    if (!grupo.causa_key) return
+    setActiveCausa({
+      id:             grupo.causa_key,
+      rit:            grupo.causa_rit || null,
+      ruc:            grupo.causa_ruc || null,
+      materia:        grupo.causaInfo?.materia || '',
+      cliente_nombre: grupo.causaInfo?.cliente_nombre || selCliente || '',
+      cliente_id:     grupo.causaInfo?.cliente_id || null,
+      causa_key:      grupo.causa_key,
+    })
+    navigate('/causas')
   }
 
   function handleBack(to) {
@@ -922,6 +950,7 @@ export default function SIAU() {
                       isExpanded={expandedSet.has(grupo.clienteNombre)}
                       onToggle={() => toggleExpanded(grupo.clienteNombre)}
                       onSelectCausa={handleSelectCausa}
+                      onOpenCausa={handleOpenCausa}
                     />
                   ))}
                 </div>

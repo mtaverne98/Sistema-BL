@@ -1,22 +1,21 @@
 import { createContext, useContext, useState, useCallback } from 'react'
 
 /**
- * NavigationContext — "causa activa" compartida entre todos los módulos.
+ * NavigationContext — memoria de navegación compartida entre módulos.
  *
- * Permite que al navegar de Causas → PJUD/SIAU el módulo destino
- * auto-seleccione la causa correcta, y que al volver a Causas
- * se restaure la causa que estaba abierta.
- *
- * Persiste en sessionStorage para sobrevivir navegación intra-app.
- *
- * Shape de activeCausa:
- *   { id, rit, ruc, materia, cliente_nombre, cliente_id, causa_key }
+ * - activeCausa: la causa actualmente en foco (para PJUD/SIAU/etc.)
+ * - activeTab:   última tab activa dentro de CausaView
+ * - Persiste en sessionStorage para sobrevivir navegación intra-app.
  */
 const NavigationContext = createContext(null)
 
 export function NavigationProvider({ children }) {
   const [activeCausa, setActiveCausaRaw] = useState(() => {
     try { return JSON.parse(sessionStorage.getItem('nav.activeCausa') ?? 'null') } catch { return null }
+  })
+
+  const [activeTab, setActiveTabRaw] = useState(() => {
+    try { return sessionStorage.getItem('nav.activeTab') ?? 'resumen' } catch { return 'resumen' }
   })
 
   const setActiveCausa = useCallback((causa) => {
@@ -27,13 +26,22 @@ export function NavigationProvider({ children }) {
     } catch {}
   }, [])
 
+  const setActiveTab = useCallback((tab) => {
+    setActiveTabRaw(tab)
+    try { sessionStorage.setItem('nav.activeTab', tab) } catch {}
+  }, [])
+
   const clearActiveCausa = useCallback(() => {
     setActiveCausaRaw(null)
-    try { sessionStorage.removeItem('nav.activeCausa') } catch {}
+    setActiveTabRaw('resumen')
+    try {
+      sessionStorage.removeItem('nav.activeCausa')
+      sessionStorage.removeItem('nav.activeTab')
+    } catch {}
   }, [])
 
   return (
-    <NavigationContext.Provider value={{ activeCausa, setActiveCausa, clearActiveCausa }}>
+    <NavigationContext.Provider value={{ activeCausa, setActiveCausa, clearActiveCausa, activeTab, setActiveTab }}>
       {children}
     </NavigationContext.Provider>
   )
