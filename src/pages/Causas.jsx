@@ -7,7 +7,7 @@ import {
   Mail, Target, Send, Briefcase, AlignLeft,
   Loader2, AlertTriangle, RefreshCw, Trash2, Check,
   Calendar, Activity, Flame, PlusSquare,
-  UserCheck, Upload, Table2,
+  UserCheck, Upload, Table2, Database, Shield,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 
@@ -756,7 +756,7 @@ function FormCausa({ inicial, onClose, onGuardar, guardando, clientes = [], onCr
 }
 
 // ── CausaView — Vista completa de expediente jurídico ──────────────────────
-function CausaView({ causa, onClose, onEdit, onDelete, onUpdate }) {
+function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCliente }) {
   const [tab, setTab] = useState('resumen')
 
   // ── Exponer contexto al Quick Add global ──
@@ -1036,39 +1036,64 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate }) {
       {/* ── HEADER ── */}
       <div className="flex-shrink-0 px-8 pt-6 pb-0 border-b border-gray-100">
 
-        {/* Back + actions */}
+        {/* Breadcrumb + actions */}
         <div className="flex items-center justify-between mb-4">
-          <button
-            onClick={onClose}
-            className="flex items-center gap-1.5 text-[12px] text-gray-400 hover:text-gray-700 transition-colors group"
-          >
-            <ChevronLeft size={14} className="group-hover:-translate-x-0.5 transition-transform" />
-            Volver a causas
-          </button>
-          <div className="flex items-center gap-2">
+
+          {/* Breadcrumb: Causas › Cliente */}
+          <div className="flex items-center gap-1 text-[12px] text-gray-400 min-w-0">
             <button
-              onClick={onEdit}
-              className="flex items-center gap-1.5 text-[12px] font-medium text-gray-500 border border-gray-200 hover:border-gray-300 hover:bg-gray-50 px-3 py-1.5 rounded-lg transition-colors"
+              onClick={onClose}
+              className="flex items-center gap-1 hover:text-gray-700 transition-colors group flex-shrink-0"
             >
-              <Pencil size={11} /> Editar
+              <ChevronLeft size={13} className="group-hover:-translate-x-0.5 transition-transform" />
+              <span>Causas</span>
             </button>
-            <button
-              onClick={onDelete}
-              className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
-              title="Eliminar causa"
-            >
-              <Trash2 size={13} />
-            </button>
+            {causa.cliente_nombre && (
+              <>
+                <span className="mx-0.5 text-gray-200 flex-shrink-0">›</span>
+                <button
+                  onClick={() => onNavigateToCliente?.(causa.cliente_nombre)}
+                  className="hover:text-blue-500 transition-colors truncate max-w-[200px] text-left"
+                  title={`Filtrar por ${causa.cliente_nombre}`}
+                >
+                  {causa.cliente_nombre}
+                </button>
+              </>
+            )}
           </div>
+
+          {/* Solo botón eliminar — edición es inline */}
+          <button
+            onClick={onDelete}
+            className="p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors flex-shrink-0"
+            title="Eliminar causa"
+          >
+            <Trash2 size={13} />
+          </button>
         </div>
 
-        {/* Client label + materia */}
+        {/* Cliente como link + materia editable inline */}
         <div className="mb-3">
-          <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-widest mb-0.5">{causa.cliente_nombre}</p>
-          <h1 className="text-[22px] font-bold text-gray-900 leading-snug">{causa.materia}</h1>
+          {causa.cliente_nombre && (
+            <button
+              onClick={() => onNavigateToCliente?.(causa.cliente_nombre)}
+              className="text-[11px] font-semibold text-gray-400 uppercase tracking-widest mb-0.5 hover:text-blue-500 hover:underline transition-colors cursor-pointer text-left block"
+              title={`Filtrar causas de ${causa.cliente_nombre}`}
+            >
+              {causa.cliente_nombre}
+            </button>
+          )}
+          {/* Materia editable inline */}
+          <InlineField
+            value={causa.materia || ''}
+            onSave={v => v?.trim() && onUpdate?.({ materia: v.trim() })}
+            placeholder="Materia del caso…"
+            textClassName="text-[22px] font-bold text-gray-900 leading-snug"
+            inputClassName="text-[20px] font-bold w-full"
+          />
         </div>
 
-        {/* Badges */}
+        {/* Badges: área, estado (dropdown inline), parte, etapa, RIT, RUC */}
         <div className="flex items-center gap-2 flex-wrap mb-3">
           <AreaBadge area={causa.area} />
           {onUpdate
@@ -1093,70 +1118,114 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate }) {
           )}
         </div>
 
-        {/* Info row: tribunal + fiscalía + fiscal + alertas */}
+        {/* Info row: tribunal / fiscalía / fiscal — todos inline editables */}
         <div className="flex items-center gap-3 flex-wrap mb-3">
-          {causa.tribunal && (
-            <div className="flex items-center gap-1.5">
-              <Gavel size={11} className="text-gray-300 flex-shrink-0" />
-              <span className="text-[12px] text-gray-600">{causa.tribunal}</span>
-            </div>
-          )}
-          {causa.fiscalia && (
-            <div className="flex items-center gap-1.5">
-              <Scale size={11} className="text-gray-300 flex-shrink-0" />
-              <span className="text-[12px] text-gray-600">{causa.fiscalia}</span>
-            </div>
-          )}
-          {causa.fiscal && (
-            <div className="flex items-center gap-1.5 bg-slate-50 px-2.5 py-1 rounded-lg">
-              <UserCheck size={10} className="text-slate-400 flex-shrink-0" />
-              <span className="text-[11px] text-slate-600 font-medium">Fiscal: {causa.fiscal}</span>
-            </div>
-          )}
+          {/* Tribunal */}
+          <div className="flex items-center gap-1.5">
+            <Gavel size={11} className="text-gray-300 flex-shrink-0" />
+            <InlineField
+              value={causa.tribunal || ''}
+              onSave={v => onUpdate?.({ tribunal: v.trim() || null })}
+              placeholder="Tribunal…"
+              textClassName="text-[12px] text-gray-600"
+              inputClassName="text-[12px] w-52"
+            />
+          </div>
+          {/* Fiscalía */}
+          <div className="flex items-center gap-1.5">
+            <Scale size={11} className="text-gray-300 flex-shrink-0" />
+            <InlineField
+              value={causa.fiscalia || ''}
+              onSave={v => onUpdate?.({ fiscalia: v.trim() || null })}
+              placeholder="Fiscalía…"
+              textClassName="text-[12px] text-gray-600"
+              inputClassName="text-[12px] w-52"
+            />
+          </div>
+          {/* Fiscal */}
+          <div className="flex items-center gap-1.5 bg-slate-50 px-2 py-0.5 rounded-lg">
+            <UserCheck size={10} className="text-slate-400 flex-shrink-0" />
+            <InlineField
+              value={causa.fiscal || ''}
+              onSave={v => onUpdate?.({ fiscal: v.trim() || null })}
+              placeholder="Fiscal…"
+              textClassName="text-[11px] text-slate-600 font-medium"
+              inputClassName="text-[11px] w-36"
+            />
+          </div>
+          {/* Próxima audiencia (chip informativo) */}
           {proxAudiencia && (
-            <div className="flex items-center gap-1.5 bg-purple-50 px-2.5 py-1 rounded-lg">
+            <button
+              onClick={() => setTab('audiencias')}
+              className="flex items-center gap-1.5 bg-purple-50 px-2.5 py-1 rounded-lg hover:bg-purple-100 transition-colors"
+            >
               <Calendar size={10} className="text-purple-400 flex-shrink-0" />
               <span className="text-[11px] font-medium text-purple-700">
-                Próx. audiencia: {fmtFechaCausa(proxAudiencia.fecha)}
+                {fmtFechaCausa(proxAudiencia.fecha)}
                 {proxAudiencia.hora ? ` · ${proxAudiencia.hora}` : ''}
               </span>
-            </div>
+            </button>
           )}
+          {/* Plazo crítico (chip informativo) */}
           {proxPlazo && (() => {
             const dias = Math.round((new Date(proxPlazo.fecha_vencimiento) - new Date(TODAY_C)) / 86400000)
             const urgente = dias <= 5
             return (
-              <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg ${urgente ? 'bg-red-50' : 'bg-amber-50'}`}>
+              <button
+                onClick={() => setTab('plazos')}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg transition-colors ${urgente ? 'bg-red-50 hover:bg-red-100' : 'bg-amber-50 hover:bg-amber-100'}`}
+              >
                 <Clock size={10} className={urgente ? 'text-red-400 flex-shrink-0' : 'text-amber-400 flex-shrink-0'} />
                 <span className={`text-[11px] font-medium ${urgente ? 'text-red-700' : 'text-amber-700'}`}>
-                  Plazo crítico: {fmtFechaCausa(proxPlazo.fecha_vencimiento)}
+                  {fmtFechaCausa(proxPlazo.fecha_vencimiento)}
                   {dias === 0 ? ' · hoy' : dias === 1 ? ' · mañana' : ` · ${dias}d`}
                 </span>
-              </div>
+              </button>
             )
           })()}
         </div>
 
-        {/* Quick stats */}
+        {/* Quick stats — todos clickeables, saltan a la tab */}
         <div className="flex items-center gap-4 pb-3 text-[11px] text-gray-400">
-          <span className="flex items-center gap-1.5">
+          <button
+            onClick={() => setTab('audiencias')}
+            className="flex items-center gap-1.5 hover:text-[#2570ba] transition-colors"
+          >
             <Gavel size={10} className="text-gray-300" />
             {audiencias.length} audiencias
-          </span>
-          <span className="flex items-center gap-1.5">
+          </button>
+          <button
+            onClick={() => setTab('tareas')}
+            className="flex items-center gap-1.5 hover:text-[#2570ba] transition-colors"
+          >
             <CheckSquare size={10} className="text-gray-300" />
             {tareasPend} tareas pendientes
-          </span>
-          <span className="flex items-center gap-1.5">
+          </button>
+          <button
+            onClick={() => setTab('plazos')}
+            className="flex items-center gap-1.5 hover:text-[#2570ba] transition-colors"
+          >
             <Clock size={10} className="text-gray-300" />
             {plazos.filter(p => p.estado === 'Activo').length} plazos activos
-          </span>
-          {revisiones.filter(r => !r.semana_key?.startsWith('SEG-')).length > 0 && (
-            <span className="flex items-center gap-1.5">
-              <RefreshCw size={10} className="text-gray-300" />
-              {revisiones.filter(r => !r.semana_key?.startsWith('SEG-')).length} revisiones
-            </span>
-          )}
+          </button>
+          {siauRows.length > 0 || lastSiau !== undefined ? (
+            <button
+              onClick={() => setTab('siau')}
+              className="flex items-center gap-1.5 hover:text-[#2570ba] transition-colors"
+            >
+              <Database size={10} className="text-gray-300" />
+              SIAU
+            </button>
+          ) : null}
+          {pjudRows.length > 0 || lastPjud !== undefined ? (
+            <button
+              onClick={() => setTab('pjud')}
+              className="flex items-center gap-1.5 hover:text-[#2570ba] transition-colors"
+            >
+              <Shield size={10} className="text-gray-300" />
+              PJUD
+            </button>
+          ) : null}
         </div>
 
         {/* Tabs */}
@@ -2835,6 +2904,11 @@ export default function Causas() {
             onEdit={() => setFormulario(seleccionada)}
             onDelete={() => handleRequestDelete(seleccionada)}
             onUpdate={handleCausaUpdate}
+            onNavigateToCliente={nombre => {
+              setSeleccionada(null)
+              setCliente(nombre)
+              setBusqueda('')
+            }}
           />
           {formulario && (
             <FormCausa

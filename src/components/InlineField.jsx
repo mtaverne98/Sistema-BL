@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { Check } from 'lucide-react'
 
 /**
  * Campo editable inline estilo Notion.
@@ -6,6 +7,7 @@ import { useState, useRef, useEffect, useCallback } from 'react'
  * Muestra el valor como texto. Al hacer clic → modo edición.
  * Guarda automáticamente al perder el foco o al presionar Enter.
  * Cancela al presionar Escape.
+ * Muestra ✓ verde breve al guardar con éxito.
  *
  * Props:
  *   value         — valor actual
@@ -31,12 +33,14 @@ export default function InlineField({
   disabled     = false,
   debounce     = 0,
 }) {
-  const [editing,  setEditing]  = useState(false)
-  const [draft,    setDraft]    = useState(value ?? '')
-  const [saving,   setSaving]   = useState(false)
-  const [errorMsg, setErrorMsg] = useState(null)
+  const [editing,    setEditing]    = useState(false)
+  const [draft,      setDraft]      = useState(value ?? '')
+  const [saving,     setSaving]     = useState(false)
+  const [errorMsg,   setErrorMsg]   = useState(null)
+  const [savedFlash, setSavedFlash] = useState(false)
   const inputRef  = useRef(null)
   const timerRef  = useRef(null)
+  const flashRef  = useRef(null)
 
   // Sync draft when value changes externally (e.g., after server update)
   useEffect(() => {
@@ -53,8 +57,11 @@ export default function InlineField({
     }
   }, [editing, type])
 
-  // Cleanup debounce timer on unmount
-  useEffect(() => () => clearTimeout(timerRef.current), [])
+  // Cleanup timers on unmount
+  useEffect(() => () => {
+    clearTimeout(timerRef.current)
+    clearTimeout(flashRef.current)
+  }, [])
 
   const commit = useCallback(async (val) => {
     const v = val ?? draft
@@ -65,6 +72,9 @@ export default function InlineField({
     try {
       await onSave?.(v)
       setEditing(false)
+      // Flash verde breve
+      setSavedFlash(true)
+      flashRef.current = setTimeout(() => setSavedFlash(false), 1600)
     } catch (e) {
       // Save failed — stay in edit mode and show the error
       setErrorMsg(e?.message || 'Error al guardar')
@@ -102,7 +112,7 @@ export default function InlineField({
     const isEmpty = !value && value !== 0
     return (
       <span
-        onClick={() => { if (!disabled) { setDraft(value ?? ''); setEditing(true) } }}
+        onClick={() => { if (!disabled) { setSavedFlash(false); setDraft(value ?? ''); setEditing(true) } }}
         className={`
           inline-block rounded px-0.5 -mx-0.5 transition-colors leading-snug
           ${disabled ? 'cursor-default' : 'cursor-text hover:bg-black/[0.04]'}
@@ -115,6 +125,11 @@ export default function InlineField({
         </span>
         {saving && (
           <span className="ml-1.5 inline-block w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse align-middle" />
+        )}
+        {savedFlash && !saving && (
+          <span className="ml-1 inline-flex items-center text-emerald-500 align-middle animate-[fadeIn_0.15s_ease]">
+            <Check size={11} strokeWidth={2.5} />
+          </span>
         )}
       </span>
     )
