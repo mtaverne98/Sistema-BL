@@ -901,8 +901,9 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
   useEffect(() => { setSegRows([]) }, [causa?.id])
 
   // Load seguimiento rows (independent table — no semana_key)
+  // También se carga en resumen para mostrar la última anotación
   useEffect(() => {
-    if (tab !== 'seguimiento' || !causa?.id) return
+    if ((tab !== 'seguimiento' && tab !== 'resumen') || !causa?.id) return
     setLoadingSeg(true)
     // Filter by causa_rit (primary) or causa_id (fallback) to catch all records
     const query = causa.rit
@@ -1307,37 +1308,47 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
           const tareaUrgente = lastTarea?.prioridad === 'Alta' || (lastTarea?.fecha_vencimiento && lastTarea.fecha_vencimiento <= TODAY_C)
 
           // ── PulsoCard ──────────────────────────────────────────────────────
-          function PulsoCard({ icon: Icon, label, iconColor, main, sub, badge, urgent, empty, loading, onClick }) {
+          function PulsoCard({ icon: Icon, label, iconColor, main, sub, badge, urgent, empty, loading, onClick, onOpenModule, moduleLabel }) {
             return (
-              <button
-                onClick={onClick}
-                className={`text-left w-full p-3.5 rounded-xl border transition-all duration-150 group focus:outline-none ${
-                  urgent
-                    ? 'bg-red-50/60 border-red-100 hover:border-red-200 hover:bg-red-50'
-                    : 'bg-white border-gray-100 hover:border-gray-200 hover:bg-gray-50/50'
-                }`}
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <div className={`flex items-center gap-1 text-[9px] font-bold uppercase tracking-widest ${urgent ? 'text-red-400' : iconColor}`}>
-                    <Icon size={9} />
-                    {label}
+              <div className={`relative rounded-xl border transition-all duration-150 ${
+                urgent
+                  ? 'bg-red-50/60 border-red-100 hover:border-red-200'
+                  : 'bg-white border-gray-100 hover:border-gray-200 hover:bg-gray-50/30'
+              }`}>
+                <button
+                  onClick={onClick}
+                  className="text-left w-full p-3.5 focus:outline-none"
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <div className={`flex items-center gap-1 text-[9px] font-bold uppercase tracking-widest ${urgent ? 'text-red-400' : iconColor}`}>
+                      <Icon size={9} />
+                      {label}
+                    </div>
+                    {badge && <div className="flex-shrink-0">{badge}</div>}
                   </div>
-                  {badge && <div className="flex-shrink-0">{badge}</div>}
-                </div>
-                {loading ? (
-                  <div className="space-y-1.5">
-                    <div className="h-3 bg-gray-100 rounded animate-pulse w-3/4" />
-                    <div className="h-2.5 bg-gray-100 rounded animate-pulse w-1/2" />
-                  </div>
-                ) : empty ? (
-                  <p className="text-[11px] text-gray-300">Sin registros</p>
-                ) : (
-                  <>
-                    <p className={`text-[12px] font-medium leading-snug line-clamp-2 ${urgent ? 'text-red-800' : 'text-gray-800'}`}>{main}</p>
-                    {sub && <p className={`text-[10px] mt-0.5 ${urgent ? 'text-red-400' : 'text-gray-400'}`}>{sub}</p>}
-                  </>
+                  {loading ? (
+                    <div className="space-y-1.5">
+                      <div className="h-3 bg-gray-100 rounded animate-pulse w-3/4" />
+                      <div className="h-2.5 bg-gray-100 rounded animate-pulse w-1/2" />
+                    </div>
+                  ) : empty ? (
+                    <p className="text-[11px] text-gray-300">Sin registros</p>
+                  ) : (
+                    <>
+                      <p className={`text-[12px] font-medium leading-snug line-clamp-2 ${urgent ? 'text-red-800' : 'text-gray-800'}`}>{main}</p>
+                      {sub && <p className={`text-[10px] mt-0.5 ${urgent ? 'text-red-400' : 'text-gray-400'}`}>{sub}</p>}
+                    </>
+                  )}
+                </button>
+                {onOpenModule && !empty && !loading && (
+                  <button
+                    onClick={onOpenModule}
+                    className="w-full px-3.5 pb-2.5 text-left text-[9px] font-semibold text-[#2570ba]/70 hover:text-[#2570ba] transition-colors"
+                  >
+                    {moduleLabel || 'Abrir módulo'} →
+                  </button>
                 )}
-              </button>
+              </div>
             )
           }
 
@@ -1352,8 +1363,42 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
             return <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full ${colors}`}>{estado}</span>
           }
 
+          // ── Seguimiento: última anotación ──────────────────────────────────
+          const lastSeg = segRows[0] ?? null
+
           return (
-          <div className="px-6 py-6 space-y-6">
+          <div className="px-6 py-6 space-y-5">
+
+            {/* ── ACCIONES RÁPIDAS ──────────────────────────────────────── */}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {[
+                { icon: CheckSquare, label: 'Nueva tarea',     color: 'blue',   action: () => setTab('tareas')           },
+                { icon: Gavel,       label: 'Nueva audiencia', color: 'purple', action: () => setTab('audiencias')       },
+                { icon: Clock,       label: 'Nuevo plazo',     color: 'amber',  action: () => setTab('plazos')           },
+                { icon: Scale,       label: 'Nuevo PJUD',      color: 'blue',   action: () => { navigate('/pjud') }      },
+                { icon: Database,    label: 'Nueva SIAU',      color: 'violet', action: () => { navigate('/siau') }      },
+                { icon: RefreshCw,   label: 'Nueva revisión',  color: 'teal',   action: () => { setShowRevForm(true); setTab('revision_semanal') } },
+                { icon: BookOpen,    label: 'Anotación',       color: 'slate',  action: () => { setNewSegRow({ fecha_revision: TODAY_C, por_hacer: '', que_se_hizo: 'Pendiente' }); setTab('seguimiento') } },
+                { icon: FileText,    label: 'Documento',       color: 'gray',   action: () => setTab('documentos')       },
+              ].map(({ icon: Icon, label, color, action }) => (
+                <button
+                  key={label}
+                  onClick={action}
+                  className={`flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1.5 rounded-lg border transition-all hover:shadow-sm active:scale-[0.97] ${
+                    color === 'blue'   ? 'border-blue-100 bg-blue-50 text-blue-600 hover:bg-blue-100'     :
+                    color === 'purple' ? 'border-purple-100 bg-purple-50 text-purple-600 hover:bg-purple-100' :
+                    color === 'amber'  ? 'border-amber-100 bg-amber-50 text-amber-600 hover:bg-amber-100'   :
+                    color === 'violet' ? 'border-violet-100 bg-violet-50 text-violet-600 hover:bg-violet-100' :
+                    color === 'teal'   ? 'border-teal-100 bg-teal-50 text-teal-600 hover:bg-teal-100'       :
+                    color === 'slate'  ? 'border-slate-100 bg-slate-50 text-slate-600 hover:bg-slate-100'   :
+                    'border-gray-100 bg-gray-50 text-gray-500 hover:bg-gray-100'
+                  }`}
+                >
+                  <Icon size={11} />
+                  {label}
+                </button>
+              ))}
+            </div>
 
             {/* ── PULSO OPERATIVO ─────────────────────────────────────── */}
             <div>
@@ -1374,6 +1419,8 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                   sub={[lastPjud?.estado, fmtRelDate(lastPjud?.fecha)].filter(Boolean).join(' · ')}
                   badge={lastPjud && <MiniEstado estado={lastPjud.estado} urgent={pjudUrgente} />}
                   onClick={() => setTab('pjud')}
+                  onOpenModule={() => navigate('/pjud')}
+                  moduleLabel="Abrir PJUD completo"
                 />
 
                 {/* SIAU */}
@@ -1388,6 +1435,8 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                   sub={[lastSiau?.estado, fmtRelDate(lastSiau?.fecha)].filter(Boolean).join(' · ')}
                   badge={lastSiau && <MiniEstado estado={lastSiau.estado} urgent={siauUrgente} />}
                   onClick={() => setTab('siau')}
+                  onOpenModule={() => navigate('/siau')}
+                  moduleLabel="Abrir SIAU completo"
                 />
 
                 {/* Audiencia */}
@@ -1452,6 +1501,18 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                     <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500">+{tareasPend - 1}</span>
                   )}
                   onClick={() => setTab('tareas')}
+                />
+
+                {/* Seguimiento — última anotación */}
+                <PulsoCard
+                  icon={BookOpen}
+                  label="Seguimiento"
+                  iconColor="text-slate-400"
+                  loading={false}
+                  empty={!lastSeg}
+                  main={lastSeg?.por_hacer || '—'}
+                  sub={lastSeg ? [lastSeg.que_se_hizo, fmtRelDate(lastSeg?.fecha_revision)].filter(Boolean).join(' · ') : null}
+                  onClick={() => setTab('seguimiento')}
                 />
               </div>
             </div>
