@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import {
   ChevronRight, ChevronDown, Search, Plus, ArrowLeft,
-  FileText, X, Check, Edit2, Loader2, Scale, Table2, Trash2,
+  FileText, Clock, AlertCircle, CheckCircle2, X, Check, Edit2, Loader2, Scale, Table2, Trash2,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import CargaMasivaModal from '../components/CargaMasivaModal'
@@ -27,15 +27,15 @@ const TIPO_CONFIG = {
 const TIPO_OPTS = Object.keys(TIPO_CONFIG)
 
 const ESTADO_CONFIG = {
-  'Pendiente':           'bg-amber-50 text-amber-700',
-  'En proceso':          'bg-blue-50 text-blue-700',
-  'Respondida':          'bg-emerald-50 text-emerald-700',
-  'Sin respuesta':       'bg-gray-100 text-gray-500',
-  'Urgente':             'bg-red-50 text-red-700',
-  'No ha lugar':         'bg-slate-100 text-slate-600',
-  'Entrevista agendada': 'bg-indigo-50 text-indigo-700',
-  'Fiscal contactó':     'bg-purple-50 text-purple-700',
-  'Archivado':           'bg-gray-100 text-gray-500',
+  'Pendiente':           { bg: 'bg-amber-50',   text: 'text-amber-700',   dot: 'bg-amber-500'   },
+  'En proceso':          { bg: 'bg-blue-50',    text: 'text-blue-700',    dot: 'bg-blue-500'    },
+  'Respondida':          { bg: 'bg-green-50',   text: 'text-green-700',   dot: 'bg-green-500'   },
+  'Sin respuesta':       { bg: 'bg-gray-100',   text: 'text-gray-500',    dot: 'bg-gray-400'    },
+  'Urgente':             { bg: 'bg-red-50',     text: 'text-red-700',     dot: 'bg-red-500'     },
+  'No ha lugar':         { bg: 'bg-slate-100',  text: 'text-slate-600',   dot: 'bg-slate-400'   },
+  'Entrevista agendada': { bg: 'bg-indigo-50',  text: 'text-indigo-700',  dot: 'bg-indigo-500'  },
+  'Fiscal contactó':     { bg: 'bg-purple-50',  text: 'text-purple-700',  dot: 'bg-purple-500'  },
+  'Archivado':           { bg: 'bg-gray-100',   text: 'text-gray-500',    dot: 'bg-gray-400'    },
 }
 const ESTADO_OPTS = Object.keys(ESTADO_CONFIG)
 
@@ -72,12 +72,49 @@ function fmtFechaCorta(iso) {
   return `${d} ${MESES[m-1]}`
 }
 
+// ── CausaIdentChip — muestra RIT (violeta) o RUC (celeste) o "Sin RIT/RUC" ───
+function CausaIdentChip({ causa_rit, causa_ruc, size = 'md' }) {
+  const cls = size === 'sm'
+    ? 'text-[10px] px-1.5 py-0.5 rounded'
+    : 'text-[11px] px-2 py-0.5 rounded-lg'
+  if (causa_rit) return (
+    <span className={`font-mono font-bold border whitespace-nowrap bg-violet-50 text-violet-700 border-violet-100 ${cls}`}>
+      {causa_rit}
+    </span>
+  )
+  if (causa_ruc) return (
+    <span className={`font-mono font-bold border whitespace-nowrap bg-sky-50 text-sky-700 border-sky-100 ${cls}`}>
+      RUC {causa_ruc}
+    </span>
+  )
+  return <span className={`text-gray-400 font-medium ${cls}`}>Sin RIT/RUC</span>
+}
+
+/** Filtra registros de una causa considerando RIT → RUC → sin identificador */
+function matchCausa(r, grupo, clienteNombre) {
+  if (r.cliente_nombre !== clienteNombre) return false
+  if (grupo.causa_rit)  return r.causa_rit  === grupo.causa_rit
+  if (grupo.causa_ruc)  return r.causa_ruc  === grupo.causa_ruc
+  return !r.causa_rit && !r.causa_ruc
+}
+
 // ── TipoBadge ─────────────────────────────────────────────────────────────────
 function TipoBadge({ tipo }) {
   const cls = TIPO_CONFIG[tipo] || TIPO_CONFIG['Otro']
   return (
     <span className={`inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-full border whitespace-nowrap ${cls}`}>
       {tipo || 'Otro'}
+    </span>
+  )
+}
+
+// ── EstadoBadge ───────────────────────────────────────────────────────────────
+function EstadoBadge({ estado }) {
+  const cfg = ESTADO_CONFIG[estado] || ESTADO_CONFIG['Pendiente']
+  return (
+    <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full whitespace-nowrap ${cfg.bg} ${cfg.text}`}>
+      <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${cfg.dot}`}/>
+      {estado || 'Pendiente'}
     </span>
   )
 }
@@ -280,10 +317,10 @@ function FormNuevaSolicitud({ causa, causasInfo, globalMode, onSave, onClose }) 
 // ── Tabla de solicitudes ──────────────────────────────────────────────────────
 function SolicitudesTable({ grupo, registrosAll, onUpdate, onAdd, onDelete, causasInfo, onBack, clienteNombre }) {
   const registros  = useMemo(() =>
-    registrosAll.filter(r =>
-      r.causa_rit === grupo.causa_rit && r.cliente_nombre === clienteNombre
-    ).sort((a, b) => (b.fecha || '').localeCompare(a.fecha || '')),
-    [registrosAll, grupo.causa_rit, clienteNombre])
+    registrosAll
+      .filter(r => matchCausa(r, grupo, clienteNombre))
+      .sort((a, b) => (b.fecha || '').localeCompare(a.fecha || '')),
+    [registrosAll, grupo.causa_rit, grupo.causa_ruc, clienteNombre])
 
   const [expandedId,      setExpandedId]      = useState(null)
   const [editingId,       setEditingId]       = useState(null)
@@ -322,7 +359,7 @@ function SolicitudesTable({ grupo, registrosAll, onUpdate, onAdd, onDelete, caus
           <ChevronRight size={10} className="text-gray-300"/>
           <button onClick={() => onBack('causas')} className="hover:text-[#1a2e4a] font-medium transition-colors truncate max-w-[160px]">{clienteNombre}</button>
           <ChevronRight size={10} className="text-gray-300"/>
-          <span className="font-mono font-semibold text-[#1a2e4a]">{grupo.causa_rit || 'Sin RIT'}</span>
+          <CausaIdentChip causa_rit={grupo.causa_rit} causa_ruc={grupo.causa_ruc} size="sm"/>
         </nav>
 
         <div className="flex items-center justify-between">
@@ -333,7 +370,9 @@ function SolicitudesTable({ grupo, registrosAll, onUpdate, onAdd, onDelete, caus
             </button>
             <div className="w-px h-4 bg-gray-200"/>
             <div>
-              <h2 className="text-sm font-bold text-[#1a2e4a] font-mono">{grupo.causa_rit || 'Sin RIT'}</h2>
+              <div className="flex items-center gap-2">
+                <CausaIdentChip causa_rit={grupo.causa_rit} causa_ruc={grupo.causa_ruc}/>
+              </div>
               {grupo.causaInfo?.materia && <p className="text-[11px] text-gray-400 mt-0.5">{grupo.causaInfo.materia}</p>}
             </div>
           </div>
@@ -474,11 +513,7 @@ function SolicitudesTable({ grupo, registrosAll, onUpdate, onAdd, onDelete, caus
                             <p className="text-[11px] text-gray-400 truncate">{r.notas || '—'}</p>
                           </td>
                           <td className="px-3 py-3 whitespace-nowrap">
-                            {r.estado ? (
-                              <span className={`inline-flex text-[10px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap ${ESTADO_CONFIG[r.estado] || 'bg-gray-100 text-gray-500'}`}>
-                                {r.estado}
-                              </span>
-                            ) : <span className="text-gray-300">—</span>}
+                            <EstadoBadge estado={r.estado || 'Pendiente'}/>
                           </td>
                           <td className="px-3 py-3 pr-4">
                             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
@@ -530,8 +565,8 @@ function SolicitudesTable({ grupo, registrosAll, onUpdate, onAdd, onDelete, caus
       {showForm && (
         <FormNuevaSolicitud
           causa={grupo.causaInfo
-            ? { ...grupo.causaInfo, rit: grupo.causa_rit }
-            : { rit: grupo.causa_rit, cliente_nombre: clienteNombre, id: null, cliente_id: null }}
+            ? { ...grupo.causaInfo, rit: grupo.causa_rit, ruc: grupo.causa_ruc }
+            : { rit: grupo.causa_rit, ruc: grupo.causa_ruc, cliente_nombre: clienteNombre, id: null, cliente_id: null }}
           causasInfo={causasInfo}
           globalMode={false}
           onSave={onAdd}
@@ -567,8 +602,8 @@ function SolicitudesTable({ grupo, registrosAll, onUpdate, onAdd, onDelete, caus
 
 // ── Causa card ────────────────────────────────────────────────────────────────
 function CausaCard({ grupo, registrosAll, clienteNombre, onClick }) {
-  const count      = registrosAll.filter(r => r.causa_rit === grupo.causa_rit && r.cliente_nombre === clienteNombre).length
-  const pendientes = registrosAll.filter(r => r.causa_rit === grupo.causa_rit && r.cliente_nombre === clienteNombre && r.estado === 'Pendiente').length
+  const count      = registrosAll.filter(r => matchCausa(r, grupo, clienteNombre)).length
+  const pendientes = registrosAll.filter(r => matchCausa(r, grupo, clienteNombre) && r.estado === 'Pendiente').length
 
   return (
     <button onClick={onClick}
@@ -578,12 +613,7 @@ function CausaCard({ grupo, registrosAll, clienteNombre, onClick }) {
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <span className="text-xs font-bold font-mono text-[#1a2e4a] group-hover:text-[#2570ba] transition-colors">
-            {grupo.causa_rit || 'Sin RIT'}
-          </span>
-          {grupo.causaInfo?.ruc && (
-            <span className="text-[10px] font-mono text-gray-400">· RUC {grupo.causaInfo.ruc}</span>
-          )}
+          <CausaIdentChip causa_rit={grupo.causa_rit} causa_ruc={grupo.causa_ruc} size="sm"/>
         </div>
         {grupo.causaInfo?.materia && (
           <p className="text-[11px] text-gray-400 truncate mt-0.5">{grupo.causaInfo.materia}</p>
@@ -638,7 +668,7 @@ function ClienteRow({ grupo, registrosAll, isExpanded, onToggle, onSelectCausa }
       {isExpanded && (
         <div className="border-t border-gray-100 bg-white px-3 py-2 space-y-0.5">
           {causasGrupos.map(g => (
-            <CausaCard key={g.causa_rit || 'sinrit'}
+            <CausaCard key={g.causa_key}
               grupo={g} registrosAll={registrosAll} clienteNombre={clienteNombre}
               onClick={() => onSelectCausa(clienteNombre, g)}
             />
@@ -661,7 +691,7 @@ export default function SIAU() {
   // Navigation
   const [view,           setView]            = useState('clientes')
   const [selCliente,     setSelCliente]      = useState(null) // string
-  const [selCausaRit,    setSelCausaRit]     = useState(null) // string
+  const [selCausaKey,    setSelCausaKey]     = useState(null) // UUID (causa.id)
 
   const fetchRegistros = useCallback(async () => {
     setCargando(true)
@@ -704,7 +734,11 @@ export default function SIAU() {
         if (cid) { if (!byId[cid]) byId[cid] = []; byId[cid].push(r) }
       })
       const grupos = causasCliente.map(ci => ({
-        causa_rit: ci.rit || null, causaInfo: ci, cliente_nombre: clienteNombre,
+        causa_rit: ci.rit || null,
+        causa_ruc: ci.ruc || null,
+        causa_key: ci.id,
+        causaInfo: ci,
+        cliente_nombre: clienteNombre,
       })).sort((a, b) => (a.causa_rit||'').localeCompare(b.causa_rit||''))
       return { clienteNombre, causasGrupos: grupos }
     })
@@ -718,6 +752,7 @@ export default function SIAU() {
       cl.clienteNombre.toLowerCase().includes(q) ||
       cl.causasGrupos.some(g =>
         (g.causa_rit||'').toLowerCase().includes(q) ||
+        (g.causa_ruc||'').toLowerCase().includes(q) ||
         (g.causaInfo?.materia||'').toLowerCase().includes(q)
       )
     )
@@ -736,20 +771,20 @@ export default function SIAU() {
 
   // Selected grupo (derived)
   const selectedGrupo = useMemo(() => {
-    if (!selCausaRit || !selCliente) return null
+    if (!selCausaKey || !selCliente) return null
     const cl = clienteGrupos.find(g => g.clienteNombre === selCliente)
-    return cl?.causasGrupos.find(g => g.causa_rit === selCausaRit) || null
-  }, [clienteGrupos, selCausaRit, selCliente])
+    return cl?.causasGrupos.find(g => g.causa_key === selCausaKey) || null
+  }, [clienteGrupos, selCausaKey, selCliente])
 
   function handleSelectCausa(clienteNombre, grupo) {
     setSelCliente(clienteNombre)
-    setSelCausaRit(grupo.causa_rit)
+    setSelCausaKey(grupo.causa_key)
     setView('tabla')
   }
 
   function handleBack(to) {
     setView('clientes')
-    if (to === 'clientes') { setSelCliente(null); setSelCausaRit(null) }
+    if (to === 'clientes') { setSelCliente(null); setSelCausaKey(null) }
   }
 
   const toggleExpanded = (nombre) => setExpanded(prev => {
@@ -760,6 +795,8 @@ export default function SIAU() {
     clientes:    clienteGrupos.length,
     solicitudes: registros.length,
     pendientes:  registros.filter(r => r.estado === 'Pendiente').length,
+    respondidas: registros.filter(r => r.estado === 'Respondida').length,
+    urgentes:    registros.filter(r => r.estado === 'Urgente').length,
   }), [clienteGrupos, registros])
 
   // ── Tabla view ──
@@ -784,21 +821,35 @@ export default function SIAU() {
       {/* Header */}
       <div className="bg-white border-b border-gray-100 px-6 py-5 flex-shrink-0">
         <div className="flex items-center justify-between mb-4">
-          <div>
-            <h1 className="text-lg font-bold text-[#1a2e4a]">SIAU</h1>
-            <p className="text-xs text-gray-400 mt-0.5">
-              {stats.clientes} cliente{stats.clientes !== 1 ? 's' : ''} ·{' '}
-              {stats.solicitudes} solicitudes
-              {stats.pendientes > 0 && <span className="text-amber-600"> · {stats.pendientes} pendientes</span>}
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <button onClick={() => setShowForm(true)}
-              className="flex items-center gap-1.5 text-xs font-semibold bg-[#2570BA] text-white px-4 py-2 rounded-xl hover:bg-[#2570BA]/90 transition-colors shadow-sm">
-              <Plus size={14}/> Nueva solicitud
-            </button>
-          </div>
+          <h1 className="text-lg font-bold text-[#1a2e4a]">SIAU</h1>
+          <button onClick={() => setShowForm(true)}
+            className="flex items-center gap-1.5 text-xs font-semibold bg-[#2570BA] text-white px-4 py-2 rounded-xl hover:bg-[#2570BA]/90 transition-colors shadow-sm">
+            <Plus size={14}/> Nueva solicitud
+          </button>
         </div>
+
+        {/* Stat cards */}
+        {!cargando && (
+          <div className="grid grid-cols-4 gap-2.5 mb-4">
+            {[
+              { label: 'Solicitudes',  value: stats.solicitudes, bg: 'bg-gray-50',    ic: 'text-gray-500',    Icon: FileText     },
+              { label: 'Pendientes',   value: stats.pendientes,  bg: 'bg-amber-50',   ic: 'text-amber-500',   Icon: Clock        },
+              { label: 'Respondidas',  value: stats.respondidas, bg: 'bg-green-50',   ic: 'text-green-500',   Icon: CheckCircle2 },
+              { label: 'Urgentes',     value: stats.urgentes,    bg: 'bg-red-50',     ic: 'text-red-500',     Icon: AlertCircle  },
+            ].map(({ label, value, bg, ic, Icon }) => (
+              <div key={label} className="bg-white border border-gray-100 rounded-xl px-4 py-3 flex items-center gap-3">
+                <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 ${bg}`}>
+                  <Icon size={14} className={ic}/>
+                </div>
+                <div>
+                  <p className="text-[22px] font-bold text-gray-900 leading-none tabular-nums">{value}</p>
+                  <p className="text-[11px] text-gray-400 mt-0.5 leading-tight">{label}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
         <div className="relative max-w-sm">
           <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300"/>
           <input value={search} onChange={e => setSearch(e.target.value)}

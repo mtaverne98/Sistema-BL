@@ -51,7 +51,7 @@ const RESPONSABLE_INFO = {
 const PJUD_DB_FIELDS = new Set([
   'estado','notas','solicitud','respuesta','fecha_respuesta','fecha_notificacion',
   'accion_requerida','consecuencia_procesal','presenta','responsable',
-  'tiene_documento','documento_desc','fecha','folio','causa_rit','cliente_nombre',
+  'tiene_documento','documento_desc','fecha','folio','causa_rit','causa_ruc','cliente_nombre',
   'causa_id','cliente_id','tipo_solicitud',
 ])
 
@@ -78,6 +78,7 @@ function mapPjudRow(row) {
     notas:                 row.notas                 || '',
     responsable:           row.responsable           || 'MT',
     causa_rit:             row.causa_rit             || '',
+    causa_ruc:             row.causa_ruc             || '',
     cliente_nombre:        row.cliente_nombre        || '',
     causa_id:              row.causa_id              || null,
     cliente_id:            row.cliente_id            || null,
@@ -179,6 +180,32 @@ function DocChip({ tiene, desc }) {
       <FileText size={9} className="flex-shrink-0" />{desc ? desc.split(' ')[0] : 'Ver doc'}
     </span>
   )
+}
+
+// ── CausaIdentChip — muestra RIT (violeta) o RUC (celeste) o "Sin RIT/RUC" ───
+function CausaIdentChip({ causa_rit, causa_ruc, size = 'md' }) {
+  const cls = size === 'sm'
+    ? 'text-[10px] px-1.5 py-0.5 rounded'
+    : 'text-[11px] px-2 py-0.5 rounded-lg'
+  if (causa_rit) return (
+    <span className={`font-mono font-bold border whitespace-nowrap bg-violet-50 text-violet-700 border-violet-100 ${cls}`}>
+      {causa_rit}
+    </span>
+  )
+  if (causa_ruc) return (
+    <span className={`font-mono font-bold border whitespace-nowrap bg-sky-50 text-sky-700 border-sky-100 ${cls}`}>
+      RUC {causa_ruc}
+    </span>
+  )
+  return <span className={`text-gray-400 font-medium ${cls}`}>Sin RIT/RUC</span>
+}
+
+/** Filtra registros de una causa considerando RIT → RUC → sin identificador */
+function matchCausa(r, causaData, clienteNombre) {
+  if (r.cliente_nombre !== clienteNombre) return false
+  if (causaData.causa_rit) return r.causa_rit === causaData.causa_rit
+  if (causaData.causa_ruc) return r.causa_ruc === causaData.causa_ruc
+  return !r.causa_rit && !r.causa_ruc
 }
 
 // ── GenerarTareaForm ──────────────────────────────────────────────────────────
@@ -634,12 +661,12 @@ function MovimientoDetail({ mov, causaRit, clienteNombre, onUpdate, addTarea, ad
 
 // ── MovimientosTable (table view) ─────────────────────────────────────────────
 function MovimientosTable({ causaData, rowsAll, onUpdate, onAdd, onDelete, causasInfo, addTarea, addPlazo, onBack }) {
-  const { causa_rit, causaInfo, clienteNombre } = causaData
+  const { causa_rit, causa_ruc, causaInfo, clienteNombre } = causaData
 
   const movimientos = useMemo(() =>
-    rowsAll.filter(r => r.causa_rit === causa_rit && r.cliente_nombre === clienteNombre)
+    rowsAll.filter(r => matchCausa(r, causaData, clienteNombre))
       .sort((a, b) => (b.fecha || '').localeCompare(a.fecha || '')),
-    [rowsAll, causa_rit, clienteNombre])
+    [rowsAll, causa_rit, causa_ruc, clienteNombre])
 
   const [expandedId,      setExpandedId]      = useState(null)
   const [editingId,       setEditingId]       = useState(null)
@@ -695,8 +722,7 @@ function MovimientosTable({ causaData, rowsAll, onUpdate, onAdd, onDelete, causa
           <ChevronRight size={10} className="text-gray-300"/>
           <button onClick={() => onBack('causas')} className="hover:text-[#1a2e4a] font-medium transition-colors truncate max-w-[160px]">{clienteNombre}</button>
           <ChevronRight size={10} className="text-gray-300"/>
-          <span className="font-mono font-semibold text-[#1a2e4a]">{causa_rit || 'Sin RIT'}</span>
-          {causaInfo?.ruc && <span className="font-mono text-[10px] text-gray-400 ml-1">· RUC {causaInfo.ruc}</span>}
+          <CausaIdentChip causa_rit={causa_rit} causa_ruc={causa_ruc} size="sm"/>
         </nav>
 
         <div className="flex items-center justify-between gap-3">
@@ -707,7 +733,9 @@ function MovimientosTable({ causaData, rowsAll, onUpdate, onAdd, onDelete, causa
             </button>
             <div className="w-px h-4 bg-gray-200"/>
             <div>
-              <h2 className="text-sm font-bold text-[#1a2e4a] font-mono">{causa_rit || 'Sin RIT'}</h2>
+              <div className="flex items-center gap-2">
+                <CausaIdentChip causa_rit={causa_rit} causa_ruc={causa_ruc}/>
+              </div>
               {causaInfo?.materia && <p className="text-[11px] text-gray-400 mt-0.5">{causaInfo.materia}</p>}
             </div>
             {causaInfo?.tribunal && <span className="text-[11px] text-gray-400 hidden sm:block">· {causaInfo.tribunal}</span>}
@@ -914,10 +942,10 @@ function MovimientosTable({ causaData, rowsAll, onUpdate, onAdd, onDelete, causa
 
       {showForm && (
         <FormNuevaEntrada
-          causa={causaInfo ? { ...causaInfo, causa_rit: causa_rit } : { rit: causa_rit, causa_rit, cliente_nombre: clienteNombre, id: null, cliente_id: null }}
+          causa={causaInfo ? { ...causaInfo, causa_rit: causa_rit, causa_ruc: causa_ruc } : { rit: causa_rit, ruc: causa_ruc, causa_rit, causa_ruc, cliente_nombre: clienteNombre, id: null, cliente_id: null }}
           causasInfo={causasInfo}
           globalMode={false}
-          onSave={mov => { onAdd(causa_rit, clienteNombre, mov); setShowForm(false) }}
+          onSave={mov => { onAdd(causa_rit, causa_ruc, clienteNombre, mov); setShowForm(false) }}
           onClose={() => setShowForm(false)}
         />
       )}
@@ -951,7 +979,7 @@ function MovimientosTable({ causaData, rowsAll, onUpdate, onAdd, onDelete, causa
 
 // ── CausaCard ──────────────────────────────────────────────────────────────────
 function CausaCard({ causaData, rowsAll, clienteNombre, onClick }) {
-  const movs       = rowsAll.filter(r => r.causa_rit === causaData.causa_rit && r.cliente_nombre === clienteNombre)
+  const movs       = rowsAll.filter(r => matchCausa(r, causaData, clienteNombre))
   const pendientes = movs.filter(m => m.estado === 'Pendiente' || m.estado === 'Resolución pendiente').length
   const urgentes   = movs.filter(m => m.estado === 'Urgente').length
 
@@ -963,12 +991,7 @@ function CausaCard({ causaData, rowsAll, clienteNombre, onClick }) {
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xs font-bold font-mono text-[#1a2e4a] group-hover:text-[#2570ba] transition-colors">
-            {causaData.causa_rit || 'Sin RIT'}
-          </span>
-          {causaData.causaInfo?.ruc && (
-            <span className="text-[10px] font-mono text-gray-400">· RUC {causaData.causaInfo.ruc}</span>
-          )}
+          <CausaIdentChip causa_rit={causaData.causa_rit} causa_ruc={causaData.causa_ruc} size="sm"/>
           {urgentes > 0 && (
             <span className="flex items-center gap-1 text-[10px] font-bold text-red-600 bg-red-50 px-1.5 py-0.5 rounded-full animate-pulse">
               <span className="w-1.5 h-1.5 rounded-full bg-red-500" /> Urgente
@@ -1030,7 +1053,7 @@ function ClienteRow({ clienteData, rowsAll, isExpanded, onToggle, onSelectCausa 
       {isExpanded && (
         <div className="border-t border-gray-100 bg-white px-3 py-2 space-y-0.5">
           {causasData.map(cd => (
-            <CausaCard key={cd.causa_rit || 'sinrit'}
+            <CausaCard key={cd.causa_key}
               causaData={cd} rowsAll={rowsAll} clienteNombre={clienteNombre}
               onClick={() => onSelectCausa(clienteNombre, cd)}
             />
@@ -1051,7 +1074,7 @@ export default function PJUD() {
   // Navigation: 'clientes' | 'tabla'
   const [view,        setView]       = useState('clientes')
   const [selCliente,  setSelCliente] = useState(null)   // string
-  const [selCausaRit, setSelCausaRit] = useState(null)  // string
+  const [selCausaKey, setSelCausaKey] = useState(null)  // UUID (causa.id)
 
   // Accordion
   const [expandedSet, setExpanded] = useState(new Set())
@@ -1090,6 +1113,8 @@ export default function PJUD() {
       const causasCliente = causasInfo.filter(c => c.cliente_nombre === clienteNombre)
       const causasData = causasCliente.map(ci => ({
         causa_rit: ci.rit || null,
+        causa_ruc: ci.ruc || null,
+        causa_key: ci.id,
         causaInfo: ci,
       })).sort((a, b) => (a.causa_rit || '').localeCompare(b.causa_rit || ''))
       return { clienteNombre, causasData }
@@ -1104,6 +1129,7 @@ export default function PJUD() {
       cl.clienteNombre.toLowerCase().includes(q) ||
       cl.causasData.some(cd =>
         (cd.causa_rit || '').toLowerCase().includes(q) ||
+        (cd.causa_ruc || '').toLowerCase().includes(q) ||
         (cd.causaInfo?.materia || '').toLowerCase().includes(q)
       )
     )
@@ -1122,10 +1148,10 @@ export default function PJUD() {
 
   // Selected causa (derived)
   const selectedCausaData = useMemo(() => {
-    if (!selCausaRit || !selCliente) return null
+    if (!selCausaKey || !selCliente) return null
     const cl = clienteGrupos.find(g => g.clienteNombre === selCliente)
-    return cl?.causasData.find(cd => cd.causa_rit === selCausaRit) || null
-  }, [clienteGrupos, selCausaRit, selCliente])
+    return cl?.causasData.find(cd => cd.causa_key === selCausaKey) || null
+  }, [clienteGrupos, selCausaKey, selCliente])
 
   // Stats
   const stats = useMemo(() => ({
@@ -1145,8 +1171,8 @@ export default function PJUD() {
     if (err) console.error('Error actualizando PJUD:', err.message)
   }, [])
 
-  const handleAddMovimiento = useCallback(async (causaRit, clienteNombre, movData) => {
-    const ci = causasInfo.find(c => c.rit === causaRit)
+  const handleAddMovimiento = useCallback(async (causaRit, causaRuc, clienteNombre, movData) => {
+    const ci = causasInfo.find(c => c.rit === causaRit) || causasInfo.find(c => c.ruc === causaRuc)
     const payload = {
       fecha: movData.fecha, folio: movData.folio, presenta: movData.presenta || 'Nosotros',
       tipo_solicitud: movData.tipo_solicitud || 'Solicitud',
@@ -1156,7 +1182,8 @@ export default function PJUD() {
       estado: movData.respuesta?.trim() ? 'Respondido' : (movData.estado || 'Pendiente'),
       tiene_documento: movData.tiene_documento || false, documento_desc: movData.documento_desc || null,
       notas: movData.notas || null, responsable: movData.responsable || 'MT',
-      causa_rit: causaRit,
+      causa_rit: causaRit || null,
+      causa_ruc: causaRuc || null,
       cliente_nombre: clienteNombre || movData.cliente_nombre || (ci?.cliente_nombre || ''),
       causa_id: movData.causa_id || (ci?.id || null),
       cliente_id: movData.cliente_id || (ci?.cliente_id || null),
@@ -1196,13 +1223,13 @@ export default function PJUD() {
 
   function handleSelectCausa(clienteNombre, causaData) {
     setSelCliente(clienteNombre)
-    setSelCausaRit(causaData.causa_rit)
+    setSelCausaKey(causaData.causa_key)
     setView('tabla')
   }
 
   function handleBack(to) {
     setView('clientes')
-    if (to === 'clientes') { setSelCliente(null); setSelCausaRit(null) }
+    if (to === 'clientes') { setSelCliente(null); setSelCausaKey(null) }
   }
 
   // ── Tabla view ──
@@ -1229,26 +1256,15 @@ export default function PJUD() {
       {/* Header */}
       <div className="bg-white border-b border-gray-100 px-6 py-5 flex-shrink-0">
         <div className="flex items-center justify-between mb-4">
-          <div>
-            <h1 className="text-lg font-bold text-[#1a2e4a]">PJUD</h1>
-            <p className="text-xs text-gray-400 mt-0.5">
-              {cargando ? 'Cargando…' : (
-                <>
-                  {stats.clientes} cliente{stats.clientes !== 1 ? 's' : ''} · {stats.total} movimientos
-                  {stats.pendientes > 0 && <span className="text-amber-600"> · {stats.pendientes} pendientes</span>}
-                  {stats.urgentes   > 0 && <span className="text-red-600 font-semibold"> · {stats.urgentes} urgentes</span>}
-                </>
-              )}
-            </p>
-          </div>
+          <h1 className="text-lg font-bold text-[#1a2e4a]">PJUD</h1>
           <div className="flex items-center gap-2">
             <button onClick={() => setShowNuevaSolicitud(true)}
-              className="flex items-center gap-2 px-3.5 py-2 bg-[#2570BA] text-white text-[13px] font-medium rounded-lg hover:bg-[#2570BA]/90 transition-colors">
-              <Plus size={14} /> Nueva entrada
+              className="flex items-center gap-1.5 text-xs font-semibold bg-[#2570BA] text-white px-4 py-2 rounded-xl hover:bg-[#2570BA]/90 transition-colors shadow-sm">
+              <Plus size={14}/> Nueva entrada
             </button>
             <a href="https://oficinajudicialvirtual.pjud.cl/" target="_blank" rel="noopener noreferrer"
-              className="flex items-center gap-2 px-3.5 py-2 border border-[#1a2e4a]/20 text-[#1a2e4a] text-[13px] font-medium rounded-lg hover:bg-[#1a2e4a]/5 transition-colors">
-              <Scale size={14} /> Portal PJUD
+              className="flex items-center gap-1.5 text-xs font-medium px-4 py-2 rounded-xl border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors">
+              <Scale size={14}/> Portal PJUD
             </a>
           </div>
         </div>

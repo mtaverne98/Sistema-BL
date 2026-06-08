@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import {
   ChevronRight, ChevronDown, Search, Plus, ArrowLeft,
-  X, Check, Edit2, Loader2, Scale, Table2, Trash2, Target,
+  FileText, Clock, CheckCircle2, AlertCircle, X, Check, Edit2, Loader2, Scale, Table2, Trash2, Target,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import CargaMasivaModal from '../components/CargaMasivaModal'
@@ -545,6 +545,8 @@ export default function SeguimientoSemanal() {
     clientes:    clienteGrupos.length,
     entradas:    registros.length,
     pendientes:  registros.filter(r => r.estado === 'Pendiente').length,
+    enProgreso:  registros.filter(r => r.estado === 'En progreso').length,
+    listos:      registros.filter(r => r.estado === 'Listo').length,
   }), [clienteGrupos, registros])
 
   // ── Vista tabla ──────────────────────────────────────────────────────────────
@@ -570,18 +572,30 @@ export default function SeguimientoSemanal() {
       {/* Header */}
       <div className="bg-white border-b border-gray-100 px-6 py-5 flex-shrink-0">
         <div className="flex items-center justify-between mb-4">
-          <div>
-            <h1 className="text-lg font-bold text-[#1a2e4a]">Seguimiento semanal</h1>
-            <p className="text-xs text-gray-400 mt-0.5">
-              {cargando ? 'Cargando…' : (
-                <>
-                  {stats.clientes} cliente{stats.clientes !== 1 ? 's' : ''} · {stats.entradas} entradas
-                  {stats.pendientes > 0 && <span className="text-amber-600"> · {stats.pendientes} pendientes</span>}
-                </>
-              )}
-            </p>
-          </div>
+          <h1 className="text-lg font-bold text-[#1a2e4a]">Seguimiento semanal</h1>
         </div>
+
+        {/* Stat cards */}
+        {!cargando && (
+          <div className="grid grid-cols-4 gap-2.5 mb-4">
+            {[
+              { label: 'Entradas',    value: stats.entradas,   bg: 'bg-gray-50',   ic: 'text-gray-500',  Icon: FileText     },
+              { label: 'Pendientes',  value: stats.pendientes, bg: 'bg-amber-50',  ic: 'text-amber-500', Icon: Clock        },
+              { label: 'En progreso', value: stats.enProgreso, bg: 'bg-blue-50',   ic: 'text-blue-500',  Icon: AlertCircle  },
+              { label: 'Listos',      value: stats.listos,     bg: 'bg-green-50',  ic: 'text-green-500', Icon: CheckCircle2 },
+            ].map(({ label, value, bg, ic, Icon }) => (
+              <div key={label} className="bg-white border border-gray-100 rounded-xl px-4 py-3 flex items-center gap-3">
+                <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 ${bg}`}>
+                  <Icon size={14} className={ic}/>
+                </div>
+                <div>
+                  <p className="text-[22px] font-bold text-gray-900 leading-none tabular-nums">{value}</p>
+                  <p className="text-[11px] text-gray-400 mt-0.5 leading-tight">{label}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
 
         <div className="relative max-w-sm">
           <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300"/>
