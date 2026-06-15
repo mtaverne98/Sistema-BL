@@ -3135,7 +3135,7 @@ export default function Causas() {
   const [tableEdit, setTableEdit]     = useState(null)  // { id, field }
   const [bulkField, setBulkField]     = useState(null)  // campo activo del bulk action bar
 
-  const { activeCausa } = useNavigation()
+  const { activeCausa, clearActiveCausa } = useNavigation()
 
   // ── Fetch ───────────────────────────────────────────────────────────────
   const fetchCausas = useCallback(async () => {
@@ -3184,6 +3184,17 @@ export default function Causas() {
       scrollTop: scrollRef.current?.scrollTop ?? 0,
     }))
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Reset al navegar desde sidebar ────────────────────────────────────
+  useEffect(() => {
+    if (!_fromSidebar) return
+    setSeleccionada(null)
+    setCliente(null)
+    setBusqueda('')
+    sessionStorage.removeItem('ps.causas')
+    clearActiveCausa()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.state])
 
   // ── Restaurar causa activa al volver desde PJUD/SIAU ──────────────────
   useEffect(() => {
