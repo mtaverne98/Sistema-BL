@@ -9,6 +9,7 @@ import CargaMasivaModal from '../components/CargaMasivaModal'
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal'
 import { useNavigation } from '../context/NavigationContext'
 import useResizableColumns from '../hooks/useResizableColumns'
+import { CausaIdentChip, CausaAccordionCard, ClienteAccordionRow } from '../components/ClienteAccordion'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const TODAY = new Date().toISOString().slice(0, 10)
@@ -75,22 +76,10 @@ function fmtFechaCorta(iso) {
   return `${d} ${MESES[m-1]}`
 }
 
-// ── CausaIdentChip — muestra RIT (violeta) o RUC (celeste) o "Sin RIT/RUC" ───
-function CausaIdentChip({ causa_rit, causa_ruc, size = 'md' }) {
-  const cls = size === 'sm'
-    ? 'text-[10px] px-1.5 py-0.5 rounded'
-    : 'text-[11px] px-2 py-0.5 rounded-lg'
-  if (causa_rit) return (
-    <span className={`font-mono font-bold border whitespace-nowrap bg-violet-50 text-violet-700 border-violet-100 ${cls}`}>
-      {causa_rit}
-    </span>
-  )
-  if (causa_ruc) return (
-    <span className={`font-mono font-bold border whitespace-nowrap bg-sky-50 text-sky-700 border-sky-100 ${cls}`}>
-      RUC {causa_ruc}
-    </span>
-  )
-  return <span className={`text-gray-400 font-medium ${cls}`}>Sin RIT/RUC</span>
+// CausaIdentChip imported from ../components/ClienteAccordion
+// Adapter: SIAU uses causa_rit/causa_ruc field names
+function SiauCausaIdentChip({ causa_rit, causa_ruc, size }) {
+  return <CausaIdentChip rit={causa_rit} ruc={causa_ruc} size={size} />
 }
 
 /** Filtra registros de una causa considerando RIT → RUC → sin identificador */
@@ -650,96 +639,49 @@ export function SolicitudesTable({ grupo, registrosAll, onUpdate, onAdd, onDelet
   )
 }
 
-// ── Causa card ────────────────────────────────────────────────────────────────
-function CausaCard({ grupo, registrosAll, clienteNombre, onClick, onOpenCausa }) {
-  const count      = registrosAll.filter(r => matchCausa(r, grupo, clienteNombre)).length
-  const pendientes = registrosAll.filter(r => matchCausa(r, grupo, clienteNombre) && r.estado === 'Pendiente').length
-
-  return (
-    <div className="group/card flex items-center gap-1 rounded-xl hover:bg-[#1a2e4a]/5 transition-colors">
-      <button onClick={onClick}
-        className="flex-1 text-left flex items-center gap-3 px-4 py-3">
-        <div className="w-8 h-8 rounded-lg bg-[#1a2e4a]/8 flex items-center justify-center flex-shrink-0">
-          <Scale size={14} className="text-[#1a2e4a]/50"/>
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <CausaIdentChip causa_rit={grupo.causa_rit} causa_ruc={grupo.causa_ruc} size="sm"/>
-          </div>
-          {grupo.causaInfo?.materia && (
-            <p className="text-[11px] text-gray-400 truncate mt-0.5">{grupo.causaInfo.materia}</p>
-          )}
-        </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
-          {pendientes > 0 && (
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-100">
-              {pendientes} pend.
-            </span>
-          )}
-          <span className="text-[10px] text-gray-400">{count} sol.</span>
-          <ChevronRight size={13} className="text-gray-300 group-hover/card:text-[#2570ba] transition-colors"/>
-        </div>
-      </button>
-      {/* Link "Ver causa" */}
-      {onOpenCausa && grupo.causa_key && (
-        <button
-          onClick={e => { e.stopPropagation(); onOpenCausa(grupo) }}
-          className="opacity-0 group-hover/card:opacity-100 flex-shrink-0 px-2 py-1 mr-2 text-[9px] font-semibold text-[#2570ba] hover:underline transition-opacity"
-          title="Abrir ficha de la causa"
-        >
-          Ver causa →
-        </button>
-      )}
-    </div>
-  )
-}
-
-// ── Cliente accordion row ─────────────────────────────────────────────────────
+// ── Siau-specific accordion row (wraps shared ClienteAccordionRow) ────────────
 function ClienteRow({ grupo, registrosAll, isExpanded, onToggle, onSelectCausa, onOpenCausa, hasActiveCausas }) {
   const { clienteNombre, causasGrupos } = grupo
   const total      = registrosAll.filter(r => r.cliente_nombre === clienteNombre).length
   const pendientes = registrosAll.filter(r => r.cliente_nombre === clienteNombre && r.estado === 'Pendiente').length
-  const ini        = clienteNombre.trim().split(/\s+/).slice(0,2).map(w=>w[0]||'').join('').toUpperCase()
 
   return (
-    <div className={`border border-gray-100 rounded-2xl overflow-hidden transition-shadow ${isExpanded ? 'shadow-sm' : ''}`}>
-      <button onClick={onToggle}
-        className={`w-full flex items-center gap-3 px-5 py-3.5 text-left transition-colors ${
-          isExpanded ? 'bg-[#1a2e4a]/[0.04]' : 'bg-white hover:bg-gray-50'
-        }`}>
-        <div className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 text-white text-[11px] font-bold select-none"
-          style={{ backgroundColor: hasActiveCausas ? '#2570BA' : '#9CA3AF' }}>
-          {ini}
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className={`text-[13px] font-semibold truncate ${hasActiveCausas ? 'text-[#1a2e4a]' : 'text-gray-400'}`}>{clienteNombre}</p>
-          <p className="text-[11px] text-gray-400 mt-0.5">
-            {causasGrupos.length} causa{causasGrupos.length !== 1 ? 's' : ''}
-            {total > 0 && <span className="ml-1.5">· {total} solicitud{total !== 1 ? 'es' : ''}</span>}
-          </p>
-        </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
-          {pendientes > 0 && (
-            <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-100">
-              {pendientes} pendiente{pendientes !== 1 ? 's' : ''}
-            </span>
-          )}
-          <ChevronDown size={15} className={`text-gray-400 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}/>
-        </div>
-      </button>
-
-      {isExpanded && (
-        <div className="border-t border-gray-100 bg-white px-3 py-2 space-y-0.5">
-          {causasGrupos.map(g => (
-            <CausaCard key={g.causa_key}
-              grupo={g} registrosAll={registrosAll} clienteNombre={clienteNombre}
-              onClick={() => onSelectCausa(clienteNombre, g)}
-              onOpenCausa={onOpenCausa}
-            />
-          ))}
-        </div>
-      )}
-    </div>
+    <ClienteAccordionRow
+      clienteNombre={clienteNombre}
+      hasActiveCausas={hasActiveCausas}
+      isExpanded={isExpanded}
+      onToggle={onToggle}
+      subtitle={`${causasGrupos.length} causa${causasGrupos.length !== 1 ? 's' : ''}${total > 0 ? ` · ${total} solicitud${total !== 1 ? 'es' : ''}` : ''}`}
+      badge={pendientes > 0 ? (
+        <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-100">
+          {pendientes} pendiente{pendientes !== 1 ? 's' : ''}
+        </span>
+      ) : null}
+    >
+      {causasGrupos.map(g => {
+        const count = registrosAll.filter(r => matchCausa(r, g, clienteNombre)).length
+        const pend  = registrosAll.filter(r => matchCausa(r, g, clienteNombre) && r.estado === 'Pendiente').length
+        return (
+          <CausaAccordionCard
+            key={g.causa_key}
+            rit={g.causa_rit}
+            ruc={g.causa_ruc}
+            materia={g.causaInfo?.materia}
+            rightContent={<>
+              {pend > 0 && (
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-100">
+                  {pend} pend.
+                </span>
+              )}
+              <span className="text-[10px] text-gray-400">{count} sol.</span>
+            </>}
+            onClick={() => onSelectCausa(clienteNombre, g)}
+            linkLabel={g.causa_key ? 'Ver causa →' : undefined}
+            onLinkClick={g.causa_key ? () => onOpenCausa?.(g) : undefined}
+          />
+        )
+      })}
+    </ClienteAccordionRow>
   )
 }
 

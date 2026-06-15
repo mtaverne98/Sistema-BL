@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useNavigation } from '../context/NavigationContext'
+import { ClienteAccordionRow, CausaAccordionCard } from '../components/ClienteAccordion'
 import {
   Search, Plus, X, Phone, Mail, FileText,
   Clock, Circle, CheckCircle2,
@@ -508,6 +509,9 @@ function FormCliente({ inicial, onClose, onGuardar, guardando, errorMsg }) {
 
 // ── Componente principal ──────────────────────────────────────────────────
 export default function Clientes() {
+  const navigate = useNavigate()
+  const { setActiveCausa } = useNavigation()
+
   const [_ps] = useState(() => {
     try { return JSON.parse(sessionStorage.getItem('ps.clientes') ?? 'null') ?? {} }
     catch { return {} }
@@ -524,6 +528,8 @@ export default function Clientes() {
   const [clienteSeleccionado, setSeleccionado] = useState(null)
   // Set de IDs de clientes que tienen al menos una causa Abierta o Revisar
   const [clienteHasActiveCausasSet, setClienteHasActiveCausasSet] = useState(new Set())
+  const [todasCausas, setTodasCausas]           = useState([])
+  const [expandedClientes, setExpandedClientes] = useState(new Set())
   const [formulario, setFormulario] = useState(null) // null | 'nuevo' | objeto cliente
   const [formError, setFormError] = useState(null)   // error del formulario modal
   const [deleteModal, setDeleteModal] = useState(null) // null | { cliente, causasCount }
@@ -550,6 +556,8 @@ export default function Clientes() {
       .then(({ data }) => {
         setClienteHasActiveCausasSet(new Set((data || []).map(c => c.cliente_id).filter(Boolean)))
       })
+    supabase.from('causas').select('id, rit, ruc, materia, estado, cliente_id').order('rit', { ascending: true })
+      .then(({ data }) => setTodasCausas(data || []))
   }, [fetchClientes])
 
   // Restore selected client after data loads
@@ -906,69 +914,72 @@ export default function Clientes() {
               )}
             </div>
           ) : (
-            <table className="w-full">
-              <thead className="sticky top-0 bg-white z-10">
-                <tr className="border-b border-gray-100">
-                  {['Nombre', 'RUT', 'Teléfono', 'Email', 'Estado', 'Registrado'].map(col => (
-                    <th key={col} className="px-4 py-3 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide first:pl-8">
-                      {col}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {agrupados.map(([letra, grupo]) => (
-                  <>
-                    <tr key={`letra-${letra}`}>
-                      <td colSpan={6} className="pl-8 pt-5 pb-1.5">
-                        <span className="text-[11px] font-bold text-gray-300 uppercase tracking-widest">{letra}</span>
-                      </td>
-                    </tr>
-                    {grupo.map(c => (
-                      <tr
-                        key={c.id}
-                        onClick={() => { setSeleccionado(c); setFormulario(null) }}
-                        className={`group border-b border-gray-50 cursor-pointer transition-colors ${
-                          clienteSeleccionado?.id === c.id ? 'bg-blue-50/50' : 'hover:bg-gray-50'
-                        } ${c.estado === 'Inactivo' ? 'opacity-60' : ''}`}>
-                        <td className="pl-8 pr-4 py-3">
-                          <div className="flex items-center gap-2.5">
-                            <div
-                              className="w-7 h-7 rounded-full flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0"
-                              style={{ backgroundColor: clienteHasActiveCausasSet.has(c.id) ? '#2570ba' : '#9ca3af' }}>
-                              {iniciales(c.nombre)}
-                            </div>
-                            <span className={`text-sm font-medium ${c.estado === 'Inactivo' ? 'text-gray-400' : 'text-gray-900'}`}>{c.nombre}</span>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-500 tabular-nums">{c.rut || '–'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-500">{c.telefono || '–'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-400 truncate max-w-[160px]">{c.email || '–'}</td>
-                        <td className="px-4 py-3">
-                          <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${ESTADO_BADGE[c.estado] ?? 'bg-gray-100 text-gray-400'}`}>
-                            {c.estado}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-xs text-gray-400">
-                          <div className="flex items-center gap-2">
-                            {formatFecha(c.createdAt)}
-                            <button
-                              onClick={e => {
-                                e.stopPropagation()
-                                handleRequestDelete(c, 0)
+            <div className="px-4 py-4">
+              {agrupados.map(([letra, grupo]) => (
+                <div key={letra}>
+                  <div className="px-3 pt-4 pb-2">
+                    <span className="text-[11px] font-bold text-gray-300 uppercase tracking-widest">{letra}</span>
+                  </div>
+                  <div className="space-y-2">
+                    {grupo.map(c => {
+                      const causasCliente = todasCausas.filter(ca => ca.cliente_id === c.id)
+                      const isExpanded    = expandedClientes.has(c.id)
+                      const toggleExpand  = () => setExpandedClientes(prev => {
+                        const next = new Set(prev)
+                        next.has(c.id) ? next.delete(c.id) : next.add(c.id)
+                        return next
+                      })
+                      const subtitle = [
+                        `${causasCliente.length} causa${causasCliente.length !== 1 ? 's' : ''}`,
+                        c.rut ? c.rut : null,
+                      ].filter(Boolean).join(' · ')
+                      return (
+                        <ClienteAccordionRow
+                          key={c.id}
+                          clienteNombre={c.nombre}
+                          hasActiveCausas={clienteHasActiveCausasSet.has(c.id)}
+                          isExpanded={isExpanded}
+                          onToggle={toggleExpand}
+                          onSelect={() => { setSeleccionado(c); setFormulario(null) }}
+                          isSelected={clienteSeleccionado?.id === c.id}
+                          subtitle={subtitle}
+                        >
+                          {causasCliente.length === 0 ? (
+                            <p className="px-4 py-2 text-[11px] text-gray-300 italic">Sin causas registradas</p>
+                          ) : causasCliente.map(ca => (
+                            <CausaAccordionCard
+                              key={ca.id}
+                              rit={ca.rit}
+                              ruc={ca.ruc}
+                              materia={ca.materia}
+                              rightContent={
+                                <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                                  ['Abierta', 'Revisar'].includes(ca.estado)
+                                    ? 'bg-blue-50 text-blue-500' : 'bg-gray-100 text-gray-400'
+                                }`}>
+                                  {ca.estado || '—'}
+                                </span>
+                              }
+                              onClick={() => {
+                                setActiveCausa({
+                                  id:             ca.id,
+                                  rit:            ca.rit || null,
+                                  ruc:            ca.ruc || null,
+                                  materia:        ca.materia || '',
+                                  cliente_nombre: c.nombre || '',
+                                  cliente_id:     c.id,
+                                })
+                                navigate('/causas')
                               }}
-                              className="opacity-0 group-hover:opacity-100 p-1 rounded-lg text-gray-300 hover:text-red-400 hover:bg-red-50 transition-colors flex-shrink-0"
-                              title="Eliminar cliente">
-                              <Trash2 size={11} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </>
-                ))}
-              </tbody>
-            </table>
+                            />
+                          ))}
+                        </ClienteAccordionRow>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </div>
       </div>

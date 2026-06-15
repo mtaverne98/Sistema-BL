@@ -14,6 +14,7 @@ import { supabase } from '../lib/supabase'
 
 import { useQuickAdd } from '../context/QuickAddContext'
 import { useNavigation } from '../context/NavigationContext'
+import { CausaIdentChip, CausaAccordionCard, ClienteAccordionRow } from '../components/ClienteAccordion'
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal'
 import InlineField from '../components/InlineField'
 import CargaMasivaModal from '../components/CargaMasivaModal'
@@ -3038,41 +3039,33 @@ function CausasSidebar({ causas, clienteActivo, onSelect, busquedaSidebar, setBu
 }
 
 // ── Vista agrupada ────────────────────────────────────────────────────────
-function GrupoCliente({ nombre, lista, seleccionada, onSelect, forceOpen }) {
+function GrupoCliente({ nombre, lista, seleccionada, onSelect, forceOpen, clienteActivoCausasMap }) {
   const [abierto, setAbierto] = useState(forceOpen !== undefined ? forceOpen : true)
   useEffect(() => { if (forceOpen !== undefined) setAbierto(forceOpen) }, [forceOpen])
+  const hasActiveCausas = !!(clienteActivoCausasMap?.[lista[0]?.cliente_id] || clienteActivoCausasMap?.[nombre])
   return (
-    <div>
-      <button onClick={() => setAbierto(p => !p)}
-        className="w-full flex items-center gap-3 px-7 py-2.5 hover:bg-gray-50 transition-colors text-left">
-        {abierto ? <ChevronDown size={13} className="text-gray-400" /> : <ChevronRight size={13} className="text-gray-400" />}
-        <span className="text-sm font-semibold text-gray-800">{nombre}</span>
-        <span className="text-xs text-gray-400">{lista.length} causa{lista.length !== 1 ? 's' : ''}</span>
-        <div className="flex gap-1 ml-1">
-          {lista.map(c => <span key={c.id} className={`w-1.5 h-1.5 rounded-full ${ESTADO_STYLES[c.estado]?.dot ?? 'bg-gray-300'}`} />)}
-        </div>
-      </button>
-      {abierto && (
-        <div className="ml-7 border-l border-gray-100">
-          {lista.map(c => (
-            <div key={c.id}
-              onClick={() => onSelect(seleccionada?.id === c.id ? null : c)}
-              className={`flex items-center gap-4 px-5 py-2.5 cursor-pointer transition-colors border-b border-gray-50 last:border-0 ${
-                seleccionada?.id === c.id ? 'bg-blue-50/50' : 'hover:bg-gray-50'
-              } ${CERRADAS.has(normalizeEstado(c.estado)) ? 'opacity-55' : ''}`}>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs text-gray-800 truncate">{c.materia}</p>
-                {c.rit
-                  ? <CopyValue value={c.rit} className="text-[11px] text-gray-400 mt-0.5" />
-                  : <p className="text-[11px] font-mono text-gray-400 mt-0.5">—</p>
-                }
-              </div>
+    <div className="px-4 mb-2">
+      <ClienteAccordionRow
+        clienteNombre={nombre}
+        hasActiveCausas={hasActiveCausas}
+        isExpanded={abierto}
+        onToggle={() => setAbierto(p => !p)}
+        subtitle={`${lista.length} causa${lista.length !== 1 ? 's' : ''}`}
+      >
+        {lista.map(c => (
+          <CausaAccordionCard
+            key={c.id}
+            rit={c.rit}
+            ruc={c.ruc}
+            materia={c.materia}
+            rightContent={<>
               <AreaBadge area={c.area} />
               <EstadoBadge estado={c.estado} />
-            </div>
-          ))}
-        </div>
-      )}
+            </>}
+            onClick={() => onSelect(seleccionada?.id === c.id ? null : c)}
+          />
+        ))}
+      </ClienteAccordionRow>
     </div>
   )
 }
@@ -3910,8 +3903,21 @@ export default function Causas() {
                 </>
                 )
               })()) : (
-                <div className="divide-y divide-gray-50">
-                  {(() => {
+                <div className="py-4">
+                  {clienteActivo ? (
+                    <div className="px-4 space-y-1.5">
+                      {ordenadas.map(c => (
+                        <CausaAccordionCard
+                          key={c.id}
+                          rit={c.rit}
+                          ruc={c.ruc}
+                          materia={c.materia}
+                          rightContent={<><AreaBadge area={c.area} /><EstadoBadge estado={c.estado} /></>}
+                          onClick={() => { setSeleccionada(seleccionada?.id === c.id ? null : c); setFormulario(null) }}
+                        />
+                      ))}
+                    </div>
+                  ) : (() => {
                     const grupos = {}
                     ordenadas.forEach(c => {
                       if (!grupos[c.cliente_nombre]) grupos[c.cliente_nombre] = []
@@ -3927,13 +3933,14 @@ export default function Causas() {
                       .sort(([a], [b]) => a.localeCompare(b))
                       .map(([letra, gruposLetra]) => (
                         <div key={letra}>
-                          <div className="px-7 pt-5 pb-1">
+                          <div className="px-7 pt-3 pb-1">
                             <span className="text-[11px] font-bold text-gray-300 uppercase tracking-widest">{letra}</span>
                           </div>
                           {gruposLetra.map(({ nombre, lista }) => (
                             <GrupoCliente key={nombre} nombre={nombre} lista={lista}
                               seleccionada={seleccionada} onSelect={c => { setSeleccionada(c); setFormulario(null) }}
-                              forceOpen={expandTodos} />
+                              forceOpen={expandTodos}
+                              clienteActivoCausasMap={clienteActivoCausasMap} />
                           ))}
                         </div>
                       ))
