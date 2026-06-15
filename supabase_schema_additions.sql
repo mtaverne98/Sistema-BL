@@ -40,8 +40,11 @@ ALTER TABLE revisiones ADD COLUMN IF NOT EXISTS responsable    text;
 ALTER TABLE revisiones ADD COLUMN IF NOT EXISTS fecha          date;
 
 -- Índice para el upsert que usa onConflict: 'semana_key,causa_id'
+-- Solo en filas con semana_key no nulo (seguimiento diario puede tener múltiples
+-- filas null por causa_id y eso es válido)
 CREATE UNIQUE INDEX IF NOT EXISTS revisiones_semana_causa_idx
-  ON revisiones (semana_key, causa_id);
+  ON revisiones (semana_key, causa_id)
+  WHERE semana_key IS NOT NULL;
 
 -- RLS (por si no está habilitado en las tablas nuevas)
 ALTER TABLE revisiones ENABLE ROW LEVEL SECURITY;

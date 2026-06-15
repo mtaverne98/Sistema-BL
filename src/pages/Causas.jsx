@@ -962,7 +962,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
     supabase.from('revisiones').select('fecha,responsable,nota,proxima_accion,semana_key').eq('causa_id', causa.id)
       .order('fecha', { ascending: false }).limit(3)
       .then(({ data }) => {
-        const teamRev = (data ?? []).find(r => !r.semana_key?.startsWith('SEG-'))
+        const teamRev = (data ?? []).find(r => /^\d{4}-W\d{2}$/.test(r.semana_key ?? ''))
         setLastRevision(teamRev ?? null)
       })
   }, [causa?.id])
@@ -997,7 +997,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
     if (revisiones.length > 0) return // already loaded
     setLoadingRev(true)
     supabase.from('revisiones').select('*').eq('causa_id', causa.id)
-      .not('semana_key', 'is', null)
+      .like('semana_key', '____-W%')
       .order('fecha', { ascending: false })
       .then(({ data }) => { setRevisiones(data ?? []); setLoadingRev(false) })
   }, [tab, causa?.id])
@@ -1236,6 +1236,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
     .filter(p => p.fecha_vencimiento >= TODAY_C && p.estado !== 'Vencido')
     .sort((a, b) => a.fecha_vencimiento.localeCompare(b.fecha_vencimiento))[0]
   const tareasPend = tareas.filter(t => t.estado !== 'Completada').length
+  const isTeamRev = r => /^\d{4}-W\d{2}$/.test(r.semana_key ?? '')
 
   return (
     <>
@@ -1426,7 +1427,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
             return dias >= 0 && dias <= 7
           }).length
 
-          const segCount = (segRows.length || 0) + (revisiones.filter(r => r.semana_key && !r.semana_key.startsWith('SEG-')).length || 0)
+          const segCount = (segRows.length || 0) + (revisiones.filter(isTeamRev).length || 0)
           const chips = [
             { key: 'resumen',     Icon: AlignLeft,   label: 'Resumen',     count: null,                    urgent: false },
             { key: 'siau',        Icon: Database,    label: 'SIAU',        count: siauRows.length || null, urgent: siauRows.some(r => r.estado === 'Urgente') },
@@ -1858,7 +1859,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
               <div>
                 <h3 className="text-[15px] font-semibold text-[#1C2533]">Bitácora de revisiones</h3>
                 <p className="text-[11px] text-gray-400 mt-0.5">
-                  Historial de revisiones de equipo · {revisiones.filter(r => !r.semana_key?.startsWith('SEG-')).length} registros
+                  Historial de revisiones de equipo · {revisiones.filter(isTeamRev).length} registros
                 </p>
               </div>
               {!showRevForm && (
@@ -1995,7 +1996,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
               <div className="flex justify-center py-12">
                 <Loader2 size={18} className="animate-spin text-gray-300" />
               </div>
-            ) : revisiones.filter(r => !r.semana_key?.startsWith('SEG-')).length === 0 ? (
+            ) : revisiones.filter(isTeamRev).length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-center">
                 <RefreshCw size={28} className="text-gray-200 mb-3" />
                 <p className="text-[13px] text-gray-400 font-medium">Sin revisiones de equipo registradas</p>
@@ -2013,7 +2014,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
               <div className="relative">
                 <div className="absolute left-[9px] top-3 bottom-3 w-px bg-gray-100" />
                 <div className="space-y-5">
-                  {revisiones.filter(r => !r.semana_key?.startsWith('SEG-')).map((rev, i) => {
+                  {revisiones.filter(isTeamRev).map((rev, i) => {
                     const weekNum = rev.semana_key ? parseInt(rev.semana_key.split('-W')[1]) : null
                     const year    = rev.semana_key ? parseInt(rev.semana_key.split('-W')[0]) : null
                     const isFirst = i === 0
@@ -2230,7 +2231,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
               completada: t.estado === 'Completada',
               navTab: 'tareas',
             })),
-            ...revisiones.filter(r => !r.semana_key?.startsWith('SEG-')).map(r => ({
+            ...revisiones.filter(isTeamRev).map(r => ({
               id: `r-${r.id}`, fecha: r.fecha, tipo: 'Revisión',
               titulo: r.proxima_accion || 'Revisión semanal',
               subtitulo: RESPONSABLE_NAMES_C[r.responsable] || r.responsable || null,
