@@ -791,6 +791,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
   useEffect(() => {
     const handler = () => {
       if (tab === 'seguimiento') { setNewSegRow({ fecha_revision: TODAY_C, por_hacer: '', que_se_hizo: 'Pendiente' }); return }
+      if (tab === 'revisiones') { document.querySelector('[data-nueva-revision]')?.click(); return }
       if (tab === 'pjud' || tab === 'siau') { document.querySelector('[data-cmd-n]')?.click(); return }
       // Para otros tabs: disparar clic en el botón "+ Nuevo" de esa tab
       const newBtn = document.querySelector('[data-cmd-n]')
@@ -993,7 +994,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
 
   // Load revisiones when tab opens (or on mount for timeline)
   useEffect(() => {
-    if ((tab !== 'seguimiento' && tab !== 'resumen') || !causa?.id) return
+    if ((tab !== 'seguimiento' && tab !== 'revisiones' && tab !== 'resumen') || !causa?.id) return
     if (revisiones.length > 0) return // already loaded
     setLoadingRev(true)
     supabase.from('revisiones').select('*').eq('causa_id', causa.id)
@@ -1007,7 +1008,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
 
   // Load seguimiento rows — includes null semana_key (daily) and SEG- (bulk-imported historical)
   useEffect(() => {
-    if ((tab !== 'seguimiento' && tab !== 'resumen') || !causa?.id) return
+    if ((tab !== 'seguimiento' && tab !== 'revisiones' && tab !== 'resumen') || !causa?.id) return
     setLoadingSeg(true)
     // Filter by causa_rit (primary) or causa_id (fallback) to catch all records
     const query = causa.rit
@@ -1427,7 +1428,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
             return dias >= 0 && dias <= 7
           }).length
 
-          const segCount = (segRows.length || 0) + (revisiones.filter(isTeamRev).length || 0)
+          const revCount = revisiones.filter(isTeamRev).length
           const chips = [
             { key: 'resumen',     Icon: AlignLeft,   label: 'Resumen',     count: null,                    urgent: false },
             { key: 'siau',        Icon: Database,    label: 'SIAU',        count: siauRows.length || null, urgent: siauRows.some(r => r.estado === 'Urgente') },
@@ -1436,7 +1437,8 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
             { key: 'tareas',      Icon: CheckSquare, label: 'Tareas',      count: tareasPend,              urgent: tareasUrgentes > 0 },
             { key: 'plazos',      Icon: Clock,       label: 'Plazos',      count: plazosActivos,           urgent: plazosUrgentes > 0 },
             { key: 'documentos',  Icon: FileText,    label: 'Docs',        count: null,                    urgent: false },
-            { key: 'seguimiento', Icon: Target,      label: 'Seguimiento', count: segCount || null,        urgent: false },
+            { key: 'seguimiento', Icon: Target,      label: 'Seguimiento', count: segRows.length || null,  urgent: false },
+            { key: 'revisiones',  Icon: BookOpen,    label: 'Revisiones',  count: revCount || null,        urgent: false },
           ]
           return (
             <div className="flex items-center gap-1.5 pb-3 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
@@ -1851,9 +1853,9 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
           )
         })()}
 
-        {/* REVISIONES FORMALES (dentro de Seguimiento) */}
+        {/* REVISIONES FORMALES */}
 
-        {tab === 'seguimiento' && (
+        {tab === 'revisiones' && (
           <div className="px-8 py-6">
             <div className="flex items-center justify-between mb-6">
               <div>
@@ -1864,6 +1866,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
               </div>
               {!showRevForm && (
                 <button
+                  data-nueva-revision
                   onClick={() => setShowRevForm(true)}
                   className="flex items-center gap-1.5 text-[12px] font-medium text-white px-3.5 py-2 rounded-lg transition-colors hover:opacity-90"
                   style={{ backgroundColor: '#2570BA' }}
