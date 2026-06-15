@@ -388,8 +388,8 @@ function WeekRow({ week, semana, audiencias, tareas, isCurrent, isPast,
 
   return (
     <div>
-      <button onClick={() => setExpanded(v => !v)}
-        className="w-full flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-gray-50 transition-colors text-left group">
+      <button onClick={() => { if (!isCurrent) setExpanded(v => !v) }}
+        className={`w-full flex items-center gap-2 px-2 py-2 rounded-lg transition-colors text-left group ${isCurrent ? 'cursor-default' : 'hover:bg-gray-50'}`}>
         <div className={`w-1 h-1 rounded-full flex-shrink-0 ${isCurrent ? 'bg-[#2570BA]' : isPast ? 'bg-gray-200' : 'bg-gray-300'}`} />
         <span className={`text-[11px] font-semibold uppercase tracking-widest flex-1 ${
           isCurrent ? 'text-[#1a2e4a]' : isPast ? 'text-gray-300' : 'text-gray-500'
@@ -404,18 +404,18 @@ function WeekRow({ week, semana, audiencias, tareas, isCurrent, isPast,
         {count > 0 && (
           <span className={`text-[10px] flex-shrink-0 ${isPast ? 'text-gray-200' : 'text-gray-400'}`}>{count}</span>
         )}
-        {expanded
+        {!isCurrent && (expanded
           ? <ChevronDown  size={11} className={`flex-shrink-0 ${isPast ? 'text-gray-200' : 'text-gray-400'}`} />
-          : <ChevronRight size={11} className={`flex-shrink-0 ${isPast ? 'text-gray-200' : 'text-gray-400'}`} />}
+          : <ChevronRight size={11} className={`flex-shrink-0 ${isPast ? 'text-gray-200' : 'text-gray-400'}`} />)}
       </button>
 
-      {expanded && (
+      {(isCurrent || expanded) && (
         <div className="ml-3 pl-3 border-l border-gray-100 pb-1 mt-0.5 mb-1">
-          {activeDays.length === 0 && (
+          {!isCurrent && activeDays.length === 0 && (
             <p className="py-1.5 text-[11px] text-gray-300 italic">Sin actividad registrada</p>
           )}
 
-          {activeDays.map(date => {
+          {(isCurrent ? displayDays : activeDays).map(date => {
             const auds   = audiencias.filter(a => a.fecha === date)
             const tars   = tareas.filter(t => t.fecha_vencimiento === date && t.estado !== 'Completada')
             const custom = semana[date] || []
@@ -501,6 +501,9 @@ function WeekRow({ week, semana, audiencias, tareas, isCurrent, isPast,
                       onMove={id => onMove(date, id)} />
                   </div>
                 ))}
+                {isCurrent && (
+                  <InlineAdd onAdd={text => onAdd(date, text)} placeholder="Agregar..." />
+                )}
               </div>
             )
           })}
@@ -705,7 +708,6 @@ export default function Apuntes() {
         for (const r of rows || []) {
           const key = `${tipo}-${r.causa_rit || r.id}`
           const dias = daysSince(r.fecha)
-          if (dias < 10) continue
           if (!byKey.has(key) || dias > byKey.get(key).dias)
             byKey.set(key, { ...r, tipo, dias })
         }
@@ -903,7 +905,7 @@ export default function Apuntes() {
                 <p className="text-[11px] text-gray-300 italic">Sin solicitudes pendientes &gt;10 días.</p>
               ) : (
                 <div className="space-y-0.5">
-                  {esperando.slice(0, 25).map(item => (
+                  {esperando.map(item => (
                     <button
                       key={`${item.tipo}-${item.id}`}
                       onClick={() => item.causa_rit && navigate(`/causas?rit=${item.causa_rit}`)}
@@ -923,14 +925,6 @@ export default function Apuntes() {
                       </span>
                     </button>
                   ))}
-                  {esperando.length > 25 && (
-                    <div className="flex items-center gap-2 pt-1">
-                      <button onClick={() => navigate('/siau')}
-                        className="text-[10px] text-gray-400 hover:text-[#2570BA] transition-colors">
-                        y {esperando.length - 25} más → ver SIAU/PJUD
-                      </button>
-                    </div>
-                  )}
                 </div>
               )}
             </RightSection>

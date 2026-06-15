@@ -161,16 +161,6 @@ const ACCION_STYLES_C = {
   'Otro':                   'bg-gray-50 text-gray-400',
 }
 
-const CAUSA_TABS = [
-  { key: 'resumen',     label: 'Resumen',     Icon: AlignLeft     },
-  { key: 'siau',        label: 'SIAU',        Icon: MessageSquare },
-  { key: 'pjud',        label: 'PJUD',        Icon: Scale         },
-  { key: 'audiencias',  label: 'Audiencias',  Icon: Gavel         },
-  { key: 'tareas',      label: 'Tareas',      Icon: CheckSquare   },
-  { key: 'plazos',      label: 'Plazos',      Icon: Clock         },
-  { key: 'documentos',  label: 'Documentos',  Icon: FileText      },
-  { key: 'seguimiento', label: 'Seguimiento', Icon: Target        },
-]
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 function EstadoBadge({ estado }) {
@@ -774,15 +764,22 @@ function FormCausa({ inicial, onClose, onGuardar, guardando, clientes = [], onCr
 }
 
 // ── CellDropdown — Dropdown flotante para edición inline en tabla ─────────
-function CellDropdown({ value, options, onSelect, onClose, renderOption }) {
+// Usa position:fixed con coordenadas de pantalla para evitar recorte por overflow
+function CellDropdown({ value, options, onSelect, onClose, renderOption, rect }) {
   const ref = useRef()
   useEffect(() => {
     const h = e => { if (ref.current && !ref.current.contains(e.target)) onClose() }
     document.addEventListener('mousedown', h, true)
     return () => document.removeEventListener('mousedown', h, true)
   }, [onClose])
+
+  const style = rect
+    ? { position: 'fixed', top: rect.bottom + 2, left: rect.left, minWidth: Math.max(rect.width, 150), zIndex: 9999, boxShadow: '0 8px 30px rgba(0,0,0,0.12)' }
+    : { boxShadow: '0 8px 30px rgba(0,0,0,0.12)' }
+  const posClass = rect ? '' : 'absolute top-full left-0 mt-0.5'
+
   return (
-    <div ref={ref} className="absolute z-[200] top-full left-0 mt-0.5 bg-white border border-gray-100 rounded-xl shadow-xl min-w-[150px] overflow-hidden py-1" style={{ boxShadow: '0 8px 30px rgba(0,0,0,0.12)' }}>
+    <div ref={ref} className={`${posClass} bg-white border border-gray-100 rounded-xl shadow-xl min-w-[150px] overflow-hidden py-1`} style={style}>
       {options.map(opt => (
         <button key={opt} onMouseDown={e => { e.preventDefault(); e.stopPropagation(); onSelect(opt) }}
           className={`w-full text-left px-3 py-2 text-xs transition-colors flex items-center gap-2 ${opt === value ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-gray-700 hover:bg-gray-50'}`}>
@@ -1276,10 +1273,10 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
       )}
 
       {/* ── HEADER ── */}
-      <div className="flex-shrink-0 px-8 pt-6 pb-0 border-b border-gray-100">
+      <div className="flex-shrink-0 px-8 pt-5 pb-0 border-b border-gray-100">
 
         {/* Breadcrumb + actions */}
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-3">
 
           {/* Breadcrumb: Causas › Cliente */}
           <div className="flex items-center gap-1 text-[12px] text-gray-400 min-w-0">
@@ -1331,7 +1328,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
         </div>
 
         {/* Cliente como link + materia editable inline */}
-        <div className="mb-3">
+        <div className="mb-2">
           {causa.cliente_nombre && (
             <button
               onClick={() => onNavigateToCliente?.(causa.cliente_nombre)}
@@ -1351,95 +1348,108 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
           />
         </div>
 
-        {/* Badges: área, estado (dropdown inline), parte, etapa, RIT, RUC */}
-        <div className="flex items-center gap-2 flex-wrap mb-3">
-          <AreaBadge area={causa.area} />
+        {/* ── Franja de identidad ── */}
+        <div className="flex items-center gap-x-2 gap-y-1 flex-wrap mb-2">
+          {/* Estado — único elemento con color */}
           {onUpdate
             ? <EstadoDropdown estado={causa.estado} onCambiar={e => onUpdate({ estado: e })} />
             : <EstadoBadge estado={causa.estado} />
           }
-          <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">{causa.parte}</span>
-          {causa.etapa_procesal && (
-            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600">
-              {causa.etapa_procesal}
+          {/* Área · Parte · Etapa en gris, separados por punto medio */}
+          {[causa.area, causa.parte, causa.etapa_procesal].filter(Boolean).map((v, i) => (
+            <span key={i} className="flex items-center gap-2">
+              <span className="text-gray-200">·</span>
+              <span className="text-[12px] text-gray-400">{v}</span>
+            </span>
+          ))}
+          {/* Tribunal — inline editable, solo si tiene valor */}
+          {causa.tribunal && (
+            <span className="flex items-center gap-2">
+              <span className="text-gray-200">·</span>
+              <InlineField
+                value={causa.tribunal}
+                onSave={v => onUpdate?.({ tribunal: v.trim() || null })}
+                placeholder=""
+                textClassName="text-[12px] text-gray-400"
+                inputClassName="text-[12px] w-52"
+              />
             </span>
           )}
-          {causa.rit && (
-            <CopyValue value={causa.rit} prefix="RIT" chipStyle chipColor="violet" />
+          {/* Fiscalía — solo si tiene valor */}
+          {causa.fiscalia && (
+            <span className="flex items-center gap-2">
+              <span className="text-gray-200">·</span>
+              <InlineField
+                value={causa.fiscalia}
+                onSave={v => onUpdate?.({ fiscalia: v.trim() || null })}
+                placeholder=""
+                textClassName="text-[12px] text-gray-400"
+                inputClassName="text-[12px] w-48"
+              />
+            </span>
           )}
-          {causa.ruc && (
-            <CopyValue value={causa.ruc} prefix="RUC" chipStyle chipColor="cyan" />
+          {/* Fiscal — solo si tiene valor */}
+          {causa.fiscal && (
+            <span className="flex items-center gap-2">
+              <span className="text-gray-200">·</span>
+              <InlineField
+                value={causa.fiscal}
+                onSave={v => onUpdate?.({ fiscal: v.trim() || null })}
+                placeholder=""
+                textClassName="text-[12px] text-gray-400"
+                inputClassName="text-[12px] w-36"
+              />
+            </span>
+          )}
+          {/* RIT | RUC — extremo derecho, mono gris sin fondos de color */}
+          {(causa.rit || causa.ruc) && (
+            <div className="ml-auto flex items-center gap-1.5 flex-shrink-0">
+              {causa.rit && (
+                <CopyValue value={causa.rit} prefix="RIT" className="text-[11px] text-gray-400" />
+              )}
+              {causa.rit && causa.ruc && <span className="text-gray-200 text-[11px]">|</span>}
+              {causa.ruc && (
+                <CopyValue value={causa.ruc} prefix="RUC" className="text-[11px] text-gray-400" />
+              )}
+            </div>
           )}
         </div>
 
-        {/* Info row: tribunal / fiscalía / fiscal — todos inline editables */}
-        <div className="flex items-center gap-3 flex-wrap mb-3">
-          {/* Tribunal */}
-          <div className="flex items-center gap-1.5">
-            <Gavel size={11} className="text-gray-300 flex-shrink-0" />
-            <InlineField
-              value={causa.tribunal || ''}
-              onSave={v => onUpdate?.({ tribunal: v.trim() || null })}
-              placeholder="Tribunal…"
-              textClassName="text-[12px] text-gray-600"
-              inputClassName="text-[12px] w-52"
-            />
-          </div>
-          {/* Fiscalía */}
-          <div className="flex items-center gap-1.5">
-            <Scale size={11} className="text-gray-300 flex-shrink-0" />
-            <InlineField
-              value={causa.fiscalia || ''}
-              onSave={v => onUpdate?.({ fiscalia: v.trim() || null })}
-              placeholder="Fiscalía…"
-              textClassName="text-[12px] text-gray-600"
-              inputClassName="text-[12px] w-52"
-            />
-          </div>
-          {/* Fiscal */}
-          <div className="flex items-center gap-1.5 bg-slate-50 px-2 py-0.5 rounded-lg">
-            <UserCheck size={10} className="text-slate-400 flex-shrink-0" />
-            <InlineField
-              value={causa.fiscal || ''}
-              onSave={v => onUpdate?.({ fiscal: v.trim() || null })}
-              placeholder="Fiscal…"
-              textClassName="text-[11px] text-slate-600 font-medium"
-              inputClassName="text-[11px] w-36"
-            />
-          </div>
-          {/* Próxima audiencia (chip informativo) */}
-          {proxAudiencia && (
-            <button
-              onClick={() => setTab('audiencias')}
-              className="flex items-center gap-1.5 bg-purple-50 px-2.5 py-1 rounded-lg hover:bg-purple-100 transition-colors"
-            >
-              <Calendar size={10} className="text-purple-400 flex-shrink-0" />
-              <span className="text-[11px] font-medium text-purple-700">
-                {fmtFechaCausa(proxAudiencia.fecha)}
-                {proxAudiencia.hora ? ` · ${proxAudiencia.hora}` : ''}
-              </span>
-            </button>
-          )}
-          {/* Plazo crítico (chip informativo) */}
-          {proxPlazo && (() => {
-            const dias = Math.round((new Date(proxPlazo.fecha_vencimiento) - new Date(TODAY_C)) / 86400000)
-            const urgente = dias <= 5
-            return (
+        {/* Chips informativos — próxima audiencia y plazo crítico */}
+        {(proxAudiencia || proxPlazo) && (
+          <div className="flex items-center gap-2 flex-wrap mb-2">
+            {proxAudiencia && (
               <button
-                onClick={() => setTab('plazos')}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg transition-colors ${urgente ? 'bg-red-50 hover:bg-red-100' : 'bg-amber-50 hover:bg-amber-100'}`}
+                onClick={() => setTab('audiencias')}
+                className="flex items-center gap-1.5 bg-purple-50 px-2.5 py-1 rounded-lg hover:bg-purple-100 transition-colors"
               >
-                <Clock size={10} className={urgente ? 'text-red-400 flex-shrink-0' : 'text-amber-400 flex-shrink-0'} />
-                <span className={`text-[11px] font-medium ${urgente ? 'text-red-700' : 'text-amber-700'}`}>
-                  {fmtFechaCausa(proxPlazo.fecha_vencimiento)}
-                  {dias === 0 ? ' · hoy' : dias === 1 ? ' · mañana' : ` · ${dias}d`}
+                <Calendar size={10} className="text-purple-400 flex-shrink-0" />
+                <span className="text-[11px] font-medium text-purple-700">
+                  {fmtFechaCausa(proxAudiencia.fecha)}
+                  {proxAudiencia.hora ? ` · ${proxAudiencia.hora}` : ''}
                 </span>
               </button>
-            )
-          })()}
-        </div>
+            )}
+            {proxPlazo && (() => {
+              const dias = Math.round((new Date(proxPlazo.fecha_vencimiento) - new Date(TODAY_C)) / 86400000)
+              const urgente = dias <= 5
+              return (
+                <button
+                  onClick={() => setTab('plazos')}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg transition-colors ${urgente ? 'bg-red-50 hover:bg-red-100' : 'bg-amber-50 hover:bg-amber-100'}`}
+                >
+                  <Clock size={10} className={urgente ? 'text-red-400 flex-shrink-0' : 'text-amber-400 flex-shrink-0'} />
+                  <span className={`text-[11px] font-medium ${urgente ? 'text-red-700' : 'text-amber-700'}`}>
+                    {fmtFechaCausa(proxPlazo.fecha_vencimiento)}
+                    {dias === 0 ? ' · hoy' : dias === 1 ? ' · mañana' : ` · ${dias}d`}
+                  </span>
+                </button>
+              )
+            })()}
+          </div>
+        )}
 
-        {/* ── Chips de conteo por tab — accesos rápidos con badge ── */}
+        {/* ── Tabs unificadas ── */}
         {(() => {
           const plazosActivos = plazos.filter(p => p.estado === 'Activo').length
           const plazosUrgentes = plazos.filter(p => {
@@ -1451,7 +1461,6 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
             const dias = Math.round((new Date(a.fecha + 'T00:00:00') - new Date(TODAY_C + 'T00:00:00')) / 86400000)
             return dias >= 0 && dias <= 7
           }).length
-
           const revCount = revisiones.filter(isTeamRev).length
           const chips = [
             { key: 'resumen',     Icon: AlignLeft,   label: 'Resumen',     count: null,                    urgent: false },
@@ -3604,7 +3613,7 @@ export default function Causas() {
               ) : vista === 'tabla' ? ((() => {
                 // ── helpers inline ────────────────────────────────────────
                 const isEditing = (id, field) => tableEdit?.id === id && tableEdit?.field === field
-                const startEdit = (e, id, field) => { e.stopPropagation(); setTableEdit({ id, field }) }
+                const startEdit = (e, id, field) => { e.stopPropagation(); const rect = e.currentTarget.getBoundingClientRect(); setTableEdit({ id, field, rect }) }
 
                 const allVisible   = ordenadas
                 const allSelected  = allVisible.length > 0 && allVisible.every(c => selectedIds.has(c.id))
@@ -3763,7 +3772,7 @@ export default function Causas() {
                                 <ChevronDown size={9} className="text-gray-300" />
                               </button>
                               {isEditing(c.id, 'parte') && (
-                                <CellDropdown value={c.parte} options={parteOpts} onClose={() => setTableEdit(null)}
+                                <CellDropdown value={c.parte} options={parteOpts} rect={tableEdit?.rect} onClose={() => setTableEdit(null)}
                                   onSelect={v => quickUpdate(c.id, 'parte', v)} />
                               )}
                             </td>
@@ -3808,7 +3817,7 @@ export default function Causas() {
                                 <AreaBadge area={c.area} />
                               </button>
                               {isEditing(c.id, 'area') && (
-                                <CellDropdown value={c.area} options={AREAS} onClose={() => setTableEdit(null)}
+                                <CellDropdown value={c.area} options={AREAS} rect={tableEdit?.rect} onClose={() => setTableEdit(null)}
                                   onSelect={v => quickUpdate(c.id, 'area', v)}
                                   renderOption={v => <><span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium ${AREA_STYLES[v] || 'bg-gray-100 text-gray-500'}`}>{v}</span></>} />
                               )}
@@ -3822,7 +3831,7 @@ export default function Causas() {
                                 <ChevronDown size={9} className="text-gray-300 flex-shrink-0" />
                               </button>
                               {isEditing(c.id, 'etapa_procesal') && (
-                                <CellDropdown value={c.etapa_procesal} options={ETAPAS[areaGroup] ?? ETAPAS.general} onClose={() => setTableEdit(null)}
+                                <CellDropdown value={c.etapa_procesal} options={ETAPAS[areaGroup] ?? ETAPAS.general} rect={tableEdit?.rect} onClose={() => setTableEdit(null)}
                                   onSelect={v => quickUpdate(c.id, 'etapa_procesal', v)} />
                               )}
                             </td>
@@ -3839,7 +3848,7 @@ export default function Causas() {
                                 ) : <span className="text-xs text-gray-300">—</span>}
                               </button>
                               {isEditing(c.id, 'responsable') && (
-                                <CellDropdown value={c.responsable} options={Object.keys(RESPONSABLE_NAMES_C)} onClose={() => setTableEdit(null)}
+                                <CellDropdown value={c.responsable} options={Object.keys(RESPONSABLE_NAMES_C)} rect={tableEdit?.rect} onClose={() => setTableEdit(null)}
                                   onSelect={v => quickUpdate(c.id, 'responsable', v)}
                                   renderOption={v => (
                                     <div className="flex items-center gap-2">
@@ -3862,7 +3871,7 @@ export default function Causas() {
                                 ) : <span className="text-xs text-gray-300">—</span>}
                               </button>
                               {isEditing(c.id, 'prioridad') && (
-                                <CellDropdown value={c.prioridad} options={PRIORIDADES} onClose={() => setTableEdit(null)}
+                                <CellDropdown value={c.prioridad} options={PRIORIDADES} rect={tableEdit?.rect} onClose={() => setTableEdit(null)}
                                   onSelect={v => quickUpdate(c.id, 'prioridad', v)}
                                   renderOption={v => <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium ${PRIORIDAD_STYLES[v]}`}>{v}</span>} />
                               )}
@@ -3875,7 +3884,7 @@ export default function Causas() {
                                 <EstadoBadge estado={c.estado} />
                               </button>
                               {isEditing(c.id, 'estado') && (
-                                <CellDropdown value={c.estado} options={ESTADOS} onClose={() => setTableEdit(null)}
+                                <CellDropdown value={c.estado} options={ESTADOS} rect={tableEdit?.rect} onClose={() => setTableEdit(null)}
                                   onSelect={v => quickUpdate(c.id, 'estado', v)}
                                   renderOption={v => {
                                     const s = ESTADO_STYLES[v] ?? ESTADO_STYLES['Abierta']
