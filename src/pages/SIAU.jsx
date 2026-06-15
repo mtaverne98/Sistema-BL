@@ -749,18 +749,23 @@ export default function SIAU() {
   const navigate = useNavigate()
   const { activeCausa, setActiveCausa } = useNavigation()
 
+  const [_ps] = useState(() => {
+    try { return JSON.parse(sessionStorage.getItem('ps.siau') ?? 'null') ?? {} }
+    catch { return {} }
+  })
+
   const [registros,  setRegistros]  = useState([])
   const [allCausas,  setAllCausas]  = useState([])
   const [cargando,   setCargando]   = useState(true)
   const [clienteHasActiveCausasMap, setClienteHasActiveCausasMap] = useState({})
   const [expandedSet,    setExpanded]       = useState(new Set())
-  const [search,         setSearch]         = useState('')
+  const [search,         setSearch]         = useState(_ps.search ?? '')
   const [showForm,       setShowForm]       = useState(false)
 
   // Navigation
-  const [view,           setView]            = useState('clientes')
-  const [selCliente,     setSelCliente]      = useState(null) // string
-  const [selCausaKey,    setSelCausaKey]     = useState(null) // UUID (causa.id)
+  const [view,           setView]            = useState(_ps.view ?? 'clientes')
+  const [selCliente,     setSelCliente]      = useState(_ps.selCliente ?? null) // string
+  const [selCausaKey,    setSelCausaKey]     = useState(_ps.selCausaKey ?? null) // UUID (causa.id)
   const [fromCausa,      setFromCausa]       = useState(false)
 
   const fetchRegistros = useCallback(async () => {
@@ -900,6 +905,17 @@ export default function SIAU() {
     setView('clientes')
     if (to === 'clientes') { setSelCliente(null); setSelCausaKey(null) }
   }
+
+  // Keep state ref synced for the unmount closure
+  const _stRef = useRef({})
+  useEffect(() => {
+    _stRef.current = { search, view, selCliente, selCausaKey }
+  }, [search, view, selCliente, selCausaKey])
+
+  // Save on unmount
+  useEffect(() => () => {
+    sessionStorage.setItem('ps.siau', JSON.stringify(_stRef.current))
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggleExpanded = (nombre) => setExpanded(prev => {
     const next = new Set(prev); next.has(nombre) ? next.delete(nombre) : next.add(nombre); return next

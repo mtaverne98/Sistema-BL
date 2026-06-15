@@ -868,16 +868,21 @@ function FormNuevoPlazo({ onSave, onClose, allCausas = [] }) {
 
 // ── Main: Plazos ───────────────────────────────────────────────────────────────
 export default function Plazos() {
+  const [_ps] = useState(() => {
+    try { return JSON.parse(sessionStorage.getItem('ps.plazos') ?? 'null') ?? {} }
+    catch { return {} }
+  })
+
   const [plazos,          setPlazos]          = useState([])
   const [allCausas,       setAllCausas]       = useState([])
   const [tareas,          setTareas]          = useState([])
   const [cargando,        setCargando]        = useState(true)
   const [error,           setError]           = useState(null)
-  const [search,          setSearch]          = useState('')
-  const [filterTipo,      setFilterTipo]      = useState('Todos')
-  const [filterResp,      setFilterResp]      = useState('Todas')
-  const [filterEstado,    setFilterEstado]    = useState('Activos')
-  const [groupBy,         setGroupBy]         = useState('urgencia')
+  const [search,          setSearch]          = useState(_ps.search ?? '')
+  const [filterTipo,      setFilterTipo]      = useState(_ps.filterTipo ?? 'Todos')
+  const [filterResp,      setFilterResp]      = useState(_ps.filterResp ?? 'Todas')
+  const [filterEstado,    setFilterEstado]    = useState(_ps.filterEstado ?? 'Activos')
+  const [groupBy,         setGroupBy]         = useState(_ps.groupBy ?? 'urgencia')
   const [selectedId,      setSelectedId]      = useState(null)
   const [showForm,        setShowForm]        = useState(false)
   const [dismissedBanner, setDismissedBanner] = useState(false)
@@ -938,6 +943,17 @@ export default function Plazos() {
     window.addEventListener('modal:close', fn)
     return () => window.removeEventListener('modal:close', fn)
   }, [showForm, selectedId])
+
+  // Keep state ref synced for the unmount closure
+  const _stRef = useRef({})
+  useEffect(() => {
+    _stRef.current = { search, filterTipo, filterResp, filterEstado, groupBy }
+  }, [search, filterTipo, filterResp, filterEstado, groupBy])
+
+  // Save on unmount
+  useEffect(() => () => {
+    sessionStorage.setItem('ps.plazos', JSON.stringify(_stRef.current))
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Metrics ──
   const metrics = useMemo(() => {

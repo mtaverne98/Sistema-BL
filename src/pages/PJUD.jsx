@@ -1115,6 +1115,11 @@ export default function PJUD() {
   const navigate = useNavigate()
   const { activeCausa } = useNavigation()
 
+  const [_ps] = useState(() => {
+    try { return JSON.parse(sessionStorage.getItem('ps.pjud') ?? 'null') ?? {} }
+    catch { return {} }
+  })
+
   const [rows,       setRows]       = useState([])
   const [causasInfo, setCausasInfo] = useState([])
   const [cargando,   setCargando]   = useState(true)
@@ -1122,16 +1127,16 @@ export default function PJUD() {
   const [error,      setError]      = useState(null)
 
   // Navigation: 'clientes' | 'tabla'
-  const [view,        setView]       = useState('clientes')
-  const [selCliente,  setSelCliente] = useState(null)   // string
-  const [selCausaKey, setSelCausaKey] = useState(null)  // UUID (causa.id)
+  const [view,        setView]       = useState(_ps.view ?? 'clientes')
+  const [selCliente,  setSelCliente] = useState(_ps.selCliente ?? null)   // string
+  const [selCausaKey, setSelCausaKey] = useState(_ps.selCausaKey ?? null)  // UUID (causa.id)
   const [fromCausa,   setFromCausa]  = useState(false)  // vinimos desde CausaView
 
   // Accordion
   const [expandedSet, setExpanded] = useState(new Set())
 
   // Filters (client list)
-  const [search, setSearch] = useState('')
+  const [search, setSearch] = useState(_ps.search ?? '')
 
   // Modals
   const [showNuevaSolicitud, setShowNuevaSolicitud] = useState(false)
@@ -1303,6 +1308,17 @@ export default function PJUD() {
     setView('clientes')
     if (to === 'clientes') { setSelCliente(null); setSelCausaKey(null) }
   }
+
+  // Keep state ref synced for the unmount closure
+  const _stRef = useRef({})
+  useEffect(() => {
+    _stRef.current = { search, view, selCliente, selCausaKey }
+  }, [search, view, selCliente, selCausaKey])
+
+  // Save on unmount
+  useEffect(() => () => {
+    sessionStorage.setItem('ps.pjud', JSON.stringify(_stRef.current))
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Tabla view ──
   if (view === 'tabla' && selectedCausaData) {

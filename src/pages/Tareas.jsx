@@ -1127,19 +1127,24 @@ export default function Tareas() {
   const navigate = useNavigate()
   const { setActiveCausa } = useNavigation()
 
+  const [_ps] = useState(() => {
+    try { return JSON.parse(sessionStorage.getItem('ps.tareas') ?? 'null') ?? {} }
+    catch { return {} }
+  })
+
   const [tareas,       setTareas]       = useState([])
   const [allCausas,    setAllCausas]    = useState([])
   const [cargando,     setCargando]     = useState(true)
   const [error,        setError]        = useState(null)
   const [seleccionada, setSeleccionada] = useState(null)
   const [showForm,     setShowForm]     = useState(false)
-  const [busqueda,     setBusqueda]     = useState('')
-  const [groupBy,      setGroupBy]      = useState('Por fecha')
+  const [busqueda,     setBusqueda]     = useState(_ps.busqueda ?? '')
+  const [groupBy,      setGroupBy]      = useState(_ps.groupBy ?? 'Por fecha')
 
-  const [fEstado,      setFEstado]      = useState('Todos')
-  const [fPrioridad,   setFPrioridad]   = useState('Todas')
-  const [fResp,        setFResp]        = useState('Todas')
-  const [fCategoria,   setFCategoria]   = useState('Todas')
+  const [fEstado,      setFEstado]      = useState(_ps.fEstado ?? 'Todos')
+  const [fPrioridad,   setFPrioridad]   = useState(_ps.fPrioridad ?? 'Todas')
+  const [fResp,        setFResp]        = useState(_ps.fResp ?? 'Todas')
+  const [fCategoria,   setFCategoria]   = useState(_ps.fCategoria ?? 'Todas')
   const [deleteTarget, setDeleteTarget] = useState(null)
 
   const panelOpen = !!(seleccionada || showForm)
@@ -1198,6 +1203,17 @@ export default function Tareas() {
     window.addEventListener('modal:close', fn)
     return () => window.removeEventListener('modal:close', fn)
   }, [showForm, seleccionada])
+
+  // Keep state ref synced for the unmount closure
+  const _stRef = useRef({})
+  useEffect(() => {
+    _stRef.current = { busqueda, groupBy, fEstado, fPrioridad, fResp, fCategoria }
+  }, [busqueda, groupBy, fEstado, fPrioridad, fResp, fCategoria])
+
+  // Save on unmount
+  useEffect(() => () => {
+    sessionStorage.setItem('ps.tareas', JSON.stringify(_stRef.current))
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Lista de clientes para los selects
   const clientesLista = useMemo(() => {

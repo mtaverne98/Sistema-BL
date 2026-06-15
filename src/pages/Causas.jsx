@@ -3079,6 +3079,11 @@ function GrupoCliente({ nombre, lista, seleccionada, onSelect, forceOpen }) {
 
 // ── Componente principal ──────────────────────────────────────────────────
 export default function Causas() {
+  const [_ps] = useState(() => {
+    try { return JSON.parse(sessionStorage.getItem('ps.causas') ?? 'null') ?? {} }
+    catch { return {} }
+  })
+
   const [causas, setCausas]           = useState([])
   const [listaClientes, setListaClientes] = useState([])
   const [loading, setLoading]         = useState(true)
@@ -3087,7 +3092,7 @@ export default function Causas() {
 
   const [clienteActivo, setCliente]   = useState(null)
   const [busquedaSidebar, setSidebar] = useState('')
-  const [busqueda, setBusqueda]       = useState('')
+  const [busqueda, setBusqueda]       = useState(_ps.busqueda ?? '')
   // ── Filtros persistentes en localStorage ──────────────────────────────────
   const DEFAULT_ESTADOS_FILTRO = ['Abierta', 'Revisar']
   const [filtroEstados, setEstadosRaw] = useState(() => {
@@ -3142,6 +3147,28 @@ export default function Causas() {
   }, [])
 
   useEffect(() => { fetchCausas(); fetchListaClientes() }, [fetchCausas, fetchListaClientes])
+
+  // ── Scroll persistence ──────────────────────────────────────────────────
+  const scrollRef = useRef()
+
+  useEffect(() => {
+    if (!loading && _ps.scrollTop && scrollRef.current) {
+      const el = scrollRef.current
+      requestAnimationFrame(() => { el.scrollTop = _ps.scrollTop })
+    }
+  }, [loading]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const _stRef = useRef({})
+  useEffect(() => {
+    _stRef.current = { busqueda }
+  }, [busqueda])
+
+  useEffect(() => () => {
+    sessionStorage.setItem('ps.causas', JSON.stringify({
+      ..._stRef.current,
+      scrollTop: scrollRef.current?.scrollTop ?? 0,
+    }))
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Restaurar causa activa al volver desde PJUD/SIAU ──────────────────
   useEffect(() => {
@@ -3558,7 +3585,7 @@ export default function Causas() {
             )}
 
             {/* Tabla / agrupado */}
-            <div className="flex-1 overflow-y-auto">
+            <div ref={scrollRef} className="flex-1 overflow-y-auto">
               {loading ? (
                 <LoadingState />
               ) : ordenadas.length === 0 ? (

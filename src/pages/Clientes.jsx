@@ -491,14 +491,19 @@ function FormCliente({ inicial, onClose, onGuardar, guardando, errorMsg }) {
 
 // ── Componente principal ──────────────────────────────────────────────────
 export default function Clientes() {
+  const [_ps] = useState(() => {
+    try { return JSON.parse(sessionStorage.getItem('ps.clientes') ?? 'null') ?? {} }
+    catch { return {} }
+  })
+
   const [clientes, setClientes]   = useState([])
   const [loading, setLoading]     = useState(true)
   const [error, setError]         = useState(null)
   const [guardando, setGuardando] = useState(false)
 
-  const [busqueda, setBusqueda]   = useState('')
+  const [busqueda, setBusqueda]   = useState(_ps.busqueda ?? '')
   // Multi-select: Set vacío = sin filtro (muestra todos)
-  const [filtros, setFiltros]     = useState(new Set())
+  const [filtros, setFiltros]     = useState(new Set(_ps.filtros ?? []))
   const [clienteSeleccionado, setSeleccionado] = useState(null)
   // Set de IDs de clientes que tienen al menos una causa Abierta o Revisar
   const [clienteHasActiveCausasSet, setClienteHasActiveCausasSet] = useState(new Set())
@@ -529,6 +534,38 @@ export default function Clientes() {
         setClienteHasActiveCausasSet(new Set((data || []).map(c => c.cliente_id).filter(Boolean)))
       })
   }, [fetchClientes])
+
+  // Restore selected client after data loads
+  useEffect(() => {
+    if (loading || !_ps.selectedId) return
+    const found = clientes.find(c => c.id === _ps.selectedId)
+    if (found) setSeleccionado(found)
+  }, [loading]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Scroll ref for persistence
+  const scrollRef = useRef()
+
+  // Restore scroll after data loads
+  useEffect(() => {
+    if (!loading && _ps.scrollTop && scrollRef.current) {
+      const el = scrollRef.current
+      requestAnimationFrame(() => { el.scrollTop = _ps.scrollTop })
+    }
+  }, [loading]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Keep state ref synced for the unmount closure
+  const _stRef = useRef({})
+  useEffect(() => {
+    _stRef.current = { busqueda, filtros: [...filtros], selectedId: clienteSeleccionado?.id }
+  }, [busqueda, filtros, clienteSeleccionado])
+
+  // Save on unmount
+  useEffect(() => () => {
+    sessionStorage.setItem('ps.clientes', JSON.stringify({
+      ..._stRef.current,
+      scrollTop: scrollRef.current?.scrollTop ?? 0,
+    }))
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Esc closes open form or panel (form takes priority)
   useEffect(() => {
@@ -834,7 +871,7 @@ export default function Clientes() {
         {error && <ErrorBanner mensaje={error} onRetry={fetchClientes} />}
 
         {/* Tabla */}
-        <div className="flex-1 overflow-y-auto">
+        <div ref={scrollRef} className="flex-1 overflow-y-auto">
           {loading ? (
             <LoadingRows />
           ) : agrupados.length === 0 ? (

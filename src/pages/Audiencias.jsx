@@ -964,15 +964,20 @@ function FormAudiencia({ inicial, clientes, onGuardar, onCancelar, guardando }) 
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function Audiencias() {
+  const [_ps] = useState(() => {
+    try { return JSON.parse(sessionStorage.getItem('ps.audiencias') ?? 'null') ?? {} }
+    catch { return {} }
+  })
+
   const [audiencias,       setAudiencias]       = useState([])
   const [clientesActivos,  setClientesActivos]  = useState([])
   const [cargando,         setCargando]         = useState(true)
   const [error,            setError]            = useState(null)
   const [mostrarForm,      setMostrarForm]      = useState(false)
   const [guardando,        setGuardando]        = useState(false)
-  const [busqueda,         setBusqueda]         = useState('')
-  const [filtroEstado,     setFiltroEstado]     = useState('Todas')
-  const [filtroFecha,      setFiltroFecha]      = useState('Todas')
+  const [busqueda,         setBusqueda]         = useState(_ps.busqueda ?? '')
+  const [filtroEstado,     setFiltroEstado]     = useState(_ps.filtroEstado ?? 'Todas')
+  const [filtroFecha,      setFiltroFecha]      = useState(_ps.filtroFecha ?? 'Todas')
   const [deleteTarget,     setDeleteTarget]     = useState(null)
 
   // ── Fetch audiencias ──
@@ -1058,6 +1063,17 @@ export default function Audiencias() {
     }
     setGuardando(false)
   }, [])
+
+  // Keep state ref synced for the unmount closure
+  const _stRef = useRef({})
+  useEffect(() => {
+    _stRef.current = { busqueda, filtroEstado, filtroFecha }
+  }, [busqueda, filtroEstado, filtroFecha])
+
+  // Save on unmount
+  useEffect(() => () => {
+    sessionStorage.setItem('ps.audiencias', JSON.stringify(_stRef.current))
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Métricas ──
   const hoy         = audiencias.filter(a => a.fecha === TODAY).length
