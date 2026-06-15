@@ -539,8 +539,13 @@ function TaskRow({ tarea, onClick, onToggle, onDeleteRequest, panelOpen, onOpenC
 
   return (
     <div
+      tabIndex={0}
       onClick={() => onClick(tarea)}
-      className={`group relative flex items-center gap-3 px-4 py-3.5 border-l-[3px] cursor-pointer transition-all hover:bg-[#f7f9fc] ${pS.border} ${done ? 'opacity-50' : ''}`}
+      onKeyDown={e => {
+        if (e.key === ' ')     { e.preventDefault(); onToggle(tarea.id) }
+        if (e.key === 'Enter') { e.preventDefault(); onClick(tarea) }
+      }}
+      className={`group relative flex items-center gap-3 px-4 py-3.5 border-l-[3px] cursor-pointer transition-all hover:bg-[#f7f9fc] outline-none focus:bg-[#f7f9fc] focus:ring-1 focus:ring-inset focus:ring-[#2570ba]/20 ${pS.border} ${done ? 'opacity-50' : ''}`}
     >
       {/* Checkbox */}
       <button
@@ -997,6 +1002,15 @@ function FormNuevaTarea({ onClose, onSave, clientesLista, allCausas }) {
     onSave(form)
   }
 
+  // Cmd+Enter submits this form
+  const saveRef = useRef(null)
+  saveRef.current = handleSave
+  useEffect(() => {
+    const fn = () => saveRef.current?.()
+    window.addEventListener('global:save', fn)
+    return () => window.removeEventListener('global:save', fn)
+  }, [])
+
   return (
     <div className="w-[480px] flex-shrink-0 border-l border-gray-100 bg-white flex flex-col h-full overflow-hidden">
       <div className="border-b border-gray-100 px-6 py-4 flex items-center justify-between flex-shrink-0">
@@ -1174,6 +1188,16 @@ export default function Tareas() {
     fetchTareas()
     fetchCausas()
   }, [fetchTareas, fetchCausas])
+
+  // Esc closes open form or panel (form takes priority)
+  useEffect(() => {
+    const fn = () => {
+      if (showForm) setShowForm(false)
+      else if (seleccionada) setSeleccionada(null)
+    }
+    window.addEventListener('modal:close', fn)
+    return () => window.removeEventListener('modal:close', fn)
+  }, [showForm, seleccionada])
 
   // Lista de clientes para los selects
   const clientesLista = useMemo(() => {

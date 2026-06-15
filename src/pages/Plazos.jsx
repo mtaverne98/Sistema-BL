@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from 'react'
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   AlertCircle, Clock, Check, X, Plus, Search,
@@ -712,6 +712,15 @@ function FormNuevoPlazo({ onSave, onClose, allCausas = [] }) {
     onSave(form)
   }
 
+  // Cmd+Enter submits this form
+  const saveRef = useRef(null)
+  saveRef.current = handleSubmit
+  useEffect(() => {
+    const fn = () => saveRef.current?.()
+    window.addEventListener('global:save', fn)
+    return () => window.removeEventListener('global:save', fn)
+  }, [])
+
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center p-4">
       <div className="absolute inset-0 bg-black/20 backdrop-blur-[2px]" onClick={onClose} />
@@ -919,6 +928,16 @@ export default function Plazos() {
     fetchCausas()
     fetchTareas()
   }, [fetchPlazos, fetchCausas, fetchTareas])
+
+  // Esc closes open form or panel (form takes priority)
+  useEffect(() => {
+    const fn = () => {
+      if (showForm) setShowForm(false)
+      else if (selectedId) setSelectedId(null)
+    }
+    window.addEventListener('modal:close', fn)
+    return () => window.removeEventListener('modal:close', fn)
+  }, [showForm, selectedId])
 
   // ── Metrics ──
   const metrics = useMemo(() => {

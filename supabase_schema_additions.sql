@@ -47,3 +47,38 @@ CREATE UNIQUE INDEX IF NOT EXISTS revisiones_semana_causa_idx
 ALTER TABLE revisiones ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Acceso total anon" ON revisiones;
 CREATE POLICY "Acceso total anon" ON revisiones FOR ALL TO anon USING (true) WITH CHECK (true);
+
+-- ── SEGUIMIENTO SEMANAL — checkbox revisado ───────────────────────────────────
+-- Campo para marcar entradas individuales como revisadas en la tabla de seguimiento
+ALTER TABLE revisiones ADD COLUMN IF NOT EXISTS revisado boolean DEFAULT false;
+
+-- ── REVISADO ESTA SEMANA — dropdown SI/NO por causa ──────────────────────────
+-- revisado_semana: 'SI' | 'NO' | NULL — se guarda en registros con semana_key = 'W-YYYY-MM-DD'
+ALTER TABLE revisiones ADD COLUMN IF NOT EXISTS revisado_semana text;
+
+-- ── TAREAS — columnas extendidas ──────────────────────────────────────────
+-- Requeridas por los formularios de nueva tarea en Revisión de Causas,
+-- CausaView (PJUD/SIAU) y el módulo Tareas.
+ALTER TABLE tareas ADD COLUMN IF NOT EXISTS responsable        text;
+ALTER TABLE tareas ADD COLUMN IF NOT EXISTS causa_rit          text;
+ALTER TABLE tareas ADD COLUMN IF NOT EXISTS causa_ruc          text;
+ALTER TABLE tareas ADD COLUMN IF NOT EXISTS causa_id           uuid REFERENCES causas(id);
+ALTER TABLE tareas ADD COLUMN IF NOT EXISTS prioridad          text DEFAULT 'Media';
+ALTER TABLE tareas ADD COLUMN IF NOT EXISTS fecha_vencimiento  date;
+ALTER TABLE tareas ADD COLUMN IF NOT EXISTS categoria          text;
+ALTER TABLE tareas ADD COLUMN IF NOT EXISTS notas              text;
+ALTER TABLE tareas ADD COLUMN IF NOT EXISTS cliente_nombre     text;
+
+-- ── ESTADOS DE CAUSA — NORMALIZACIÓN ─────────────────────────────────────────
+-- Estados válidos: Abierta | Revisar | Suspendida | Cerrada
+-- Ejecutar para migrar valores legacy:
+UPDATE causas SET estado = 'Abierta'
+  WHERE estado IN ('En tramitación', 'Administrativa')
+    AND estado NOT IN ('Abierta', 'Revisar', 'Suspendida', 'Cerrada');
+
+UPDATE causas SET estado = 'Cerrada'
+  WHERE estado IN ('Terminada', 'Archivada')
+    AND estado NOT IN ('Abierta', 'Revisar', 'Suspendida', 'Cerrada');
+
+-- Verificar resultado:
+-- SELECT estado, count(*) FROM causas GROUP BY estado ORDER BY estado;

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard,
   Users, Scale, UserSearch,
@@ -9,12 +9,14 @@ import {
   Search, Plus, Command, ArrowRight, ChevronRight, ChevronLeft,
   FileText, Clock, RefreshCw, Star, Hash,
   CheckCircle2, CalendarCheck,
+  Menu, X,
 } from 'lucide-react'
 import { useSistema } from '../context/SistemaContext'
 import { CAUSAS }    from '../pages/Causas'
 import { CLIENTES }  from '../pages/Clientes'
 import { useUser }   from '../context/UserContext'
 import QuickAdd      from '../components/QuickAdd'
+import SlashCommands from '../components/SlashCommands'
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 const TODAY_LAYOUT = new Date().toISOString().slice(0, 10)
@@ -35,28 +37,28 @@ function getUrgenciaLayout(p) {
 const DASHBOARD_ITEM = { to: '/', icon: LayoutDashboard, label: 'Dashboard' }
 
 const SECTIONS = [
-  { key: 'trabajo', label: 'Trabajo', items: [
-    { to: '/clientes',   icon: Users,           label: 'Clientes'   },
-    { to: '/causas',     icon: Scale,           label: 'Causas'     },
-    { to: '/prospectos', icon: UserSearch,      label: 'Prospectos' },
+  { key: 'causas', label: 'Causas', items: [
+    { to: '/clientes',    icon: Users,       label: 'Clientes'   },
+    { to: '/causas',      icon: Scale,       label: 'Causas'     },
+    { to: '/prospectos',  icon: UserSearch,  label: 'Prospectos' },
   ]},
   { key: 'agenda', label: 'Agenda', items: [
-    { to: '/audiencias', icon: Gavel,           label: 'Audiencias' },
-    { to: '/calendario', icon: Calendar,        label: 'Calendario' },
-    { to: '/tareas',     icon: CheckSquare,     label: 'Tareas'     },
-    { to: '/plazos',     icon: AlertCircle,     label: 'Plazos'     },
-    { to: '/reuniones',  icon: MessageSquare,   label: 'Reuniones'  },
+    { to: '/audiencias',  icon: Gavel,         label: 'Audiencias' },
+    { to: '/calendario',  icon: Calendar,      label: 'Calendario' },
+    { to: '/tareas',      icon: CheckSquare,   label: 'Tareas'     },
+    { to: '/plazos',      icon: AlertCircle,   label: 'Plazos'     },
+    { to: '/reuniones',   icon: MessageSquare, label: 'Reuniones'  },
   ]},
-  { key: 'tramitacion', label: 'Tramitación', items: [
-    { to: '/seguimiento', icon: CalendarCheck,  label: 'Seguimiento semanal' },
-    { to: '/pjud',        icon: Shield,         label: 'PJUD'                },
-    { to: '/siau',        icon: Database,       label: 'SIAU'                },
-    { to: '/revision',    icon: ClipboardCheck, label: 'Revisión de causas'  },
-    { to: '/documentos',  icon: FolderOpen,     label: 'Documentos'          },
+  { key: 'gestion', label: 'Gestión', items: [
+    { to: '/revision',      icon: ClipboardCheck, label: 'Revisión de causas' },
+    { to: '/siau',          icon: Database,       label: 'SIAU'               },
+    { to: '/pjud',          icon: Shield,         label: 'PJUD'               },
+    { to: '/documentos',    icon: FolderOpen,     label: 'Documentos'         },
+    { to: '/configuracion', icon: Settings,       label: 'Configuración'      },
   ]},
   { key: 'notas', label: 'Notas', items: [
-    { to: '/apuntes', icon: BookOpen, label: 'Agenda diaria' },
-    { to: '/gastos',  icon: Receipt,  label: 'Gastos'        },
+    { to: '/apuntes',     icon: BookOpen,  label: 'Agenda diaria' },
+    { to: '/gastos',      icon: Receipt,   label: 'Gastos'        },
   ]},
 ]
 
@@ -284,7 +286,7 @@ function GlobalCmdK({ open, onClose }) {
       style={{ background: 'rgba(15,20,30,0.35)', backdropFilter: 'blur(3px)' }}
       onClick={e => { if (e.target === e.currentTarget) onClose() }}
     >
-      <div className="w-[580px] bg-white rounded-2xl shadow-[0_24px_80px_rgba(0,0,0,0.18)] border border-gray-100 overflow-hidden flex flex-col"
+      <div className="w-full max-w-[580px] mx-4 sm:mx-auto bg-white rounded-2xl shadow-[0_24px_80px_rgba(0,0,0,0.18)] border border-gray-100 overflow-hidden flex flex-col"
         style={{ maxHeight: '72vh' }}>
 
         {/* Input */}
@@ -388,13 +390,32 @@ function GlobalCmdK({ open, onClose }) {
 
 // ── MainLayout ────────────────────────────────────────────────────────────────
 export default function MainLayout() {
-  const { plazos } = useSistema()
+  const { plazos, tareas } = useSistema()
   const { user, setUser } = useUser()
   const [cmdOpen, setCmdOpen] = useState(false)
+  const location = useLocation()
+
+  // Mobile / responsive state
+  const [mobileOpen, setMobileOpen] = useState(false)
+  const [screenWidth, setScreenWidth] = useState(() => window.innerWidth)
+  const isMobile = screenWidth < 768
+
+  useEffect(() => {
+    function onResize() { setScreenWidth(window.innerWidth) }
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+
+  // Close mobile sidebar on route change
+  useEffect(() => { setMobileOpen(false) }, [location.pathname])
 
   // Sidebar state — persisted in localStorage
   const [sbCollapsed, setSbCollapsed] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('sb-collapsed') ?? 'false') } catch { return false }
+    try {
+      // Auto-collapse on tablet (768–1279px) on first load
+      if (window.innerWidth < 1280 && window.innerWidth >= 768) return true
+      return JSON.parse(localStorage.getItem('sb-collapsed') ?? 'false')
+    } catch { return false }
   })
   const [sbWidth, setSbWidth] = useState(() => {
     try { return parseInt(localStorage.getItem('sb-width') ?? '240', 10) } catch { return 240 }
@@ -443,7 +464,8 @@ export default function MainLayout() {
     document.body.style.userSelect = 'none'
   }
 
-  const plazosAlerta = plazos.filter(p => !!getUrgenciaLayout(p)).length
+  const plazosAlerta  = plazos.filter(p => !!getUrgenciaLayout(p)).length
+  const tareasAlerta  = tareas ? tareas.filter(t => t.estado !== 'Completada').length : 0
 
   function toggleSection(key) {
     setClosedSections(prev => {
@@ -462,21 +484,44 @@ export default function MainLayout() {
     })
   }
 
-  const currentSbWidth = sbCollapsed ? 56 : sbWidth
+  const currentSbWidth = isMobile ? 280 : (sbCollapsed ? 56 : sbWidth)
 
   // Global shortcuts
   useEffect(() => {
     const fn = e => {
+      // Esc → close active modal / panel (no modifier needed)
+      if (e.key === 'Escape') {
+        window.dispatchEvent(new CustomEvent('modal:close'))
+        return
+      }
+
       const mod = e.metaKey || e.ctrlKey
       if (!mod) return
+
       if (e.key === 'k') {
         e.preventDefault()
         setCmdOpen(v => !v)
+        return
       }
-      if (e.key === 'n') {
+
+      if (e.key === 'n' && !e.shiftKey) {
         e.preventDefault()
-        // Cmd+N → dispatch custom event; modules listen and open their "new" form
+        // Try module-specific handler first via data-cmd-n button, then open QuickAdd
+        const moduleBtn = document.querySelector('[data-cmd-n]')
+        if (moduleBtn) {
+          moduleBtn.click()
+        } else {
+          window.dispatchEvent(new CustomEvent('quick-add:open'))
+        }
         window.dispatchEvent(new CustomEvent('cmd-n'))
+        return
+      }
+
+      // Cmd+Enter → submit active form
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('global:save'))
+        return
       }
     }
     window.addEventListener('keydown', fn)
@@ -486,13 +531,25 @@ export default function MainLayout() {
   return (
     <div className="flex h-screen bg-white overflow-hidden">
 
+      {/* ── Mobile backdrop ── */}
+      {isMobile && mobileOpen && (
+        <div
+          className="fixed inset-0 z-[59] bg-black/50"
+          onClick={() => setMobileOpen(false)}
+        />
+      )}
+
       {/* ── Sidebar ── */}
       <aside
-        className="flex-shrink-0 flex flex-col overflow-hidden relative"
+        className={`flex-shrink-0 flex flex-col overflow-hidden ${
+          isMobile
+            ? `fixed inset-y-0 left-0 z-[60] transition-transform duration-300 ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`
+            : 'relative'
+        }`}
         style={{
           width: currentSbWidth,
           backgroundColor: '#1A2E4A',
-          transition: isResizing ? 'none' : 'width 0.2s ease',
+          transition: isResizing ? 'none' : isMobile ? undefined : 'width 0.2s ease',
         }}
       >
 
@@ -613,7 +670,10 @@ export default function MainLayout() {
                         <NavItem
                           key={item.to}
                           {...item}
-                          badge={item.to === '/plazos' ? plazosAlerta : 0}
+                          badge={
+                            item.to === '/plazos' ? plazosAlerta :
+                            item.to === '/tareas' ? tareasAlerta : 0
+                          }
                           collapsed={sbCollapsed}
                         />
                       ))}
@@ -623,10 +683,6 @@ export default function MainLayout() {
               )
             })}
 
-            {/* Configuración siempre al fondo */}
-            <div className="pt-1" style={{ borderTop: '1px solid rgba(255,255,255,0.06)', marginTop: 4 }}>
-              <NavItem to="/configuracion" icon={Settings} label="Configuración" collapsed={sbCollapsed} />
-            </div>
           </div>
         </nav>
 
@@ -655,16 +711,81 @@ export default function MainLayout() {
         </div>
       </aside>
 
-      {/* ── Content ── */}
-      <main className="flex-1 overflow-y-auto bg-white min-w-0">
-        <Outlet />
-      </main>
+      {/* ── Content wrapper ── */}
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+
+        {/* ── Mobile top bar ── */}
+        {isMobile && (
+          <header className="flex-shrink-0 h-14 flex items-center gap-3 px-3"
+            style={{ backgroundColor: '#1A2E4A' }}>
+            <button
+              onClick={() => setMobileOpen(v => !v)}
+              className="p-2 rounded-md hover:bg-white/10 transition-colors flex-shrink-0"
+            >
+              {mobileOpen
+                ? <X size={18} className="text-white/70" />
+                : <Menu size={18} className="text-white/70" />
+              }
+            </button>
+            <img src="/logo.jpg" alt="Bianchi Leiva" className="h-8 object-contain rounded-md flex-1 min-w-0" style={{ maxWidth: 160 }} />
+            <button
+              onClick={() => setCmdOpen(true)}
+              className="p-2 rounded-md hover:bg-white/10 transition-colors flex-shrink-0"
+            >
+              <Search size={16} className="text-white/60" />
+            </button>
+            <button
+              onClick={() => window.dispatchEvent(new CustomEvent('quick-add:open'))}
+              className="p-2 rounded-md hover:bg-white/10 transition-colors flex-shrink-0"
+            >
+              <Plus size={16} className="text-white/60" />
+            </button>
+          </header>
+        )}
+
+        {/* ── Main content ── */}
+        <main className={`flex-1 overflow-y-auto bg-white min-w-0 ${isMobile ? 'pb-14' : ''}`}>
+          <Outlet />
+        </main>
+      </div>
+
+      {/* ── Mobile bottom nav ── */}
+      {isMobile && (
+        <nav className="fixed bottom-0 inset-x-0 z-50 h-14 flex items-center justify-around px-2"
+          style={{ backgroundColor: '#1A2E4A', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+          {[
+            { to: '/',           icon: LayoutDashboard, label: 'Inicio'    },
+            { to: '/causas',     icon: Scale,           label: 'Causas'    },
+            { to: '/tareas',     icon: CheckSquare,     label: 'Tareas'    },
+            { to: '/audiencias', icon: Gavel,           label: 'Audiencias'},
+            { to: '/revision',   icon: ClipboardCheck,  label: 'Revisión'  },
+          ].map(({ to, icon: Icon, label }) => (
+            <NavLink key={to} to={to} end={to === '/'}
+              className={({ isActive }) =>
+                `flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg transition-colors ${
+                  isActive ? 'text-white' : 'text-white/40'
+                }`
+              }
+            >
+              {({ isActive }) => (
+                <>
+                  <Icon size={18} strokeWidth={isActive ? 2.2 : 1.75} />
+                  <span className="text-[9px] font-medium leading-none">{label}</span>
+                </>
+              )}
+            </NavLink>
+          ))}
+        </nav>
+      )}
 
       {/* ── Global CMD+K ── */}
       <GlobalCmdK open={cmdOpen} onClose={() => setCmdOpen(false)} />
 
       {/* ── Quick Add global ── */}
       <QuickAdd />
+
+      {/* ── Slash commands palette ── */}
+      <SlashCommands />
     </div>
   )
 }

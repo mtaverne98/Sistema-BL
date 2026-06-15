@@ -10,6 +10,7 @@ import { supabase } from '../lib/supabase'
 import CargaMasivaModal from '../components/CargaMasivaModal'
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal'
 import { useNavigation } from '../context/NavigationContext'
+import useResizableColumns from '../hooks/useResizableColumns'
 
 const TODAY = new Date().toISOString().slice(0, 10)
 
@@ -662,7 +663,7 @@ function MovimientoDetail({ mov, causaRit, clienteNombre, onUpdate, addTarea, ad
 }
 
 // ── MovimientosTable (table view) ─────────────────────────────────────────────
-function MovimientosTable({ causaData, rowsAll, onUpdate, onAdd, onDelete, causasInfo, addTarea, addPlazo, onBack }) {
+export function MovimientosTable({ causaData, rowsAll, onUpdate, onAdd, onDelete, causasInfo, addTarea, addPlazo, onBack, embedded = false }) {
   const { causa_rit, causa_ruc, causaInfo, clienteNombre } = causaData
 
   const movimientos = useMemo(() =>
@@ -677,6 +678,9 @@ function MovimientosTable({ causaData, rowsAll, onUpdate, onAdd, onDelete, causa
   const [showCargaMasiva, setShowCargaMasiva] = useState(false)
   const [search,          setSearch]          = useState('')
   const [deleteTarget,    setDeleteTarget]    = useState(null)
+
+  const { widths: pjudW, getResizerProps: pjudResizer } = useResizableColumns('cols-pjud', [90, 80, 110, 200, 200, 90, 100, 140, 50])
+  const pjudMinWidth = pjudW.reduce((s, w) => s + w, 0)
 
   const handleDelete = async () => {
     if (!deleteTarget) return
@@ -712,60 +716,84 @@ function MovimientosTable({ causaData, rowsAll, onUpdate, onAdd, onDelete, causa
   }
   const ed = (k, v) => setEditDraft(p => ({ ...p, [k]: v }))
 
-  const COLS = ['Fecha','Folio','Tipo solicitud','Solicitud','Respuesta','F. Respuesta','Documentos','Notas','']
-
   return (
     <div className="flex flex-col h-full bg-[#fafafa]">
 
-      {/* Header + breadcrumb */}
-      <div className="bg-white border-b border-gray-100 px-6 py-4 flex-shrink-0">
-        <nav className="flex items-center gap-1.5 text-[11px] text-gray-400 mb-3">
-          <button onClick={() => onBack('clientes')} className="hover:text-[#1a2e4a] font-medium transition-colors">Clientes</button>
-          <ChevronRight size={10} className="text-gray-300"/>
-          <button onClick={() => onBack('causas')} className="hover:text-[#1a2e4a] font-medium transition-colors truncate max-w-[160px]">{clienteNombre}</button>
-          <ChevronRight size={10} className="text-gray-300"/>
-          <CausaIdentChip causa_rit={causa_rit} causa_ruc={causa_ruc} size="sm"/>
-        </nav>
-
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <button onClick={() => onBack('causas')}
-              className="flex items-center gap-1.5 text-xs font-medium text-gray-400 hover:text-[#1a2e4a] transition-colors">
-              <ArrowLeft size={13}/> Volver
-            </button>
-            <div className="w-px h-4 bg-gray-200"/>
-            <div>
-              <div className="flex items-center gap-2">
-                <CausaIdentChip causa_rit={causa_rit} causa_ruc={causa_ruc}/>
-              </div>
-              {causaInfo?.materia && <p className="text-[11px] text-gray-400 mt-0.5">{causaInfo.materia}</p>}
-            </div>
-            {causaInfo?.tribunal && <span className="text-[11px] text-gray-400 hidden sm:block">· {causaInfo.tribunal}</span>}
+      {/* Header */}
+      {embedded ? (
+        <div className="px-6 py-3.5 border-b border-gray-50 flex items-center justify-between flex-shrink-0 bg-white">
+          <div className="flex items-center gap-3 text-[11px] text-gray-500">
+            <span className="font-semibold text-gray-800 tabular-nums">{counts.total} mov.</span>
+            {counts.respondidas > 0 && <span className="text-green-700">{counts.respondidas} resp.</span>}
+            {counts.pendientes  > 0 && <span className="text-amber-700">{counts.pendientes} pend.</span>}
+            {counts.urgentes    > 0 && <span className="text-red-700 font-bold flex items-center gap-1"><AlertCircle size={10}/>{counts.urgentes} urg.</span>}
           </div>
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-3 text-[11px] text-gray-500">
-              <span className="font-semibold text-gray-800 tabular-nums">{counts.total} mov.</span>
-              {counts.respondidas > 0 && <span className="text-green-700">{counts.respondidas} resp.</span>}
-              {counts.pendientes  > 0 && <span className="text-amber-700">{counts.pendientes} pend.</span>}
-              {counts.urgentes    > 0 && <span className="text-red-700 font-bold flex items-center gap-1"><AlertCircle size={10}/>{counts.urgentes} urg.</span>}
-            </div>
+          <div className="flex items-center gap-2">
             <div className="relative">
               <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-300 pointer-events-none"/>
               <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar..."
-                className="pl-8 pr-3 py-1.5 text-[12px] bg-gray-50 border border-gray-200 rounded-lg w-36 focus:outline-none focus:border-blue-400 focus:bg-white transition-colors"/>
+                className="pl-8 pr-3 py-1.5 text-[12px] bg-gray-50 border border-gray-200 rounded-lg w-32 focus:outline-none focus:border-blue-400 focus:bg-white transition-colors"/>
               {search && <button onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><X size={11}/></button>}
             </div>
             <button onClick={() => setShowCargaMasiva(true)}
               className="flex items-center gap-1.5 text-xs font-medium text-gray-500 px-3 py-2 rounded-xl border border-gray-200 hover:bg-gray-50 transition-colors">
               <Table2 size={13}/> Carga masiva
             </button>
-            <button onClick={() => setShowForm(true)}
+            <button onClick={() => setShowForm(true)} data-cmd-n
               className="flex items-center gap-1.5 text-xs font-semibold bg-[#2570BA] text-white px-3.5 py-2 rounded-xl hover:bg-[#2570BA]/90 transition-colors shadow-sm">
               <Plus size={13}/> Nueva entrada
             </button>
           </div>
         </div>
-      </div>
+      ) : (
+        <div className="bg-white border-b border-gray-100 px-6 py-4 flex-shrink-0">
+          <nav className="flex items-center gap-1.5 text-[11px] text-gray-400 mb-3">
+            <button onClick={() => onBack('clientes')} className="hover:text-[#1a2e4a] font-medium transition-colors">Clientes</button>
+            <ChevronRight size={10} className="text-gray-300"/>
+            <button onClick={() => onBack('causas')} className="hover:text-[#1a2e4a] font-medium transition-colors truncate max-w-[160px]">{clienteNombre}</button>
+            <ChevronRight size={10} className="text-gray-300"/>
+            <CausaIdentChip causa_rit={causa_rit} causa_ruc={causa_ruc} size="sm"/>
+          </nav>
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <button onClick={() => onBack('causas')}
+                className="flex items-center gap-1.5 text-xs font-medium text-gray-400 hover:text-[#1a2e4a] transition-colors">
+                <ArrowLeft size={13}/> Volver
+              </button>
+              <div className="w-px h-4 bg-gray-200"/>
+              <div>
+                <div className="flex items-center gap-2">
+                  <CausaIdentChip causa_rit={causa_rit} causa_ruc={causa_ruc}/>
+                </div>
+                {causaInfo?.materia && <p className="text-[11px] text-gray-400 mt-0.5">{causaInfo.materia}</p>}
+              </div>
+              {causaInfo?.tribunal && <span className="text-[11px] text-gray-400 hidden sm:block">· {causaInfo.tribunal}</span>}
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 text-[11px] text-gray-500">
+                <span className="font-semibold text-gray-800 tabular-nums">{counts.total} mov.</span>
+                {counts.respondidas > 0 && <span className="text-green-700">{counts.respondidas} resp.</span>}
+                {counts.pendientes  > 0 && <span className="text-amber-700">{counts.pendientes} pend.</span>}
+                {counts.urgentes    > 0 && <span className="text-red-700 font-bold flex items-center gap-1"><AlertCircle size={10}/>{counts.urgentes} urg.</span>}
+              </div>
+              <div className="relative">
+                <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-300 pointer-events-none"/>
+                <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar..."
+                  className="pl-8 pr-3 py-1.5 text-[12px] bg-gray-50 border border-gray-200 rounded-lg w-36 focus:outline-none focus:border-blue-400 focus:bg-white transition-colors"/>
+                {search && <button onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><X size={11}/></button>}
+              </div>
+              <button onClick={() => setShowCargaMasiva(true)}
+                className="flex items-center gap-1.5 text-xs font-medium text-gray-500 px-3 py-2 rounded-xl border border-gray-200 hover:bg-gray-50 transition-colors">
+                <Table2 size={13}/> Carga masiva
+              </button>
+              <button onClick={() => setShowForm(true)}
+                className="flex items-center gap-1.5 text-xs font-semibold bg-[#2570BA] text-white px-3.5 py-2 rounded-xl hover:bg-[#2570BA]/90 transition-colors shadow-sm">
+                <Plus size={13}/> Nueva entrada
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Table */}
       <div className="flex-1 overflow-auto">
@@ -782,14 +810,29 @@ function MovimientosTable({ causaData, rowsAll, onUpdate, onAdd, onDelete, causa
             )}
           </div>
         ) : (
-          <table className="w-full text-left border-collapse">
+          <table className="text-left border-collapse" style={{ tableLayout: 'fixed', width: pjudMinWidth }}>
+            <colgroup>
+              <col style={{ width: pjudW[0] }} />
+              <col style={{ width: pjudW[1] }} />
+              <col style={{ width: pjudW[2] }} />
+              <col style={{ width: pjudW[3] }} />
+              <col style={{ width: pjudW[4] }} />
+              <col style={{ width: pjudW[5] }} />
+              <col style={{ width: pjudW[6] }} />
+              <col style={{ width: pjudW[7] }} />
+              <col style={{ width: pjudW[8] }} />
+            </colgroup>
             <thead className="sticky top-0 z-10 bg-white border-b border-gray-100 shadow-[0_1px_0_#f3f4f6]">
               <tr>
-                {COLS.map(col => (
-                  <th key={col} className="px-3 py-2.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap first:pl-6 last:pr-4">
+                {['Fecha','Folio','Tipo solicitud','Solicitud','Respuesta','F. Respuesta','Documentos','Notas'].map((col, i) => (
+                  <th key={col} className="px-3 py-2.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap first:pl-6 relative select-none">
                     {col}
+                    <div {...pjudResizer(i)} className="absolute right-0 top-0 h-full w-3 cursor-col-resize flex items-center justify-center z-10" onClick={e=>e.stopPropagation()}>
+                      <div className="w-px h-4 bg-[#2570ba]/30 opacity-0 hover:opacity-100 transition-opacity" />
+                    </div>
                   </th>
                 ))}
+                <th className="px-3 py-2.5 last:pr-4" />
               </tr>
             </thead>
             <tbody>
@@ -876,12 +919,12 @@ function MovimientosTable({ causaData, rowsAll, onUpdate, onAdd, onDelete, causa
                           <td className="px-3 py-3">
                             <TipoSolicitudBadge tipo={r.tipo_solicitud}/>
                           </td>
-                          <td className="px-3 py-3 max-w-[180px]">
+                          <td className="px-3 py-3">
                             <p className={`text-xs text-gray-700 leading-relaxed ${isExpanded ? '' : 'line-clamp-2'}`}>
                               {r.solicitud || '—'}
                             </p>
                           </td>
-                          <td className="px-3 py-3 max-w-[180px]">
+                          <td className="px-3 py-3">
                             <div className="space-y-1">
                               <EstadoDropdown estado={r.estado} onChange={e => onUpdate(r.id, { estado: e })} />
                               {r.respuesta?.trim() && (
@@ -900,8 +943,8 @@ function MovimientosTable({ causaData, rowsAll, onUpdate, onAdd, onDelete, causa
                           <td className="px-3 py-3 whitespace-nowrap">
                             <DocChip tiene={r.tiene_documento} desc={r.documento_desc}/>
                           </td>
-                          <td className="px-3 py-3 max-w-[120px]">
-                            <p className="text-[11px] text-gray-400 truncate">{r.notas || '—'}</p>
+                          <td className="px-3 py-3">
+                            <p className="text-[11px] text-gray-400 line-clamp-2">{r.notas || '—'}</p>
                           </td>
                           <td className="px-3 py-3 pr-4">
                             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
@@ -1015,7 +1058,7 @@ function CausaCard({ causaData, rowsAll, clienteNombre, onClick }) {
 }
 
 // ── ClienteRow (accordion) ────────────────────────────────────────────────────
-function ClienteRow({ clienteData, rowsAll, isExpanded, onToggle, onSelectCausa }) {
+function ClienteRow({ clienteData, rowsAll, isExpanded, onToggle, onSelectCausa, hasActiveCausas }) {
   const { clienteNombre, causasData } = clienteData
   const allMovs    = rowsAll.filter(r => r.cliente_nombre === clienteNombre)
   const urgentes   = allMovs.filter(m => m.estado === 'Urgente').length
@@ -1028,12 +1071,13 @@ function ClienteRow({ clienteData, rowsAll, isExpanded, onToggle, onSelectCausa 
         className={`w-full flex items-center gap-3 px-5 py-3.5 text-left transition-colors ${
           isExpanded ? 'bg-[#1a2e4a]/[0.04]' : 'bg-white hover:bg-gray-50'
         }`}>
-        <div className="w-9 h-9 rounded-full bg-[#2570BA] flex items-center justify-center flex-shrink-0 text-white text-[11px] font-bold select-none">
+        <div className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 text-white text-[11px] font-bold select-none"
+          style={{ backgroundColor: hasActiveCausas ? '#2570BA' : '#9CA3AF' }}>
           {ini}
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <p className="text-[13px] font-semibold text-[#1a2e4a] truncate">{clienteNombre}</p>
+            <p className={`text-[13px] font-semibold truncate ${hasActiveCausas ? 'text-[#1a2e4a]' : 'text-gray-400'}`}>{clienteNombre}</p>
             {urgentes > 0 && (
               <span className="flex items-center gap-1 text-[10px] font-bold text-red-600 bg-red-50 px-1.5 py-0.5 rounded-full animate-pulse">
                 <span className="w-1.5 h-1.5 rounded-full bg-red-500" /> Urgente
@@ -1074,6 +1118,7 @@ export default function PJUD() {
   const [rows,       setRows]       = useState([])
   const [causasInfo, setCausasInfo] = useState([])
   const [cargando,   setCargando]   = useState(true)
+  const [clienteHasActiveCausasMap, setClienteHasActiveCausasMap] = useState({})
   const [error,      setError]      = useState(null)
 
   // Navigation: 'clientes' | 'tabla'
@@ -1102,10 +1147,17 @@ export default function PJUD() {
   const fetchCausas = useCallback(async () => {
     const { data } = await supabase
       .from('causas')
-      .select('id,rit,ruc,materia,tribunal,area,cliente_nombre,cliente_id')
-      .in('estado', ['En tramitación', 'Abierta'])
+      .select('id,rit,ruc,materia,tribunal,area,cliente_nombre,cliente_id,estado')
       .order('rit')
-    setCausasInfo(data || [])
+    setCausasInfo((data || []).filter(c => c.estado === 'Abierta' || c.estado === 'En tramitación'))
+    // Mapa nombre→hasActiveCausas para color de avatar
+    const map = {}
+    ;(data || []).forEach(c => {
+      if (!c.cliente_nombre) return
+      if (!map[c.cliente_nombre]) map[c.cliente_nombre] = false
+      if (c.estado === 'Abierta' || c.estado === 'Revisar') map[c.cliente_nombre] = true
+    })
+    setClienteHasActiveCausasMap(map)
   }, [])
 
   useEffect(() => { fetchRows(); fetchCausas() }, [fetchRows, fetchCausas])
@@ -1379,6 +1431,7 @@ export default function PJUD() {
                       isExpanded={expandedSet.has(cl.clienteNombre)}
                       onToggle={() => toggleExpanded(cl.clienteNombre)}
                       onSelectCausa={handleSelectCausa}
+                      hasActiveCausas={clienteHasActiveCausasMap[cl.clienteNombre] ?? true}
                     />
                   ))}
                 </div>

@@ -37,10 +37,11 @@ export default function InlineField({
   const [draft,      setDraft]      = useState(value ?? '')
   const [saving,     setSaving]     = useState(false)
   const [errorMsg,   setErrorMsg]   = useState(null)
-  const [savedFlash, setSavedFlash] = useState(false)
+  const [savedAt,    setSavedAt]    = useState(null)
+  const [savedAgo,   setSavedAgo]   = useState('')
   const inputRef  = useRef(null)
   const timerRef  = useRef(null)
-  const flashRef  = useRef(null)
+  const agoRef    = useRef(null)
 
   // Sync draft when value changes externally (e.g., after server update)
   useEffect(() => {
@@ -57,10 +58,24 @@ export default function InlineField({
     }
   }, [editing, type])
 
+  // "Guardado hace X s" counter
+  useEffect(() => {
+    if (!savedAt) return
+    const tick = () => {
+      const secs = Math.round((Date.now() - savedAt) / 1000)
+      if (secs >= 60) setSavedAgo(`hace ${Math.round(secs / 60)}min`)
+      else            setSavedAgo(`hace ${secs}s`)
+      if (secs > 25)  { setSavedAt(null); setSavedAgo('') }
+    }
+    tick()
+    agoRef.current = setInterval(tick, 1000)
+    return () => clearInterval(agoRef.current)
+  }, [savedAt])
+
   // Cleanup timers on unmount
   useEffect(() => () => {
     clearTimeout(timerRef.current)
-    clearTimeout(flashRef.current)
+    clearInterval(agoRef.current)
   }, [])
 
   const commit = useCallback(async (val) => {
@@ -72,9 +87,7 @@ export default function InlineField({
     try {
       await onSave?.(v)
       setEditing(false)
-      // Flash verde breve
-      setSavedFlash(true)
-      flashRef.current = setTimeout(() => setSavedFlash(false), 1600)
+      setSavedAt(Date.now())
     } catch (e) {
       // Save failed — stay in edit mode and show the error
       setErrorMsg(e?.message || 'Error al guardar')
@@ -112,7 +125,7 @@ export default function InlineField({
     const isEmpty = !value && value !== 0
     return (
       <span
-        onClick={() => { if (!disabled) { setSavedFlash(false); setDraft(value ?? ''); setEditing(true) } }}
+        onClick={() => { if (!disabled) { setDraft(value ?? ''); setEditing(true) } }}
         className={`
           inline-block rounded px-0.5 -mx-0.5 transition-colors leading-snug
           ${disabled ? 'cursor-default' : 'cursor-text hover:bg-black/[0.04]'}
@@ -126,9 +139,9 @@ export default function InlineField({
         {saving && (
           <span className="ml-1.5 inline-block w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse align-middle" />
         )}
-        {savedFlash && !saving && (
-          <span className="ml-1 inline-flex items-center text-emerald-500 align-middle animate-[fadeIn_0.15s_ease]">
-            <Check size={11} strokeWidth={2.5} />
+        {savedAgo && !saving && (
+          <span className="ml-1.5 text-[10px] text-emerald-500 font-medium align-middle">
+            Guardado {savedAgo}
           </span>
         )}
       </span>

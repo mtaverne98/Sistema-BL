@@ -170,7 +170,7 @@ function ErrorBanner({ mensaje, onRetry }) {
 }
 
 // ── Panel lateral – detalle cliente ───────────────────────────────────────
-function PanelCliente({ cliente, onClose, onEstadoCambiar, onInlineSave, onRequestDelete }) {
+function PanelCliente({ cliente, hasActiveCausas, onClose, onEstadoCambiar, onInlineSave, onRequestDelete }) {
   const [tab, setTab]                   = useState('causas')
   const [causas, setCausas]             = useState([])
   const [loadingCausas, setLoadingCausas] = useState(false)
@@ -200,7 +200,7 @@ function PanelCliente({ cliente, onClose, onEstadoCambiar, onInlineSave, onReque
           <div className="flex items-center gap-2">
             <div
               className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
-              style={{ backgroundColor: avatarColor(cliente.estado) }}
+              style={{ backgroundColor: hasActiveCausas ? '#2570ba' : '#9ca3af' }}
             >
               {ini}
             </div>
@@ -394,6 +394,15 @@ function FormCliente({ inicial, onClose, onGuardar, guardando, errorMsg }) {
   })
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
+  // Cmd+Enter submits this form
+  const saveRef = useRef(null)
+  saveRef.current = () => onGuardar(form)
+  useEffect(() => {
+    const fn = () => saveRef.current?.()
+    window.addEventListener('global:save', fn)
+    return () => window.removeEventListener('global:save', fn)
+  }, [])
+
   return (
     <div className="w-80 flex-shrink-0 border-l border-gray-100 flex flex-col bg-white">
       <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
@@ -491,6 +500,8 @@ export default function Clientes() {
   // Multi-select: Set vacío = sin filtro (muestra todos)
   const [filtros, setFiltros]     = useState(new Set())
   const [clienteSeleccionado, setSeleccionado] = useState(null)
+  // Set de IDs de clientes que tienen al menos una causa Abierta o Revisar
+  const [clienteHasActiveCausasSet, setClienteHasActiveCausasSet] = useState(new Set())
   const [formulario, setFormulario] = useState(null) // null | 'nuevo' | objeto cliente
   const [formError, setFormError] = useState(null)   // error del formulario modal
   const [deleteModal, setDeleteModal] = useState(null) // null | { cliente, causasCount }
@@ -511,7 +522,23 @@ export default function Clientes() {
     setLoading(false)
   }, [])
 
-  useEffect(() => { fetchClientes() }, [fetchClientes])
+  useEffect(() => {
+    fetchClientes()
+    supabase.from('causas').select('cliente_id, estado').in('estado', ['Abierta', 'Revisar'])
+      .then(({ data }) => {
+        setClienteHasActiveCausasSet(new Set((data || []).map(c => c.cliente_id).filter(Boolean)))
+      })
+  }, [fetchClientes])
+
+  // Esc closes open form or panel (form takes priority)
+  useEffect(() => {
+    const fn = () => {
+      if (formulario) setFormulario(null)
+      else if (clienteSeleccionado) setSeleccionado(null)
+    }
+    window.addEventListener('modal:close', fn)
+    return () => window.removeEventListener('modal:close', fn)
+  }, [formulario, clienteSeleccionado])
 
   // ── Crear / Editar via formulario modal ────────────────────────────────
   const handleGuardar = async (form) => {
@@ -854,7 +881,7 @@ export default function Clientes() {
                           <div className="flex items-center gap-2.5">
                             <div
                               className="w-7 h-7 rounded-full flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0"
-                              style={{ backgroundColor: avatarColor(c.estado) }}>
+                              style={{ backgroundColor: clienteHasActiveCausasSet.has(c.id) ? '#2570ba' : '#9ca3af' }}>
                               {iniciales(c.nombre)}
                             </div>
                             <span className={`text-sm font-medium ${c.estado === 'Inactivo' ? 'text-gray-400' : 'text-gray-900'}`}>{c.nombre}</span>
@@ -896,6 +923,7 @@ export default function Clientes() {
       {clienteSeleccionado && !formulario && (
         <PanelCliente
           cliente={clienteSeleccionado}
+          hasActiveCausas={clienteHasActiveCausasSet.has(clienteSeleccionado.id)}
           onClose={() => setSeleccionado(null)}
           onEstadoCambiar={handleEstadoCambiar}
           onInlineSave={handleInlineSave}

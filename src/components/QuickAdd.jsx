@@ -482,7 +482,7 @@ export default function QuickAdd() {
     }
   }, [entityType, ctx])
 
-  // ── ESC to close / ⌘+Shift+N to open ──
+  // ── ESC to close / ⌘+Shift+N / ⌘+N to open ──
   useEffect(() => {
     const fn = e => {
       if (e.key === 'Escape') {
@@ -506,6 +506,22 @@ export default function QuickAdd() {
     window.addEventListener('keydown', fn)
     return () => window.removeEventListener('keydown', fn)
   }, [phase, entityType, form])
+
+  // ── Listen for programmatic open (slash commands, Cmd+N fallback) ──
+  useEffect(() => {
+    const fn = (e) => {
+      const type = e.detail?.type
+      if (type && ENTITY_CFG.find(c => c.key === type)) {
+        setEntityType(type)
+        setPhase('form')
+      } else {
+        setPhase(p => p === 'idle' || p === 'success' ? 'picker' : 'idle')
+        setEntityType(null)
+      }
+    }
+    window.addEventListener('quick-add:open', fn)
+    return () => window.removeEventListener('quick-add:open', fn)
+  }, [])
 
   // ── Close picker on outside click ──
   useEffect(() => {

@@ -721,6 +721,15 @@ function FormAudiencia({ inicial, clientes, onGuardar, onCancelar, guardando }) 
 
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }))
 
+  // Cmd+Enter submits this form
+  const saveRef = useRef(null)
+  saveRef.current = () => onGuardar(form)
+  useEffect(() => {
+    const fn = () => saveRef.current?.()
+    window.addEventListener('global:save', fn)
+    return () => window.removeEventListener('global:save', fn)
+  }, [])
+
   // Al editar, cargar las causas del cliente inicial
   useEffect(() => {
     if (inicial?.cliente_id) cargarCausas(inicial.cliente_id)
@@ -997,6 +1006,13 @@ export default function Audiencias() {
     fetchAudiencias()
     fetchClientes()
   }, [fetchAudiencias, fetchClientes])
+
+  // Esc closes open form
+  useEffect(() => {
+    const fn = () => setMostrarForm(false)
+    window.addEventListener('modal:close', fn)
+    return () => window.removeEventListener('modal:close', fn)
+  }, [])
 
   // ── Actualizar audiencia ──
   // persist=true → guarda en BD; persist=false → solo actualiza estado local (UI-only)

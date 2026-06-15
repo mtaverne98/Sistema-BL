@@ -17,6 +17,10 @@ import { useNavigation } from '../context/NavigationContext'
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal'
 import InlineField from '../components/InlineField'
 import CargaMasivaModal from '../components/CargaMasivaModal'
+import CopyValue from '../components/CopyValue'
+import { SolicitudesTable } from './SIAU'
+import { MovimientosTable } from './PJUD'
+import useResizableColumns from '../hooks/useResizableColumns'
 
 // ── Exportación vacía para compatibilidad con CMD+K en MainLayout ──────────
 export const CAUSAS = []
@@ -33,12 +37,14 @@ const TIMELINE_CAT = {
 
 // ── Estilos ───────────────────────────────────────────────────────────────
 const ESTADO_STYLES = {
-  'En tramitación': { badge: 'bg-green-50 text-green-600',         dot: 'bg-green-400'   },
   'Abierta':        { badge: 'bg-emerald-100 text-emerald-800',    dot: 'bg-emerald-700' },
-  'Cerrada':        { badge: 'bg-red-50 text-red-600',              dot: 'bg-red-500'     },
+  'Revisar':        { badge: 'bg-amber-50 text-amber-700',          dot: 'bg-amber-400'   },
+  'Suspendida':     { badge: 'bg-yellow-50 text-yellow-700',        dot: 'bg-yellow-400'  },
+  'Cerrada':        { badge: 'bg-gray-100 text-gray-500',           dot: 'bg-gray-400'    },
+  // Legacy — pre-normalización SQL
+  'En tramitación': { badge: 'bg-green-50 text-green-600',          dot: 'bg-green-400'   },
   'Terminada':      { badge: 'bg-red-50 text-red-600',              dot: 'bg-red-500'     },
   'Archivada':      { badge: 'bg-stone-100 text-stone-600',         dot: 'bg-stone-500'   },
-  'Suspendida':     { badge: 'bg-yellow-50 text-yellow-700',        dot: 'bg-yellow-400'  },
 }
 const AREA_STYLES = {
   'Penal':                'bg-[#1a2e4a]/10 text-[#1a2e4a]',
@@ -51,8 +57,16 @@ const AREA_STYLES = {
   'Corte Suprema':        'bg-blue-900/10 text-blue-900',
 }
 
-const ESTADOS  = ['En tramitación', 'Abierta', 'Terminada', 'Archivada', 'Suspendida']
-const CERRADAS = new Set(['Terminada', 'Archivada'])
+const ESTADOS  = ['Abierta', 'Revisar', 'Suspendida', 'Cerrada']
+const CERRADAS = new Set(['Cerrada', 'Suspendida'])
+const ACTIVAS  = new Set(['Abierta', 'Revisar'])
+
+// Mapeo de estados legacy → nuevo estándar (para filtrado sin esperar SQL)
+function normalizeEstado(e) {
+  if (e === 'En tramitación' || e === 'Administrativa') return 'Abierta'
+  if (e === 'Terminada' || e === 'Archivada') return 'Cerrada'
+  return e
+}
 const AREAS    = ['Penal', 'Familia', 'Laboral', 'Civil', 'JPL', 'Administrativo', 'Corte de Apelaciones', 'Corte Suprema']
 
 // ── Lógica de área jurídica ────────────────────────────────────────────────
@@ -148,16 +162,14 @@ const ACCION_STYLES_C = {
 }
 
 const CAUSA_TABS = [
-  { key: 'resumen',          label: 'Resumen',          Icon: AlignLeft     },
-  { key: 'revision_semanal', label: 'Revisión semanal', Icon: RefreshCw     },
-  { key: 'timeline',         label: 'Timeline',         Icon: Activity      },
-  { key: 'tareas',           label: 'Tareas',           Icon: CheckSquare   },
-  { key: 'plazos',           label: 'Plazos',           Icon: Clock         },
-  { key: 'audiencias',       label: 'Audiencias',       Icon: Gavel         },
-  { key: 'pjud',             label: 'PJUD',             Icon: Scale         },
-  { key: 'siau',             label: 'SIAU',             Icon: MessageSquare },
-  { key: 'documentos',       label: 'Documentos',       Icon: FileText      },
-  { key: 'seguimiento',      label: 'Seguimiento',      Icon: Target        },
+  { key: 'resumen',     label: 'Resumen',     Icon: AlignLeft     },
+  { key: 'siau',        label: 'SIAU',        Icon: MessageSquare },
+  { key: 'pjud',        label: 'PJUD',        Icon: Scale         },
+  { key: 'audiencias',  label: 'Audiencias',  Icon: Gavel         },
+  { key: 'tareas',      label: 'Tareas',      Icon: CheckSquare   },
+  { key: 'plazos',      label: 'Plazos',      Icon: Clock         },
+  { key: 'documentos',  label: 'Documentos',  Icon: FileText      },
+  { key: 'seguimiento', label: 'Seguimiento', Icon: Target        },
 ]
 
 // ── Helpers ───────────────────────────────────────────────────────────────
@@ -778,10 +790,8 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
   // ── Cmd+N dentro de una causa → acción rápida según tab activa ──────────
   useEffect(() => {
     const handler = () => {
-      if (tab === 'revision_semanal') { setShowRevForm(true); return }
-      if (tab === 'seguimiento')      { setNewSegRow({ fecha_revision: TODAY_C, por_hacer: '', que_se_hizo: 'Pendiente' }); return }
-      if (tab === 'pjud')             { navigate('/pjud'); return }
-      if (tab === 'siau')             { navigate('/siau'); return }
+      if (tab === 'seguimiento') { setNewSegRow({ fecha_revision: TODAY_C, por_hacer: '', que_se_hizo: 'Pendiente' }); return }
+      if (tab === 'pjud' || tab === 'siau') { document.querySelector('[data-cmd-n]')?.click(); return }
       // Para otros tabs: disparar clic en el botón "+ Nuevo" de esa tab
       const newBtn = document.querySelector('[data-cmd-n]')
       newBtn?.click()
@@ -839,6 +849,11 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
   const [savingSegRow,      setSavingSegRow]      = useState(false)
   const [confirmDelSeg,     setConfirmDelSeg]     = useState(null)
   const [showCargaMasivaSeg, setShowCargaMasivaSeg] = useState(false)
+  const [editingCell,       setEditingCell]       = useState(null)  // { id, field }
+  const [cellDraft,         setCellDraft]         = useState('')
+  const [openStatusId,      setOpenStatusId]      = useState(null)
+  // Seguimiento — columnas redimensionables: [0]=FECHA [1]=ESTADO
+  const { widths: segW, getResizerProps: segResizer } = useResizableColumns('cols-seguimiento', [100, 140])
 
   // Datos rápidos para el resumen (1 fila c/u)
   const [lastPjud,        setLastPjud]        = useState(undefined) // undefined = loading, null = empty
@@ -848,10 +863,77 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
   // Timeline filter
   const [filterTimeline,  setFilterTimeline]  = useState('Todo')
 
+  // Resumen — combined timeline filter
+  const [tlFilter,        setTlFilter]        = useState('Todo')
+
+  // Resumen — quick entry bar
+  const [quickType,       setQuickType]       = useState('seguimiento')
+  const [quickText,       setQuickText]       = useState('')
+  const [savingQuick,     setSavingQuick]     = useState(false)
+
+  // Resumen — current week revision banner
+  const [currentWeekRev,  setCurrentWeekRev]  = useState(undefined) // undefined=loading, null=none
+  const [weekRevDraft,    setWeekRevDraft]    = useState('')
+  const [weekRevSaving,   setWeekRevSaving]   = useState(false)
+
   function showToast(msg) {
     setToastMsg(msg)
     setTimeout(() => setToastMsg(null), 2500)
   }
+
+  // ── SIAU/PJUD inline handlers (embedded table) ────────────────────────────
+  const handleUpdateSiau = useCallback((id, cambios) => {
+    setSiauRows(prev => prev.map(r => r.id === id ? { ...r, ...cambios } : r))
+  }, [])
+  const handleAddSiau = useCallback((row) => {
+    setSiauRows(prev => [row, ...prev])
+  }, [])
+  const handleDeleteSiau = useCallback((id) => {
+    setSiauRows(prev => prev.filter(r => r.id !== id))
+  }, [])
+
+  const handleUpdatePjud = useCallback((id, cambios) => {
+    setPjudRows(prev => prev.map(r => r.id === id ? { ...r, ...cambios } : r))
+  }, [])
+  const handleAddPjud = useCallback(async (causaRit, causaRuc, clienteNombre, movData) => {
+    const payload = {
+      fecha: movData.fecha, folio: movData.folio, presenta: movData.presenta || 'Nosotros',
+      tipo_solicitud: movData.tipo_solicitud || 'Solicitud',
+      solicitud: movData.solicitud || null, respuesta: movData.respuesta || null,
+      fecha_respuesta: movData.fecha_respuesta || null, fecha_notificacion: movData.fecha_notificacion || null,
+      accion_requerida: movData.accion_requerida || null, consecuencia_procesal: movData.consecuencia_procesal || null,
+      estado: movData.respuesta?.trim() ? 'Respondido' : (movData.estado || 'Pendiente'),
+      tiene_documento: movData.tiene_documento || false, documento_desc: movData.documento_desc || null,
+      notas: movData.notas || null, responsable: movData.responsable || 'MT',
+      causa_rit: causaRit || null, causa_ruc: causaRuc || null,
+      cliente_nombre: clienteNombre || movData.cliente_nombre || '',
+      causa_id: movData.causa_id || causa?.id || null,
+      cliente_id: movData.cliente_id || causa?.cliente_id || null,
+    }
+    const { data, error } = await supabase.from('pjud').insert([payload]).select().single()
+    if (!error && data) setPjudRows(prev => [data, ...prev])
+  }, [causa?.id, causa?.cliente_id])
+  const handleDeletePjud = useCallback((id) => {
+    setPjudRows(prev => prev.filter(r => r.id !== id))
+  }, [])
+
+  const handleAddTareaFromPjud = useCallback(async (tarea) => {
+    const { data } = await supabase.from('tareas').insert([{
+      titulo: tarea.titulo, estado: 'Pendiente', prioridad: tarea.prioridad || 'Media',
+      fecha_vencimiento: tarea.fecha_vencimiento || null, notas: tarea.notas || null,
+      cliente_nombre: tarea.cliente || null, causa_rit: tarea.causa_rit || null, causa_id: causa?.id || null,
+    }]).select().single()
+    if (data) setTareas(prev => [...prev, data])
+  }, [causa?.id])
+
+  const handleAddPlazoFromPjud = useCallback(async (plazo) => {
+    const { data } = await supabase.from('plazos').insert([{
+      titulo: plazo.titulo, tipo: plazo.tipo || 'Procesal',
+      fecha_vencimiento: plazo.fecha_vencimiento || null, estado: 'Activo',
+      notas: plazo.notas || null, causa_rit: plazo.causa_rit || null, causa_id: causa?.id || null,
+    }]).select().single()
+    if (data) setPlazos(prev => [...prev, data])
+  }, [causa?.id])
 
   // Load audiencias + tareas + plazos on mount
   useEffect(() => {
@@ -867,16 +949,15 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
       setPlazos(p ?? [])
       setLoadingBase(false)
     })
-    // Load last PJUD / SIAU / Revision for resumen dashboard (1 row each)
-    if (causa.rit) {
-      supabase.from('pjud').select('fecha,folio,estado,solicitud,respuesta').eq('causa_rit', causa.rit)
+    // Load last PJUD / SIAU — OR por causa_rit/causa_id para no perder registros
+    {
+      const pFilter = causa.rit ? `causa_rit.eq.${causa.rit},causa_id.eq.${causa.id}` : `causa_id.eq.${causa.id}`
+      supabase.from('pjud').select('fecha,folio,estado,solicitud,respuesta').or(pFilter)
         .order('fecha', { ascending: false }).limit(1)
         .then(({ data }) => setLastPjud(data?.[0] ?? null))
-      supabase.from('siau').select('fecha,folio,estado,solicitud,respuesta').eq('causa_rit', causa.rit)
+      supabase.from('siau').select('fecha,folio,estado,solicitud,respuesta').or(pFilter)
         .order('fecha', { ascending: false }).limit(1)
         .then(({ data }) => setLastSiau(data?.[0] ?? null))
-    } else {
-      setLastPjud(null); setLastSiau(null)
     }
     supabase.from('revisiones').select('fecha,responsable,nota,proxima_accion,semana_key').eq('causa_id', causa.id)
       .order('fecha', { ascending: false }).limit(3)
@@ -886,27 +967,33 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
       })
   }, [causa?.id])
 
-  // Load PJUD lazily (also for timeline)
+  // Load PJUD lazily (also for timeline and resumen) — OR por causa_rit/causa_id
   useEffect(() => {
-    if ((tab !== 'pjud' && tab !== 'timeline') || !causa?.rit) return
+    if ((tab !== 'pjud' && tab !== 'timeline' && tab !== 'resumen') || !causa?.id) return
     if (pjudRows.length > 0) return
     setLoadingPjud(true)
-    supabase.from('pjud').select('*').eq('causa_rit', causa.rit).order('fecha', { ascending: false })
+    const filter = causa.rit
+      ? `causa_rit.eq.${causa.rit},causa_id.eq.${causa.id}`
+      : `causa_id.eq.${causa.id}`
+    supabase.from('pjud').select('*').or(filter).order('fecha', { ascending: false })
       .then(({ data }) => { setPjudRows(data ?? []); setLoadingPjud(false) })
-  }, [tab, causa?.rit])
+  }, [tab, causa?.id, causa?.rit])
 
-  // Load SIAU lazily (also for timeline)
+  // Load SIAU lazily (also for timeline and resumen) — OR por causa_rit/causa_id
   useEffect(() => {
-    if ((tab !== 'siau' && tab !== 'timeline') || !causa?.rit) return
+    if ((tab !== 'siau' && tab !== 'timeline' && tab !== 'resumen') || !causa?.id) return
     if (siauRows.length > 0) return
     setLoadingSiau(true)
-    supabase.from('siau').select('*').eq('causa_rit', causa.rit).order('fecha', { ascending: false })
+    const filter = causa.rit
+      ? `causa_rit.eq.${causa.rit},causa_id.eq.${causa.id}`
+      : `causa_id.eq.${causa.id}`
+    supabase.from('siau').select('*').or(filter).order('fecha', { ascending: false })
       .then(({ data }) => { setSiauRows(data ?? []); setLoadingSiau(false) })
-  }, [tab, causa?.rit])
+  }, [tab, causa?.id, causa?.rit])
 
   // Load revisiones when tab opens (or on mount for timeline)
   useEffect(() => {
-    if ((tab !== 'revision_semanal' && tab !== 'timeline') || !causa?.id) return
+    if ((tab !== 'seguimiento' && tab !== 'resumen') || !causa?.id) return
     if (revisiones.length > 0) return // already loaded
     setLoadingRev(true)
     supabase.from('revisiones').select('*').eq('causa_id', causa.id)
@@ -918,8 +1005,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
   // Load seguimiento rows — reset cache when causa changes
   useEffect(() => { setSegRows([]) }, [causa?.id])
 
-  // Load seguimiento rows (independent table — no semana_key)
-  // También se carga en resumen para mostrar la última anotación
+  // Load seguimiento rows — includes null semana_key (daily) and SEG- (bulk-imported historical)
   useEffect(() => {
     if ((tab !== 'seguimiento' && tab !== 'resumen') || !causa?.id) return
     setLoadingSeg(true)
@@ -927,14 +1013,106 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
     const query = causa.rit
       ? supabase.from('revisiones').select('*')
           .eq('causa_rit', causa.rit)
-          .is('semana_key', null)
+          .or('semana_key.is.null,semana_key.like.SEG-%')
           .order('fecha_revision', { ascending: false })
       : supabase.from('revisiones').select('*')
           .eq('causa_id', causa.id)
-          .is('semana_key', null)
+          .or('semana_key.is.null,semana_key.like.SEG-%')
           .order('fecha_revision', { ascending: false })
     query.then(({ data }) => { setSegRows(data ?? []); setLoadingSeg(false) })
   }, [tab, causa?.id])
+
+  // Load current week revision for the banner
+  useEffect(() => {
+    if (!causa?.id) return
+    const weekNum = getISOWeek_C(TODAY_C)
+    const year = new Date().getFullYear()
+    const semana_key = `${year}-W${String(weekNum).padStart(2, '0')}`
+    supabase.from('revisiones').select('*').eq('causa_id', causa.id).eq('semana_key', semana_key)
+      .maybeSingle().then(({ data }) => {
+        setCurrentWeekRev(data ?? null)
+        if (data?.revisada && data?.nota) setWeekRevDraft(data.nota)
+      })
+  }, [causa?.id])
+
+  // Save/update current week revision from banner
+  async function handleSaveWeekRev(revisada, nota) {
+    if (!causa?.id) return
+    setWeekRevSaving(true)
+    const today = TODAY_C
+    const weekNum = getISOWeek_C(today)
+    const year = new Date().getFullYear()
+    const semana_key = `${year}-W${String(weekNum).padStart(2, '0')}`
+    const payload = {
+      causa_id:       causa.id,
+      causa_rit:      causa.rit || null,
+      semana_key,
+      revisada,
+      nota:           nota || null,
+      fecha:          today,
+      responsable:    'MT',
+    }
+    const { data } = await supabase.from('revisiones')
+      .upsert(payload, { onConflict: 'semana_key,causa_id' })
+      .select().maybeSingle()
+    if (data) setCurrentWeekRev(data)
+    setWeekRevSaving(false)
+    showToast(revisada ? 'Marcada como revisada ✓' : 'Marcada como no revisada')
+  }
+
+  // Save quick entry from the timeline input bar
+  async function handleSaveQuickEntry() {
+    if (!quickText.trim() || !causa?.id) return
+    setSavingQuick(true)
+    try {
+      if (quickType === 'seguimiento') {
+        const { data } = await supabase.from('revisiones').insert([{
+          causa_id:       causa.id,
+          causa_rit:      causa.rit  || null,
+          cliente_nombre: causa.cliente_nombre || null,
+          fecha_revision: TODAY_C,
+          por_hacer:      quickText.trim(),
+          que_se_hizo:    'Pendiente',
+          semana_key:     null,
+        }]).select().single()
+        if (data) setSegRows(prev => [data, ...prev])
+      } else if (quickType === 'tarea') {
+        const { data } = await supabase.from('tareas').insert([{
+          titulo:         quickText.trim(),
+          estado:         'Pendiente',
+          prioridad:      'Media',
+          causa_id:       causa.id,
+          causa_rit:      causa.rit  || null,
+          cliente_nombre: causa.cliente_nombre || null,
+        }]).select().single()
+        if (data) setTareas(prev => [...prev, data])
+      } else if (quickType === 'siau') {
+        const { data } = await supabase.from('siau').insert([{
+          solicitud:      quickText.trim(),
+          fecha:          TODAY_C,
+          estado:         'Pendiente',
+          causa_rit:      causa.rit  || null,
+          causa_id:       causa.id,
+          cliente_nombre: causa.cliente_nombre || null,
+        }]).select().single()
+        if (data) setSiauRows(prev => [data, ...prev])
+      } else if (quickType === 'pjud') {
+        const { data } = await supabase.from('pjud').insert([{
+          solicitud:      quickText.trim(),
+          fecha:          TODAY_C,
+          estado:         'Pendiente',
+          causa_rit:      causa.rit  || null,
+          causa_id:       causa.id,
+          cliente_nombre: causa.cliente_nombre || null,
+        }]).select().single()
+        if (data) setPjudRows(prev => [data, ...prev])
+      }
+      setQuickText('')
+      showToast('Guardado ✓')
+    } finally {
+      setSavingQuick(false)
+    }
+  }
 
   // Save new revision
   async function handleSaveRevision() {
@@ -1161,14 +1339,10 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
             </span>
           )}
           {causa.rit && (
-            <span className="font-mono text-[11px] font-semibold bg-violet-50 text-violet-700 px-2 py-0.5 rounded">
-              RIT {causa.rit}
-            </span>
+            <CopyValue value={causa.rit} prefix="RIT" chipStyle chipColor="violet" />
           )}
           {causa.ruc && (
-            <span className="font-mono text-[11px] font-semibold bg-cyan-50 text-cyan-700 px-2 py-0.5 rounded">
-              RUC {causa.ruc}
-            </span>
+            <CopyValue value={causa.ruc} prefix="RUC" chipStyle chipColor="cyan" />
           )}
         </div>
 
@@ -1252,15 +1426,16 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
             return dias >= 0 && dias <= 7
           }).length
 
+          const segCount = (segRows.length || 0) + (revisiones.filter(r => r.semana_key && !r.semana_key.startsWith('SEG-')).length || 0)
           const chips = [
-            { key: 'siau',            Icon: Database,    label: 'SIAU',        count: siauRows.length || null,    urgent: siauRows.some(r => r.estado === 'Urgente') },
-            { key: 'pjud',            Icon: Shield,      label: 'PJUD',        count: pjudRows.length || null,    urgent: pjudRows.some(r => r.estado === 'Urgente') },
-            { key: 'audiencias',      Icon: Gavel,       label: 'Audiencias',  count: audiencias.length,          urgent: audProximas > 0 },
-            { key: 'tareas',          Icon: CheckSquare, label: 'Tareas',      count: tareasPend,                 urgent: tareasUrgentes > 0 },
-            { key: 'plazos',          Icon: Clock,       label: 'Plazos',      count: plazosActivos,              urgent: plazosUrgentes > 0 },
-            { key: 'documentos',      Icon: FileText,    label: 'Docs',        count: null,                       urgent: false },
-            { key: 'seguimiento',     Icon: Target,      label: 'Seguimiento', count: segRows.length || null,     urgent: false },
-            { key: 'revision_semanal',Icon: RefreshCw,   label: 'Revisiones',  count: revisiones.filter(r => !r.semana_key?.startsWith('SEG-')).length || null, urgent: false },
+            { key: 'resumen',     Icon: AlignLeft,   label: 'Resumen',     count: null,                    urgent: false },
+            { key: 'siau',        Icon: Database,    label: 'SIAU',        count: siauRows.length || null, urgent: siauRows.some(r => r.estado === 'Urgente') },
+            { key: 'pjud',        Icon: Shield,      label: 'PJUD',        count: pjudRows.length || null, urgent: pjudRows.some(r => r.estado === 'Urgente') },
+            { key: 'audiencias',  Icon: Gavel,       label: 'Audiencias',  count: audiencias.length,       urgent: audProximas > 0 },
+            { key: 'tareas',      Icon: CheckSquare, label: 'Tareas',      count: tareasPend,              urgent: tareasUrgentes > 0 },
+            { key: 'plazos',      Icon: Clock,       label: 'Plazos',      count: plazosActivos,           urgent: plazosUrgentes > 0 },
+            { key: 'documentos',  Icon: FileText,    label: 'Docs',        count: null,                    urgent: false },
+            { key: 'seguimiento', Icon: Target,      label: 'Seguimiento', count: segCount || null,        urgent: false },
           ]
           return (
             <div className="flex items-center gap-1.5 pb-3 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
@@ -1269,25 +1444,25 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                   key={key}
                   onClick={() => setTab(key)}
                   title={`Ir a ${label}`}
-                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium whitespace-nowrap flex-shrink-0 border transition-all ${
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium whitespace-nowrap flex-shrink-0 transition-all ${
                     tab === key
-                      ? 'bg-[#1a2e4a] text-white border-[#1a2e4a]'
+                      ? 'bg-[#1A2E4A] text-white'
                       : urgent
-                        ? 'bg-red-50 text-red-600 border-red-100 hover:bg-red-100'
-                        : 'bg-gray-50 text-gray-500 border-gray-100 hover:bg-gray-100 hover:text-gray-700'
+                        ? 'text-red-600 hover:bg-red-50'
+                        : 'text-[#4A5568] hover:bg-[#F7F8FA] hover:text-[#1C2533]'
                   }`}
                 >
                   <Icon size={11} className="flex-shrink-0" />
                   {label}
                   {count !== null && count > 0 && (
-                    <span className={`text-[9px] font-bold min-w-[14px] h-3.5 px-1 rounded-full flex items-center justify-center ${
-                      tab === key ? 'bg-white/25 text-white' : urgent ? 'bg-red-200 text-red-700' : 'bg-gray-200 text-gray-600'
+                    <span className={`text-[9px] font-semibold min-w-[16px] h-4 px-1 rounded-full flex items-center justify-center ${
+                      tab === key ? 'bg-white/20 text-white' : urgent ? 'bg-red-100 text-red-600' : 'bg-[#F1F2F4] text-[#6B7280]'
                     }`}>
                       {count}
                     </span>
                   )}
                   {urgent && tab !== key && (
-                    <span className="w-1.5 h-1.5 rounded-full bg-red-500 flex-shrink-0" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-red-400 flex-shrink-0" />
                   )}
                 </button>
               ))}
@@ -1295,333 +1470,393 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
           )
         })()}
 
-        {/* Tabs */}
-        <div className="flex items-center overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
-          {CAUSA_TABS.map(t => (
-            <button
-              key={t.key}
-              onClick={() => setTab(t.key)}
-              className={`flex items-center gap-1.5 px-4 py-3 text-[12px] font-medium whitespace-nowrap border-b-2 transition-all flex-shrink-0 ${
-                tab === t.key
-                  ? 'border-[#1a2e4a] text-[#1a2e4a]'
-                  : 'border-transparent text-gray-400 hover:text-gray-700 hover:border-gray-200'
-              }`}
-            >
-              <t.Icon size={12} />
-              {t.label}
-            </button>
-          ))}
-        </div>
       </div>
+
 
       {/* ── TAB CONTENT ── */}
       <div className="flex-1 overflow-y-auto">
 
-        {/* RESUMEN — Centro de Causa */}
+        {/* RESUMEN — diseño completo */}
         {tab === 'resumen' && (() => {
-          // ── Derived data ──────────────────────────────────────────────────
-          const proxAud    = audiencias.filter(a => a.fecha >= TODAY_C).sort((a,b) => a.fecha.localeCompare(b.fecha))[0] ?? null
-          const proxPlazo  = plazos.filter(p => p.fecha_vencimiento >= TODAY_C).sort((a,b) => a.fecha_vencimiento.localeCompare(b.fecha_vencimiento))[0] ?? null
-          const lastTarea  = tareas.filter(t => t.estado !== 'Completada').sort((a,b) => {
-            if (a.prioridad === 'Alta' && b.prioridad !== 'Alta') return -1
-            if (b.prioridad === 'Alta' && a.prioridad !== 'Alta') return 1
-            return (a.fecha_vencimiento ?? '9999').localeCompare(b.fecha_vencimiento ?? '9999')
-          })[0] ?? null
+          // Week info
+          const weekNum  = getISOWeek_C(TODAY_C)
+          const yearNow  = new Date().getFullYear()
+          const d0       = new Date(TODAY_C + 'T00:00:00')
+          const dow      = d0.getDay() || 7
+          const mon      = new Date(d0); mon.setDate(d0.getDate() - dow + 1)
+          const sun      = new Date(mon); sun.setDate(mon.getDate() + 6)
+          const fmtDay   = dt => `${dt.getDate()} ${MESES_C[dt.getMonth()]}`
+          const weekLabel = `Semana ${weekNum} · ${fmtDay(mon)} – ${fmtDay(sun)}`
 
-          const plazosDias = proxPlazo ? Math.round((new Date(proxPlazo.fecha_vencimiento + 'T00:00:00') - new Date(TODAY_C + 'T00:00:00')) / 86400000) : null
-          const audDias    = proxAud   ? Math.round((new Date(proxAud.fecha + 'T00:00:00') - new Date(TODAY_C + 'T00:00:00')) / 86400000) : null
+          // Derived data
+          const proxAud       = audiencias.filter(a => a.fecha >= TODAY_C).sort((a,b)=>a.fecha.localeCompare(b.fecha))[0] ?? null
+          const audDias       = proxAud ? Math.round((new Date(proxAud.fecha+'T00:00:00')-new Date(TODAY_C+'T00:00:00'))/86400000) : null
+          const proxPlazo     = plazos.filter(p=>p.fecha_vencimiento>=TODAY_C&&p.estado==='Activo').sort((a,b)=>a.fecha_vencimiento.localeCompare(b.fecha_vencimiento))[0]??null
+          const tareasPendList= tareas.filter(t=>t.estado!=='Completada').sort((a,b)=>{
+            if(a.prioridad==='Alta'&&b.prioridad!=='Alta')return -1
+            if(b.prioridad==='Alta'&&a.prioridad!=='Alta')return 1
+            return(a.fecha_vencimiento??'9999').localeCompare(b.fecha_vencimiento??'9999')
+          })
+          const siauSinResp   = siauRows.filter(r=>!r.respuesta?.trim())
+          const oldestSiauDias= siauSinResp.length>0
+            ? Math.round((new Date(TODAY_C+'T00:00:00')-new Date(siauSinResp[siauSinResp.length-1].fecha+'T00:00:00'))/86400000)
+            : null
+          const lastSegFecha  = segRows[0]?.fecha_revision ?? segRows[0]?.fecha
+          const lastSegDias   = lastSegFecha
+            ? Math.round((new Date(TODAY_C+'T00:00:00')-new Date(lastSegFecha+'T00:00:00'))/86400000)
+            : null
 
-          // urgency helpers
-          const plazoUrgente = plazosDias !== null && plazosDias <= 2
-          const audUrgente   = audDias    !== null && audDias    <= 1
-          const pjudUrgente  = lastPjud?.estado === 'Urgente'
-          const siauUrgente  = lastSiau?.estado  === 'Urgente'
-          const tareaUrgente = lastTarea?.prioridad === 'Alta' || (lastTarea?.fecha_vencimiento && lastTarea.fecha_vencimiento <= TODAY_C)
+          // Combined timeline
+          const allItems = [
+            ...segRows.map(r=>({id:`seg-${r.id}`,type:'seguimiento',date:r.fecha_revision??r.fecha,primary:r.por_hacer||r.nota||'—',secondary:r.que_se_hizo,notas:r.notas??r.nota,raw:r})),
+            ...siauRows.map(r=>({id:`siau-${r.id}`,type:'siau',date:r.fecha,primary:r.solicitud||r.folio||'—',secondary:r.estado,folio:r.folio,raw:r})),
+            ...pjudRows.map(r=>({id:`pjud-${r.id}`,type:'pjud',date:r.fecha,primary:r.solicitud||r.folio||'—',secondary:r.estado,folio:r.folio,raw:r})),
+            ...audiencias.map(a=>({id:`aud-${a.id}`,type:'audiencia',date:a.fecha,primary:a.tipo||'Audiencia',secondary:a.hora,raw:a})),
+            ...tareas.map(t=>({id:`tar-${t.id}`,type:'tarea',date:t.fecha_vencimiento||t.created_at?.slice(0,10),primary:t.titulo,secondary:t.estado,raw:t})),
+          ].sort((a,b)=>{ if(!a.date&&!b.date)return 0; if(!a.date)return 1; if(!b.date)return -1; return b.date.localeCompare(a.date) })
+          const filteredTl = tlFilter==='Todo' ? allItems : allItems.filter(i=>i.type===tlFilter)
 
-          // ── PulsoCard ──────────────────────────────────────────────────────
-          function PulsoCard({ icon: Icon, label, iconColor, main, sub, badge, urgent, empty, loading, onClick, onOpenModule, moduleLabel }) {
-            return (
-              <div className={`relative rounded-xl border transition-all duration-150 ${
-                urgent
-                  ? 'bg-red-50/60 border-red-100 hover:border-red-200'
-                  : 'bg-white border-gray-100 hover:border-gray-200 hover:bg-gray-50/30'
-              }`}>
-                <button
-                  onClick={onClick}
-                  className="text-left w-full p-3.5 focus:outline-none"
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <div className={`flex items-center gap-1 text-[9px] font-bold uppercase tracking-widest ${urgent ? 'text-red-400' : iconColor}`}>
-                      <Icon size={9} />
-                      {label}
-                    </div>
-                    {badge && <div className="flex-shrink-0">{badge}</div>}
-                  </div>
-                  {loading ? (
-                    <div className="space-y-1.5">
-                      <div className="h-3 bg-gray-100 rounded animate-pulse w-3/4" />
-                      <div className="h-2.5 bg-gray-100 rounded animate-pulse w-1/2" />
-                    </div>
-                  ) : empty ? (
-                    <p className="text-[11px] text-gray-300">Sin registros</p>
-                  ) : (
-                    <>
-                      <p className={`text-[12px] font-medium leading-snug line-clamp-2 ${urgent ? 'text-red-800' : 'text-gray-800'}`}>{main}</p>
-                      {sub && <p className={`text-[10px] mt-0.5 ${urgent ? 'text-red-400' : 'text-gray-400'}`}>{sub}</p>}
-                    </>
-                  )}
-                </button>
-                {onOpenModule && !empty && !loading && (
-                  <button
-                    onClick={onOpenModule}
-                    className="w-full px-3.5 pb-2.5 text-left text-[9px] font-semibold text-[#2570ba]/70 hover:text-[#2570ba] transition-colors"
-                  >
-                    {moduleLabel || 'Abrir módulo'} →
-                  </button>
-                )}
-              </div>
-            )
+          const TYPE_CFG = {
+            seguimiento:{ bg:'bg-blue-50',   text:'text-blue-600',   border:'border-blue-100',   dot:'bg-blue-400',   label:'Seguimiento', Icon:BookOpen    },
+            siau:       { bg:'bg-violet-50', text:'text-violet-600', border:'border-violet-100', dot:'bg-violet-400', label:'SIAU',        Icon:Database    },
+            pjud:       { bg:'bg-emerald-50',text:'text-emerald-600',border:'border-emerald-100',dot:'bg-emerald-400',label:'PJUD',        Icon:Scale       },
+            audiencia:  { bg:'bg-amber-50',  text:'text-amber-600',  border:'border-amber-100',  dot:'bg-amber-400',  label:'Audiencia',   Icon:Gavel       },
+            tarea:      { bg:'bg-rose-50',   text:'text-rose-600',   border:'border-rose-100',   dot:'bg-rose-400',   label:'Tarea',       Icon:CheckSquare },
           }
-
-          // ── Estado mini-badge ──────────────────────────────────────────────
-          function MiniEstado({ estado, urgent }) {
-            if (!estado) return null
-            const colors = urgent
-              ? 'bg-red-100 text-red-700'
-              : estado.toLowerCase().includes('pend')   ? 'bg-amber-50 text-amber-600'
-              : estado.toLowerCase().includes('respond') ? 'bg-green-50 text-green-700'
-              : 'bg-gray-100 text-gray-500'
-            return <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full ${colors}`}>{estado}</span>
-          }
-
-          // ── Seguimiento: última anotación ──────────────────────────────────
-          const lastSeg = segRows[0] ?? null
+          const tlLoading = loadingBase || loadingSeg || loadingPjud || loadingSiau
 
           return (
-          <div className="px-6 py-6 space-y-5">
+          <div className="flex flex-col h-full overflow-hidden">
 
-            {/* ── ACCIONES RÁPIDAS ──────────────────────────────────────── */}
-            <div className="flex items-center gap-1.5 flex-wrap">
+            {/* ── 4 PULSE CARDS ────────────────────────────────────────── */}
+            <div className="flex-shrink-0 grid grid-cols-4 border-b border-gray-100">
               {[
-                { icon: CheckSquare, label: 'Nueva tarea',     color: 'blue',   action: () => setTab('tareas')           },
-                { icon: Gavel,       label: 'Nueva audiencia', color: 'purple', action: () => setTab('audiencias')       },
-                { icon: Clock,       label: 'Nuevo plazo',     color: 'amber',  action: () => setTab('plazos')           },
-                { icon: Scale,       label: 'Nuevo PJUD',      color: 'blue',   action: () => { navigate('/pjud') }      },
-                { icon: Database,    label: 'Nueva SIAU',      color: 'violet', action: () => { navigate('/siau') }      },
-                { icon: RefreshCw,   label: 'Nueva revisión',  color: 'teal',   action: () => { setShowRevForm(true); setTab('revision_semanal') } },
-                { icon: BookOpen,    label: 'Anotación',       color: 'slate',  action: () => { setNewSegRow({ fecha_revision: TODAY_C, por_hacer: '', que_se_hizo: 'Pendiente' }); setTab('seguimiento') } },
-                { icon: FileText,    label: 'Documento',       color: 'gray',   action: () => setTab('documentos')       },
-              ].map(({ icon: Icon, label, color, action }) => (
-                <button
-                  key={label}
-                  onClick={action}
-                  className={`flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1.5 rounded-lg border transition-all hover:shadow-sm active:scale-[0.97] ${
-                    color === 'blue'   ? 'border-blue-100 bg-blue-50 text-blue-600 hover:bg-blue-100'     :
-                    color === 'purple' ? 'border-purple-100 bg-purple-50 text-purple-600 hover:bg-purple-100' :
-                    color === 'amber'  ? 'border-amber-100 bg-amber-50 text-amber-600 hover:bg-amber-100'   :
-                    color === 'violet' ? 'border-violet-100 bg-violet-50 text-violet-600 hover:bg-violet-100' :
-                    color === 'teal'   ? 'border-teal-100 bg-teal-50 text-teal-600 hover:bg-teal-100'       :
-                    color === 'slate'  ? 'border-slate-100 bg-slate-50 text-slate-600 hover:bg-slate-100'   :
-                    'border-gray-100 bg-gray-50 text-gray-500 hover:bg-gray-100'
-                  }`}
-                >
-                  <Icon size={11} />
-                  {label}
+                { label:'SIAU sin resp.',
+                  value: siauSinResp.length>0?`${siauSinResp.length} pendiente${siauSinResp.length>1?'s':''}`:'Al día',
+                  sub:   oldestSiauDias!==null?`Más antigua: hace ${oldestSiauDias}d`:null,
+                  urgent:(oldestSiauDias??0)>15, color:'amber', Icon:Database, onClick:()=>setTab('siau') },
+                { label:'Próxima audiencia',
+                  value: proxAud?`${fmtFechaCausa(proxAud.fecha)}${proxAud.hora?` · ${proxAud.hora}`:''}` :'Sin programar',
+                  sub:   audDias!==null?(audDias===0?'Hoy':audDias===1?'Mañana':`En ${audDias} días`):null,
+                  urgent:audDias!==null&&audDias<=1, color:'green', Icon:Gavel, onClick:()=>setTab('audiencias') },
+                { label:'Último seguimiento',
+                  value: lastSegDias===null?'Sin registros':lastSegDias===0?'Hoy':lastSegDias===1?'Ayer':`Hace ${lastSegDias} días`,
+                  sub:   (segRows[0]?.por_hacer||segRows[0]?.nota)?.slice(0,45)||null,
+                  urgent:false, color:'gray', Icon:BookOpen, onClick:()=>setTab('seguimiento') },
+                { label:'Tareas pendientes',
+                  value: tareasPendList.length===0?'Sin pendientes':`${tareasPendList.length} tarea${tareasPendList.length>1?'s':''}`,
+                  sub:   tareasPendList[0]?.titulo?.slice(0,40)||null,
+                  urgent:tareasPendList.length>0, color:'red', Icon:CheckSquare, onClick:()=>setTab('tareas') },
+              ].map(({ label,value,sub,urgent,color,Icon,onClick })=>(
+                <button key={label} onClick={onClick}
+                  className={`text-left p-3.5 border-r border-gray-100 last:border-r-0 transition-colors hover:bg-gray-50/80 ${urgent?'bg-rose-50/40':''}`}>
+                  <div className={`flex items-center gap-1 mb-1.5 text-[9px] font-bold uppercase tracking-widest ${
+                    urgent?'text-rose-400':color==='amber'?'text-amber-500':color==='green'?'text-emerald-500':color==='gray'?'text-slate-400':'text-rose-400'
+                  }`}><Icon size={9}/>{label}</div>
+                  <p className={`text-[13px] font-semibold leading-snug ${urgent?'text-rose-700':'text-gray-800'}`}>{value}</p>
+                  {sub&&<p className={`text-[10px] mt-0.5 truncate ${urgent?'text-rose-400':'text-gray-400'}`}>{sub}</p>}
                 </button>
               ))}
             </div>
 
-            {/* ── PULSO OPERATIVO ─────────────────────────────────────── */}
-            <div>
-              <p className="text-[10px] font-semibold text-gray-300 uppercase tracking-widest mb-3">
-                Pulso operativo
-              </p>
-              <div className="grid grid-cols-3 gap-2.5">
-
-                {/* PJUD */}
-                <PulsoCard
-                  icon={Scale}
-                  label="PJUD"
-                  iconColor="text-blue-400"
-                  urgent={pjudUrgente}
-                  loading={lastPjud === undefined}
-                  empty={lastPjud === null}
-                  main={lastPjud?.solicitud || lastPjud?.folio || '—'}
-                  sub={[lastPjud?.estado, fmtRelDate(lastPjud?.fecha)].filter(Boolean).join(' · ')}
-                  badge={lastPjud && <MiniEstado estado={lastPjud.estado} urgent={pjudUrgente} />}
-                  onClick={() => setTab('pjud')}
-                  onOpenModule={() => navigate('/pjud')}
-                  moduleLabel="Abrir PJUD completo"
-                />
-
-                {/* SIAU */}
-                <PulsoCard
-                  icon={MessageSquare}
-                  label="SIAU"
-                  iconColor="text-violet-400"
-                  urgent={siauUrgente}
-                  loading={lastSiau === undefined}
-                  empty={lastSiau === null}
-                  main={lastSiau?.solicitud || lastSiau?.folio || '—'}
-                  sub={[lastSiau?.estado, fmtRelDate(lastSiau?.fecha)].filter(Boolean).join(' · ')}
-                  badge={lastSiau && <MiniEstado estado={lastSiau.estado} urgent={siauUrgente} />}
-                  onClick={() => setTab('siau')}
-                  onOpenModule={() => navigate('/siau')}
-                  moduleLabel="Abrir SIAU completo"
-                />
-
-                {/* Audiencia */}
-                <PulsoCard
-                  icon={Gavel}
-                  label="Próxima audiencia"
-                  iconColor="text-purple-400"
-                  urgent={audUrgente}
-                  loading={loadingBase}
-                  empty={!proxAud}
-                  main={proxAud?.tipo || 'Audiencia'}
-                  sub={proxAud ? [fmtFechaCausa(proxAud.fecha), proxAud.hora].filter(Boolean).join(' · ') + (audDias === 0 ? ' — hoy' : audDias === 1 ? ' — mañana' : '') : null}
-                  badge={proxAud && audDias !== null && (
-                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${audUrgente ? 'bg-red-100 text-red-700' : 'bg-purple-50 text-purple-600'}`}>
-                      {audDias === 0 ? 'Hoy' : audDias === 1 ? 'Mañana' : `${audDias}d`}
-                    </span>
-                  )}
-                  onClick={() => setTab('audiencias')}
-                />
-
-                {/* Plazo */}
-                <PulsoCard
-                  icon={Clock}
-                  label="Próximo plazo"
-                  iconColor="text-amber-400"
-                  urgent={plazoUrgente}
-                  loading={loadingBase}
-                  empty={!proxPlazo}
-                  main={proxPlazo?.titulo || '—'}
-                  sub={proxPlazo ? `Vence ${fmtRelDate(proxPlazo.fecha_vencimiento)}` : null}
-                  badge={proxPlazo && plazosDias !== null && (
-                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${plazoUrgente ? 'bg-red-100 text-red-700' : 'bg-amber-50 text-amber-600'}`}>
-                      {plazosDias === 0 ? 'Hoy' : `${plazosDias}d`}
-                    </span>
-                  )}
-                  onClick={() => setTab('plazos')}
-                />
-
-                {/* Revisión */}
-                <PulsoCard
-                  icon={RefreshCw}
-                  label="Última revisión"
-                  iconColor="text-teal-400"
-                  loading={lastRevision === undefined}
-                  empty={lastRevision === null}
-                  main={lastRevision?.nota?.slice(0, 80) || 'Sin nota'}
-                  sub={[lastRevision?.responsable, fmtRelDate(lastRevision?.fecha)].filter(Boolean).join(' · ')}
-                  onClick={() => setTab('revision_semanal')}
-                />
-
-                {/* Tarea */}
-                <PulsoCard
-                  icon={CheckSquare}
-                  label="Tarea pendiente"
-                  iconColor="text-indigo-400"
-                  urgent={tareaUrgente}
-                  loading={loadingBase}
-                  empty={!lastTarea}
-                  main={lastTarea?.titulo || '—'}
-                  sub={lastTarea ? [lastTarea.prioridad === 'Alta' ? '🔴 Alta prioridad' : null, lastTarea.fecha_vencimiento ? `vence ${fmtRelDate(lastTarea.fecha_vencimiento)}` : null].filter(Boolean).join(' · ') : null}
-                  badge={lastTarea && tareasPend > 1 && (
-                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500">+{tareasPend - 1}</span>
-                  )}
-                  onClick={() => setTab('tareas')}
-                />
-
-                {/* Seguimiento — última anotación */}
-                <PulsoCard
-                  icon={BookOpen}
-                  label="Seguimiento"
-                  iconColor="text-slate-400"
-                  loading={false}
-                  empty={!lastSeg}
-                  main={lastSeg?.por_hacer || '—'}
-                  sub={lastSeg ? [lastSeg.que_se_hizo, fmtRelDate(lastSeg?.fecha_revision)].filter(Boolean).join(' · ') : null}
-                  onClick={() => setTab('seguimiento')}
-                />
-              </div>
+            {/* ── BANNER REVISIÓN SEMANAL ──────────────────────────────── */}
+            <div className="flex-shrink-0 mx-4 my-2 rounded-xl border border-[#E2E5EA] bg-white flex items-center gap-3 px-4 py-2.5">
+              <Calendar size={13} className="text-gray-400 flex-shrink-0"/>
+              <span className="text-[12px] font-medium text-gray-600 flex-shrink-0">{weekLabel}</span>
+              <span className="text-gray-200 flex-shrink-0">·</span>
+              <span className="text-[12px] text-gray-500 flex-shrink-0">Revisado esta semana:</span>
+              {currentWeekRev===undefined ? (
+                <div className="h-6 w-28 bg-gray-100 rounded-lg animate-pulse"/>
+              ) : (
+                <select
+                  value={currentWeekRev?.revisada===true?'SI':currentWeekRev?.revisada===false?'NO':''}
+                  onChange={async e=>{
+                    const v=e.target.value
+                    await handleSaveWeekRev(v==='SI'?true:v==='NO'?false:null, currentWeekRev?.nota||null)
+                  }}
+                  disabled={weekRevSaving}
+                  className="text-[12px] border border-[#E2E5EA] bg-[#F7F8FA] rounded-lg px-3 py-1 focus:outline-none focus:border-gray-300 text-gray-600 cursor-pointer appearance-none min-w-[120px] disabled:opacity-60"
+                  style={{backgroundImage:`url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`,backgroundRepeat:'no-repeat',backgroundPosition:'right 8px center',paddingRight:'24px'}}
+                >
+                  <option value="">— Sin marcar</option>
+                  <option value="SI">✓ Sí, revisada</option>
+                  <option value="NO">✗ No revisada</option>
+                </select>
+              )}
+              {currentWeekRev?.revisada&&(
+                currentWeekRev?.nota
+                  ?<span className="text-[11px] text-gray-500 truncate flex-1 mx-1">{currentWeekRev.nota}</span>
+                  :<button onClick={()=>setShowRevForm(true)} className="text-[11px] text-gray-400 hover:text-gray-600 mx-1 underline">+ agregar nota</button>
+              )}
+              <button onClick={()=>setTab('seguimiento')}
+                className="ml-auto flex-shrink-0 flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-lg border border-[#E2E5EA] bg-[#F7F8FA] text-gray-500 hover:text-gray-700 hover:border-gray-300 transition-colors whitespace-nowrap">
+                <Clock size={11}/>
+                Ver historial
+              </button>
             </div>
 
-            {/* ── INFORMACIÓN PROCESAL ───────────────────────────────── */}
-            <div className="grid grid-cols-2 gap-8">
-              <div>
-                <p className="text-[10px] font-semibold text-gray-300 uppercase tracking-widest mb-3">
-                  Información procesal
-                </p>
-                <div className="space-y-2.5">
-                  {[
-                    ['RIT',      causa.rit,            true],
-                    ['RUC',      causa.ruc,            true],
-                    ['Tribunal', causa.tribunal,       false],
-                    ['Fiscalía', causa.fiscalia,       false],
-                    ['Fiscal',   causa.fiscal,         false],
-                    ['Etapa',    causa.etapa_procesal, false],
-                    ['Parte',    causa.parte,          false],
-                    ['Inicio',   formatFecha(causa.fecha_inicio ?? causa.created_at), false],
-                  ].filter(([,v]) => v).map(([label, val, mono]) => (
-                    <div key={label} className="flex items-start gap-3">
-                      <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider w-16 flex-shrink-0 pt-0.5">{label}</span>
-                      <span className={`text-[12px] text-gray-700 leading-snug ${mono ? 'font-mono' : ''}`}>{val}</span>
+            {/* ── DOS COLUMNAS ─────────────────────────────────────────── */}
+            <div className="flex flex-1 min-h-0">
+
+              {/* ── IZQUIERDA 60% — Expediente tipo chat ─────────────── */}
+              <div className="flex-[3] min-w-0 flex flex-col border-r border-gray-100">
+
+                {/* Filter pills */}
+                <div className="flex-shrink-0 flex items-center gap-1.5 px-4 py-2 border-b border-gray-50 overflow-x-auto" style={{scrollbarWidth:'none'}}>
+                  {['Todo','seguimiento','siau','pjud','audiencia','tarea'].map(f=>{
+                    const cfg  = TYPE_CFG[f]
+                    const cnt  = f==='Todo'?allItems.length:allItems.filter(i=>i.type===f).length
+                    const active = tlFilter===f
+                    return (
+                      <button key={f} onClick={()=>setTlFilter(f)}
+                        className={`flex items-center gap-1 text-[10px] font-medium px-2.5 py-0.5 rounded-full border whitespace-nowrap transition-all ${
+                          active?(cfg?`${cfg.bg} ${cfg.text} ${cfg.border}`:'bg-[#1a2e4a] text-white border-[#1a2e4a]'):'bg-gray-50 text-gray-400 border-gray-100 hover:bg-gray-100'
+                        }`}>
+                        {cfg&&<cfg.Icon size={9}/>}
+                        {cfg?cfg.label:'Todo'}
+                        {cnt>0&&<span className="ml-0.5 opacity-60">{cnt}</span>}
+                      </button>
+                    )
+                  })}
+                </div>
+
+                {/* Timeline feed */}
+                <div className="flex-1 overflow-y-auto">
+                  {tlLoading&&filteredTl.length===0 ? (
+                    <div className="p-4 space-y-3">
+                      {[1,2,3].map(i=>(
+                        <div key={i} className="flex gap-3">
+                          <div className="w-2 h-2 rounded-full bg-gray-100 mt-2 flex-shrink-0"/>
+                          <div className="flex-1 space-y-1.5">
+                            <div className="h-2.5 bg-gray-100 rounded animate-pulse w-20"/>
+                            <div className="h-10 bg-gray-50 rounded-xl animate-pulse"/>
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  ) : filteredTl.length===0 ? (
+                    <div className="flex flex-col items-center justify-center h-32">
+                      <Activity size={22} className="text-gray-200 mb-2"/>
+                      <p className="text-[12px] text-gray-400">Sin actividad registrada</p>
+                      <p className="text-[10px] text-gray-300 mt-0.5">Usa la barra de abajo para agregar</p>
+                    </div>
+                  ) : (
+                    <div className="px-4 py-3 space-y-0">
+                      {filteredTl.map((item,i)=>{
+                        const cfg      = TYPE_CFG[item.type]||TYPE_CFG.seguimiento
+                        const showDate = i===0||filteredTl[i-1].date!==item.date
+                        const tabTarget= item.type==='seguimiento'?'seguimiento':item.type==='siau'?'siau':item.type==='pjud'?'pjud':item.type==='audiencia'?'audiencias':'tareas'
+                        return (
+                          <div key={item.id}>
+                            {showDate&&item.date&&(
+                              <div className="flex items-center gap-2 py-1.5">
+                                <span className="text-[9px] font-bold text-gray-300 uppercase tracking-wider">{fmtFechaCausa(item.date)}</span>
+                                <div className="flex-1 h-px bg-gray-100"/>
+                              </div>
+                            )}
+                            <div className="flex gap-2.5 group">
+                              <div className="flex flex-col items-center pt-1.5">
+                                <div className={`w-2 h-2 rounded-full flex-shrink-0 ${cfg.dot}`}/>
+                                {i<filteredTl.length-1&&<div className="w-px flex-1 bg-gray-100 mt-0.5 mb-0 min-h-[8px]"/>}
+                              </div>
+                              <div className={`flex-1 min-w-0 rounded-xl border px-3 py-2 mb-1.5 hover:shadow-sm transition-all cursor-pointer ${cfg.bg} ${cfg.border}`}
+                                onClick={()=>setTab(tabTarget)}>
+                                <div className="flex items-center gap-2 mb-0.5">
+                                  <span className={`text-[9px] font-bold uppercase tracking-wider ${cfg.text}`}>{cfg.label}</span>
+                                  {item.folio&&(
+                                    <span onClick={e=>e.stopPropagation()}>
+                                      <CopyValue value={item.folio} className={`font-mono text-[10px] ${cfg.text}`}/>
+                                    </span>
+                                  )}
+                                  <span className="ml-auto text-[9px] text-gray-400 flex-shrink-0">{fmtRelDate(item.date)}</span>
+                                </div>
+                                <p className="text-[12px] text-gray-800 leading-snug line-clamp-2">{item.primary}</p>
+                                {item.notas&&<p className="text-[11px] text-gray-500 mt-0.5 line-clamp-1">{item.notas}</p>}
+                                {item.secondary&&(
+                                  <span className={`inline-block mt-1 text-[9px] font-semibold px-1.5 py-0.5 rounded-full ${cfg.bg} ${cfg.text} border ${cfg.border}`}>
+                                    {item.secondary}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Quick entry bar */}
+                <div className="flex-shrink-0 border-t border-gray-100 px-4 py-3 bg-white">
+                  <div className="flex items-center gap-1.5 mb-2">
+                    {['seguimiento','tarea','siau','pjud'].map(t=>{
+                      const cfg = TYPE_CFG[t]
+                      return (
+                        <button key={t} onClick={()=>setQuickType(t)}
+                          className={`flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full border transition-all ${
+                            quickType===t?`${cfg.bg} ${cfg.text} ${cfg.border}`:'bg-gray-50 text-gray-400 border-gray-100 hover:bg-gray-100'
+                          }`}>
+                          <cfg.Icon size={9}/>{cfg.label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                  <div className="flex gap-2">
+                    <textarea
+                      value={quickText}
+                      onChange={e=>setQuickText(e.target.value)}
+                      onKeyDown={e=>{
+                        if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();if(quickText.trim())handleSaveQuickEntry()}
+                        if(e.key==='Escape'){setQuickText('')}
+                      }}
+                      placeholder={
+                        quickType==='seguimiento'?'¿Qué se está haciendo?…':
+                        quickType==='tarea'?'Título de la tarea…':
+                        quickType==='siau'?'Solicitud SIAU…':'Solicitud PJUD…'
+                      }
+                      rows={2}
+                      className="flex-1 text-[12px] border border-gray-200 rounded-xl px-3 py-2 resize-none focus:outline-none focus:border-[#2570ba]/40 bg-white leading-relaxed placeholder-gray-300"
+                    />
+                    <button onClick={handleSaveQuickEntry} disabled={!quickText.trim()||savingQuick}
+                      className="flex-shrink-0 px-3 py-2 rounded-xl text-white text-[11px] font-medium disabled:opacity-40 transition-opacity self-end"
+                      style={{backgroundColor:'#2570BA'}}>
+                      {savingQuick?<Loader2 size={13} className="animate-spin"/>:<Plus size={13}/>}
+                    </button>
+                  </div>
+                  <p className="text-[9px] text-gray-300 mt-1.5">Enter guarda · Shift+Enter nueva línea · Escape limpia</p>
                 </div>
               </div>
 
-              <div className="space-y-5">
-                {/* Notas libres — siempre visible, editable inline */}
-                <div>
-                  <p className="text-[10px] font-semibold text-gray-300 uppercase tracking-widest mb-2">Notas</p>
-                  <div className="bg-gray-50 rounded-xl p-3.5">
+              {/* ── DERECHA 40% — Paneles compactos ─────────────────── */}
+              <div className="flex-[2] min-w-0 overflow-y-auto px-4 py-4 space-y-4">
+
+                {/* Info procesal */}
+                <section className="rounded-xl bg-gray-50/60 border border-gray-100 p-3 space-y-1.5">
+                  {[
+                    ['RIT',     causa.rit,            true ],
+                    ['RUC',     causa.ruc,            true ],
+                    ['Tribunal',causa.tribunal,       false],
+                    ['Fiscalía',causa.fiscalia,       false],
+                    ['Fiscal',  causa.fiscal,         false],
+                    ['Etapa',   causa.etapa_procesal, false],
+                    ['Parte',   causa.parte,          false],
+                  ].filter(([,v])=>v).map(([lbl,val,mono])=>(
+                    <div key={lbl} className="flex items-start gap-2">
+                      <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider w-12 flex-shrink-0 pt-0.5">{lbl}</span>
+                      {mono?<CopyValue value={val} className="text-[11px] text-gray-700"/>
+                           :<span className="text-[11px] text-gray-700 leading-snug">{val}</span>}
+                    </div>
+                  ))}
+                </section>
+
+                {/* Próxima audiencia */}
+                {proxAud&&(
+                  <section>
+                    <p className="text-[9px] font-bold uppercase tracking-widest text-gray-300 mb-1.5">Próxima audiencia</p>
+                    <button onClick={()=>setTab('audiencias')}
+                      className={`w-full text-left px-3 py-2.5 rounded-xl border transition-colors ${
+                        audDias!==null&&audDias<=1?'border-red-200 bg-red-50/40 hover:bg-red-50/60':'border-purple-100 bg-purple-50/30 hover:bg-purple-50/50'
+                      }`}>
+                      <p className="text-[12px] font-semibold text-gray-800">{proxAud.tipo||'Audiencia'}</p>
+                      <p className={`text-[11px] mt-0.5 font-medium ${audDias!==null&&audDias<=1?'text-red-600':'text-purple-600'}`}>
+                        {fmtFechaCausa(proxAud.fecha)}{proxAud.hora?` · ${proxAud.hora}`:''}
+                        {audDias===0?' — hoy':audDias===1?' — mañana':audDias!==null?` — en ${audDias}d`:''}
+                      </p>
+                    </button>
+                  </section>
+                )}
+
+                {/* Tareas pendientes */}
+                {tareasPendList.length>0&&(
+                  <section>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <p className="text-[9px] font-bold uppercase tracking-widest text-gray-300">Tareas pendientes</p>
+                      <button onClick={()=>setTab('tareas')} className="text-[9px] text-gray-400 hover:text-gray-600">Ver todas →</button>
+                    </div>
+                    <div className="space-y-1">
+                      {tareasPendList.slice(0,5).map(t=>(
+                        <div key={t.id} className="flex items-center gap-2 py-0.5">
+                          <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${t.prioridad==='Alta'?'bg-red-400':'bg-amber-300'}`}/>
+                          <p className="text-[11px] text-gray-700 flex-1 truncate">{t.titulo}</p>
+                          {t.fecha_vencimiento&&<span className="text-[10px] text-gray-400 flex-shrink-0">{fmtFechaCausa(t.fecha_vencimiento)}</span>}
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                )}
+
+                {/* Último SIAU */}
+                {lastSiau&&(
+                  <section>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <p className="text-[9px] font-bold uppercase tracking-widest text-gray-300">Último SIAU</p>
+                      <button onClick={()=>setTab('siau')} className="text-[9px] text-gray-400 hover:text-gray-600">Ver todos →</button>
+                    </div>
+                    <div onClick={()=>setTab('siau')}
+                      className="px-3 py-2.5 rounded-xl border border-violet-100 bg-violet-50/30 hover:bg-violet-50/50 cursor-pointer transition-colors">
+                      {lastSiau.folio&&<span onClick={e=>e.stopPropagation()}><CopyValue value={lastSiau.folio} className="font-mono text-[10px] text-violet-600 mb-1 block"/></span>}
+                      <p className="text-[11px] text-gray-700 line-clamp-2 leading-snug">{lastSiau.solicitud||'—'}</p>
+                      <p className="text-[10px] text-gray-400 mt-0.5">{[lastSiau.estado,fmtRelDate(lastSiau.fecha)].filter(Boolean).join(' · ')}</p>
+                    </div>
+                  </section>
+                )}
+
+                {/* Último PJUD */}
+                {lastPjud&&(
+                  <section>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <p className="text-[9px] font-bold uppercase tracking-widest text-gray-300">Último PJUD</p>
+                      <button onClick={()=>setTab('pjud')} className="text-[9px] text-gray-400 hover:text-gray-600">Ver todos →</button>
+                    </div>
+                    <div onClick={()=>setTab('pjud')}
+                      className="px-3 py-2.5 rounded-xl border border-emerald-100 bg-emerald-50/30 hover:bg-emerald-50/50 cursor-pointer transition-colors">
+                      {lastPjud.folio&&<span onClick={e=>e.stopPropagation()}><CopyValue value={lastPjud.folio} className="font-mono text-[10px] text-emerald-600 mb-1 block"/></span>}
+                      <p className="text-[11px] text-gray-700 line-clamp-2 leading-snug">{lastPjud.solicitud||'—'}</p>
+                      <p className="text-[10px] text-gray-400 mt-0.5">{[lastPjud.estado,fmtRelDate(lastPjud.fecha)].filter(Boolean).join(' · ')}</p>
+                    </div>
+                  </section>
+                )}
+
+                {/* Próximo plazo */}
+                {proxPlazo&&(
+                  <section>
+                    <p className="text-[9px] font-bold uppercase tracking-widest text-gray-300 mb-1.5">Próximo plazo</p>
+                    <button onClick={()=>setTab('plazos')}
+                      className="w-full text-left px-3 py-2.5 rounded-xl border border-amber-100 bg-amber-50/30 hover:bg-amber-50/50 transition-colors">
+                      <p className="text-[11px] font-semibold text-gray-800">{proxPlazo.titulo||'—'}</p>
+                      <p className="text-[10px] text-amber-600 mt-0.5">Vence {fmtRelDate(proxPlazo.fecha_vencimiento)}</p>
+                    </button>
+                  </section>
+                )}
+
+                {/* Notas */}
+                <section>
+                  <p className="text-[9px] font-bold uppercase tracking-widest text-gray-300 mb-1.5">Notas</p>
+                  <div className="bg-gray-50 rounded-xl p-3">
                     <InlineField
                       value={causa.observaciones}
-                      onSave={v => onUpdate?.({ observaciones: v || null })}
+                      onSave={v=>onUpdate?.({observaciones:v||null})}
                       type="textarea"
-                      placeholder="Agrega notas sobre esta causa…"
+                      placeholder="Notas sobre esta causa…"
                       debounce={1200}
                       textClassName="text-[12px] text-gray-700 leading-relaxed whitespace-pre-line"
                       inputClassName="text-[12px] bg-transparent"
                     />
                   </div>
-                </div>
-
-                {/* Tareas pendientes compactas */}
-                {tareasPend > 0 && (
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <p className="text-[10px] font-semibold text-gray-300 uppercase tracking-widest">Tareas pendientes</p>
-                      <button onClick={() => setTab('tareas')} className="text-[10px] text-[#1a2e4a]/50 hover:text-[#1a2e4a] transition-colors">Ver todas →</button>
-                    </div>
-                    <div className="space-y-1">
-                      {tareas.filter(t => t.estado !== 'Completada').slice(0, 4).map(t => (
-                        <div key={t.id} className="flex items-center gap-2 py-1">
-                          <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${t.prioridad === 'Alta' ? 'bg-red-400' : 'bg-amber-300'}`} />
-                          <p className="text-[11px] text-gray-700 flex-1 truncate">{t.titulo}</p>
-                          {t.fecha_vencimiento && (
-                            <span className="text-[10px] text-gray-400 flex-shrink-0">{fmtFechaCausa(t.fecha_vencimiento)}</span>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                </section>
               </div>
             </div>
           </div>
           )
         })()}
 
-        {/* REVISIÓN SEMANAL */}
-        {tab === 'revision_semanal' && (
+        {/* REVISIONES FORMALES (dentro de Seguimiento) */}
+
+        {tab === 'seguimiento' && (
           <div className="px-8 py-6">
             <div className="flex items-center justify-between mb-6">
               <div>
-                <h3 className="text-[15px] font-semibold text-gray-900">Bitácora de revisiones</h3>
+                <h3 className="text-[15px] font-semibold text-[#1C2533]">Bitácora de revisiones</h3>
                 <p className="text-[11px] text-gray-400 mt-0.5">
                   Historial de revisiones de equipo · {revisiones.filter(r => !r.semana_key?.startsWith('SEG-')).length} registros
                 </p>
@@ -1932,8 +2167,8 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
           </div>
         )}
 
-        {/* TIMELINE */}
-        {tab === 'timeline' && (() => {
+        {/* TIMELINE — eliminado, el historial vive en Resumen */}
+        {false && (() => {
           const isLoading = loadingBase || loadingRev || loadingPjud || loadingSiau
 
           // Color palette
@@ -2002,7 +2237,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
               detalle: r.nota || null,
               color: r.urgente ? 'red' : 'slate', Icon: RefreshCw,
               futuro: false, urgente: r.urgente,
-              navTab: 'revision_semanal',
+              navTab: 'seguimiento',
             })),
             ...pjudRows.map(p => ({
               id: `pj-${p.id}`, fecha: p.fecha, tipo: 'PJUD',
@@ -2314,89 +2549,45 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
 
         {/* PJUD */}
         {tab === 'pjud' && (
-          <div className="px-8 py-6">
-            {loadingPjud ? (
-              <div className="flex justify-center py-8">
-                <Loader2 size={16} className="animate-spin text-gray-300" />
-              </div>
-            ) : pjudRows.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16">
-                <Scale size={28} className="text-gray-200 mb-3" />
-                <p className="text-[13px] text-gray-400">Sin movimientos PJUD para esta causa</p>
-                {causa.rit && <p className="text-[11px] text-gray-400 mt-1 font-mono">{causa.rit}</p>}
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <p className="text-[11px] text-gray-400 mb-3">{pjudRows.length} movimientos · RIT {causa.rit}</p>
-                {pjudRows.map(p => (
-                  <div key={p.id} className="p-3.5 rounded-xl border border-gray-100 bg-white hover:border-gray-200 transition-colors">
-                    <div className="flex items-start gap-3">
-                      <span className="font-mono text-[10px] bg-violet-50 text-violet-700 px-1.5 py-0.5 rounded font-semibold flex-shrink-0 mt-0.5">
-                        {p.folio}
-                      </span>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-[12px] text-gray-700 leading-snug">{p.solicitud}</p>
-                        {p.respuesta && (
-                          <p className="text-[11px] text-green-700 mt-1 leading-snug">{p.respuesta}</p>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        <span className="text-[10px] text-gray-400">{fmtFechaCausa(p.fecha)}</span>
-                        {p.estado && (
-                          <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
-                            p.estado === 'Respondida' ? 'bg-green-50 text-green-700' :
-                            p.estado === 'Urgente'    ? 'bg-red-50 text-red-700' :
-                            'bg-amber-50 text-amber-600'
-                          }`}>{p.estado}</span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          loadingPjud ? (
+            <div className="flex justify-center py-8">
+              <Loader2 size={16} className="animate-spin text-gray-300" />
+            </div>
+          ) : (
+            <MovimientosTable
+              causaData={{ causa_rit: causa.rit, causa_ruc: causa.ruc || null, causaInfo: causa, clienteNombre: causa.cliente_nombre }}
+              rowsAll={pjudRows}
+              onUpdate={handleUpdatePjud}
+              onAdd={handleAddPjud}
+              onDelete={handleDeletePjud}
+              causasInfo={[]}
+              addTarea={handleAddTareaFromPjud}
+              addPlazo={handleAddPlazoFromPjud}
+              onBack={() => {}}
+              embedded
+            />
+          )
         )}
 
         {/* SIAU */}
         {tab === 'siau' && (
-          <div className="px-8 py-6">
-            {loadingSiau ? (
-              <div className="flex justify-center py-8">
-                <Loader2 size={16} className="animate-spin text-gray-300" />
-              </div>
-            ) : siauRows.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16">
-                <MessageSquare size={28} className="text-gray-200 mb-3" />
-                <p className="text-[13px] text-gray-400">Sin solicitudes SIAU para esta causa</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <p className="text-[11px] text-gray-400 mb-3">{siauRows.length} solicitudes</p>
-                {siauRows.map(s => (
-                  <div key={s.id} className="p-3.5 rounded-xl border border-gray-100 bg-white hover:border-gray-200 transition-colors">
-                    <div className="flex items-start gap-3">
-                      <span className="font-mono text-[10px] bg-violet-50 text-violet-700 px-1.5 py-0.5 rounded font-semibold flex-shrink-0 mt-0.5">
-                        {s.folio}
-                      </span>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-[12px] text-gray-700">{s.solicitud || '—'}</p>
-                        {s.respuesta && <p className="text-[11px] text-green-700 mt-1">{s.respuesta}</p>}
-                      </div>
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        <span className="text-[10px] text-gray-400">{fmtFechaCausa(s.fecha)}</span>
-                        <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
-                          s.estado === 'Respondida' ? 'bg-green-50 text-green-700' :
-                          s.estado === 'Urgente'    ? 'bg-red-50 text-red-700' :
-                          'bg-amber-50 text-amber-600'
-                        }`}>{s.estado}</span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          loadingSiau ? (
+            <div className="flex justify-center py-8">
+              <Loader2 size={16} className="animate-spin text-gray-300" />
+            </div>
+          ) : (
+            <SolicitudesTable
+              grupo={{ causa_rit: causa.rit, causa_ruc: causa.ruc || null, causaInfo: causa }}
+              registrosAll={siauRows}
+              onUpdate={handleUpdateSiau}
+              onAdd={handleAddSiau}
+              onDelete={handleDeleteSiau}
+              causasInfo={[]}
+              onBack={() => {}}
+              clienteNombre={causa.cliente_nombre}
+              embedded
+            />
+          )
         )}
 
         {/* DOCUMENTOS */}
@@ -2413,47 +2604,40 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
         {/* SEGUIMIENTO */}
         {tab === 'seguimiento' && (() => {
           const SEG_ESTADO = {
-            'Pendiente':     { bg: 'bg-amber-50',  text: 'text-amber-700',  dot: 'bg-amber-400',  border: 'border-amber-200'  },
-            'En progreso':   { bg: 'bg-blue-50',   text: 'text-blue-700',   dot: 'bg-blue-400',   border: 'border-blue-200'   },
-            'Listo':         { bg: 'bg-green-50',  text: 'text-green-700',  dot: 'bg-green-400',  border: 'border-green-200'  },
-            'Sin novedades': { bg: 'bg-gray-100',  text: 'text-gray-500',   dot: 'bg-gray-400',   border: 'border-gray-200'   },
+            'Pendiente':     { bg: '#FEF3C7', text: '#B45309', dot: '#F59E0B' },
+            'En progreso':   { bg: '#DBEAFE', text: '#1D4ED8', dot: '#3B82F6' },
+            'Listo':         { bg: '#D1FAE5', text: '#065F46', dot: '#10B981' },
+            'Sin novedades': { bg: '#F3F4F6', text: '#6B7280', dot: '#9CA3AF' },
           }
           const ESTADO_OPTS = Object.keys(SEG_ESTADO)
 
           function fmtSegFecha(iso) {
             if (!iso) return '—'
             const [y, m, d] = iso.split('-')
-            return `${d}-${m}-${y}`
+            return `${d}/${m}/${y}`
           }
 
-          function SegEstadoBadge({ v }) {
-            const c = SEG_ESTADO[v] || SEG_ESTADO['Pendiente']
-            return (
-              <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border whitespace-nowrap ${c.bg} ${c.text} ${c.border}`}>
-                <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${c.dot}`}/>
-                {v || 'Pendiente'}
-              </span>
-            )
+          const isEditingCell = (id, field) => editingCell?.id === id && editingCell?.field === field
+
+          function startEdit(id, field, value) {
+            setEditingCell({ id, field })
+            setCellDraft(value ?? '')
           }
 
-          function SegEstadoSelect({ value, onChange }) {
-            return (
-              <select value={value || 'Pendiente'} onChange={e => onChange(e.target.value)}
-                onClick={e => e.stopPropagation()}
-                className="text-[11px] border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:border-blue-300 w-full">
-                {ESTADO_OPTS.map(o => <option key={o}>{o}</option>)}
-              </select>
-            )
+          async function commitCell(id, field) {
+            const original = segRows.find(r => r.id === id)?.[field] ?? null
+            const newVal = cellDraft.trim() || null
+            setEditingCell(null)
+            if (newVal === original) return
+            await handleUpdateSegRow(id, { [field]: newVal })
           }
-
-          const COLS = ['Fecha', 'Por hacer', 'Estado', 'Notas', '']
 
           return (
-            <div className="flex flex-col" style={{ height: '100%' }}>
+            <div className="flex flex-col">
               {/* Sub-header */}
-              <div className="px-6 py-3.5 border-b border-gray-50 flex items-center justify-between flex-shrink-0 bg-white">
-                <p className="text-[11px] text-gray-400">
-                  {segRows.length} entrada{segRows.length !== 1 ? 's' : ''}
+              <div className="px-6 py-3 border-b border-[#E2E5EA] border-t flex items-center justify-between flex-shrink-0 bg-[#F7F8FA]">
+                <p className="text-[11px] font-semibold text-[#4A5568] uppercase tracking-wider">
+                  Seguimiento diario · {segRows.length} entrada{segRows.length !== 1 ? 's' : ''}
                 </p>
                 <div className="flex items-center gap-2">
                   <button onClick={() => setShowCargaMasivaSeg(true)}
@@ -2461,7 +2645,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                     <Table2 size={13}/> Carga masiva
                   </button>
                   <button
-                    onClick={() => { setNewSegRow({ fecha_revision: TODAY_C, por_hacer: '', que_se_hizo: 'Pendiente', notas: '' }); setEditSegId(null) }}
+                    onClick={() => { setNewSegRow({ fecha_revision: TODAY_C, por_hacer: '', que_se_hizo: 'Pendiente', notas: '' }); setEditingCell(null) }}
                     disabled={!!newSegRow}
                     className="flex items-center gap-1.5 text-xs font-semibold bg-[#2570BA] text-white px-3.5 py-2 rounded-xl hover:bg-[#2570BA]/90 disabled:opacity-40 transition-colors shadow-sm">
                     <Plus size={13}/> Agregar
@@ -2476,40 +2660,57 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                     <Loader2 size={20} className="animate-spin text-gray-300"/>
                   </div>
                 ) : (
-                  <table className="w-full text-left border-collapse">
-                    <thead className="sticky top-0 z-10">
-                      <tr className="bg-gray-50 border-b border-gray-200">
-                        {COLS.map(col => (
-                          <th key={col} className="px-4 py-2.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap">
-                            {col}
-                          </th>
-                        ))}
+                  <table className="w-full text-left border-collapse" style={{ tableLayout: 'fixed' }}>
+                    <colgroup>
+                      <col style={{ width: 36 }} />
+                      <col style={{ width: segW[0] }} />
+                      <col />
+                      <col style={{ width: segW[1] }} />
+                      <col style={{ width: 36 }} />
+                    </colgroup>
+                    <thead className="sticky top-0 z-10 bg-gray-50/90" style={{ backdropFilter: 'blur(4px)', borderBottom: '1px solid #efefef' }}>
+                      <tr>
+                        <th />
+                        <th className="px-3 py-2.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wider relative select-none">
+                          Fecha
+                          <div {...segResizer(0)} className="absolute right-0 top-0 h-full w-3 cursor-col-resize flex items-center justify-center z-10" onClick={e=>e.stopPropagation()}>
+                            <div className="w-px h-4 bg-[#2570ba]/30 opacity-0 hover:opacity-100 transition-opacity" />
+                          </div>
+                        </th>
+                        <th className="px-3 py-2.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Gestión / Observación</th>
+                        <th className="px-3 py-2.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wider relative select-none">
+                          Estado
+                          <div {...segResizer(1)} className="absolute right-0 top-0 h-full w-3 cursor-col-resize flex items-center justify-center z-10" onClick={e=>e.stopPropagation()}>
+                            <div className="w-px h-4 bg-[#2570ba]/30 opacity-0 hover:opacity-100 transition-opacity" />
+                          </div>
+                        </th>
+                        <th />
                       </tr>
                     </thead>
                     <tbody>
-                      {/* New row (inline) */}
+
+                      {/* New row */}
                       {newSegRow && (
-                        <tr className="bg-[#1a2e4a]/[0.025] border-b border-gray-100">
-                          <td className="px-4 py-2.5" style={{ width: 120 }}>
+                        <tr style={{ background: 'rgba(37,112,186,0.03)', borderBottom: '1px solid #f0f0f0' }}>
+                          <td className="px-3 py-3" />
+                          <td className="px-3 py-3">
                             <input type="date" value={newSegRow.fecha_revision || TODAY_C}
                               onChange={e => setNewSegRow(p => ({ ...p, fecha_revision: e.target.value }))}
                               className="text-[11px] border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:border-blue-300 w-full"/>
                           </td>
-                          <td className="px-4 py-2.5">
+                          <td className="px-3 py-3">
                             <textarea value={newSegRow.por_hacer || ''} onChange={e => setNewSegRow(p => ({ ...p, por_hacer: e.target.value }))}
                               rows={2} autoFocus placeholder="¿Qué hay que hacer?"
                               className="w-full text-[12px] border border-gray-200 rounded-lg px-2.5 py-1.5 resize-none focus:outline-none focus:border-blue-300 bg-white placeholder:text-gray-300"/>
                           </td>
-                          <td className="px-4 py-2.5" style={{ width: 160 }}>
-                            <SegEstadoSelect value={newSegRow.que_se_hizo} onChange={v => setNewSegRow(p => ({ ...p, que_se_hizo: v }))}/>
+                          <td className="px-3 py-3">
+                            <select value={newSegRow.que_se_hizo} onChange={e => setNewSegRow(p => ({ ...p, que_se_hizo: e.target.value }))}
+                              className="text-[11px] border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:border-blue-300 w-full">
+                              {ESTADO_OPTS.map(o => <option key={o}>{o}</option>)}
+                            </select>
                           </td>
-                          <td className="px-4 py-2.5">
-                            <textarea value={newSegRow.notas || ''} onChange={e => setNewSegRow(p => ({ ...p, notas: e.target.value }))}
-                              rows={2} placeholder="Notas adicionales…"
-                              className="w-full text-[12px] border border-gray-200 rounded-lg px-2.5 py-1.5 resize-none focus:outline-none focus:border-blue-300 bg-white placeholder:text-gray-300"/>
-                          </td>
-                          <td className="px-4 py-2.5" style={{ width: 72 }}>
-                            <div className="flex items-center gap-1">
+                          <td className="px-3 py-3">
+                            <div className="flex flex-col gap-1">
                               <button onClick={handleSaveNewSegRow} disabled={savingSegRow || !newSegRow.por_hacer?.trim()}
                                 className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 disabled:opacity-40 transition-colors">
                                 {savingSegRow ? <Loader2 size={11} className="animate-spin"/> : <Check size={11}/>}
@@ -2540,83 +2741,115 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                       )}
 
                       {/* Data rows */}
-                      {segRows.map((row, idx) => {
-                        const isEditing    = editSegId === row.id
-                        const altRow       = idx % 2 === 1
+                      {segRows.map(row => {
+                        const isRevisada   = !!row.revisada
                         const isDelConfirm = confirmDelSeg === row.id
-
-                        if (isEditing) return (
-                          <tr key={row.id} className="bg-blue-50/20 border-b border-gray-100">
-                            <td className="px-4 py-2.5" style={{ width: 120 }}>
-                              <input type="date" value={editSegDraft.fecha_revision || ''}
-                                onChange={e => setEditSegDraft(p => ({ ...p, fecha_revision: e.target.value }))}
-                                onClick={e => e.stopPropagation()}
-                                className="text-[11px] border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:border-blue-300 w-full"/>
-                            </td>
-                            <td className="px-4 py-2.5">
-                              <textarea value={editSegDraft.por_hacer || ''} onChange={e => setEditSegDraft(p => ({ ...p, por_hacer: e.target.value }))}
-                                rows={2} onClick={e => e.stopPropagation()}
-                                className="w-full text-[12px] border border-gray-200 rounded-lg px-2.5 py-1.5 resize-none focus:outline-none focus:border-blue-300 bg-white"/>
-                            </td>
-                            <td className="px-4 py-2.5" style={{ width: 160 }}>
-                              <SegEstadoSelect value={editSegDraft.que_se_hizo} onChange={v => setEditSegDraft(p => ({ ...p, que_se_hizo: v }))}/>
-                            </td>
-                            <td className="px-4 py-2.5">
-                              <textarea value={editSegDraft.notas || ''} onChange={e => setEditSegDraft(p => ({ ...p, notas: e.target.value }))}
-                                rows={2} onClick={e => e.stopPropagation()}
-                                className="w-full text-[12px] border border-gray-200 rounded-lg px-2.5 py-1.5 resize-none focus:outline-none focus:border-blue-300 bg-white"/>
-                            </td>
-                            <td className="px-4 py-2.5" style={{ width: 72 }}>
-                              <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
-                                <button onClick={async () => {
-                                    await handleUpdateSegRow(row.id, {
-                                      fecha_revision: editSegDraft.fecha_revision,
-                                      por_hacer:      editSegDraft.por_hacer,
-                                      que_se_hizo:    editSegDraft.que_se_hizo,
-                                      notas:          editSegDraft.notas,
-                                    })
-                                    setEditSegId(null)
-                                  }}
-                                  className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 transition-colors">
-                                  <Check size={11}/>
-                                </button>
-                                <button onClick={() => setEditSegId(null)}
-                                  className="p-1.5 rounded-lg text-gray-300 hover:text-gray-500 hover:bg-gray-100 transition-colors">
-                                  <X size={11}/>
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        )
+                        const estadoC      = SEG_ESTADO[row.que_se_hizo] || SEG_ESTADO['Pendiente']
 
                         return (
                           <tr key={row.id}
-                            onClick={() => { setEditSegId(row.id); setEditSegDraft({ ...row }); setNewSegRow(null); setConfirmDelSeg(null) }}
-                            className={`border-b border-gray-50 cursor-pointer transition-colors group ${
-                              altRow ? 'bg-gray-50/60 hover:bg-gray-100/60' : 'bg-white hover:bg-gray-50'
-                            }`}>
-                            <td className="px-4 py-3 whitespace-nowrap" style={{ width: 120 }}>
-                              <span className="text-[12px] text-gray-500 font-mono">{fmtSegFecha(row.fecha_revision)}</span>
+                            className={`group transition-colors hover:bg-gray-50/60 ${isRevisada ? 'opacity-40' : ''}`}
+                            style={{ borderBottom: '1px solid #f5f5f5' }}>
+
+                            {/* Checkbox */}
+                            <td className="px-3 py-3 align-top">
+                              <button
+                                onClick={() => handleUpdateSegRow(row.id, { revisada: !isRevisada })}
+                                className={`w-4 h-4 rounded border flex items-center justify-center transition-all mt-0.5 flex-shrink-0 ${
+                                  isRevisada
+                                    ? 'bg-emerald-500 border-emerald-500 text-white'
+                                    : 'border-gray-300 hover:border-gray-400 bg-white'
+                                }`}
+                              >
+                                {isRevisada && <Check size={9} strokeWidth={2.5}/>}
+                              </button>
                             </td>
-                            <td className="px-4 py-3">
-                              <p className="text-[12px] text-gray-800 leading-relaxed whitespace-pre-wrap">{row.por_hacer || '—'}</p>
+
+                            {/* Fecha */}
+                            <td className="px-3 py-3 align-top">
+                              {isEditingCell(row.id, 'fecha_revision') ? (
+                                <input type="date" value={cellDraft}
+                                  onChange={e => setCellDraft(e.target.value)}
+                                  onBlur={() => commitCell(row.id, 'fecha_revision')}
+                                  autoFocus
+                                  className="text-[11px] border border-blue-300 rounded-lg px-2 py-1 bg-white focus:outline-none w-full"/>
+                              ) : (
+                                <button
+                                  onClick={() => startEdit(row.id, 'fecha_revision', row.fecha_revision || row.fecha || '')}
+                                  className="text-[12px] text-gray-500 font-mono hover:text-[#1a2e4a] transition-colors text-left w-full leading-snug">
+                                  {fmtSegFecha(row.fecha_revision ?? row.fecha)}
+                                </button>
+                              )}
                             </td>
-                            <td className="px-4 py-3" style={{ width: 160 }}>
-                              <SegEstadoBadge v={row.que_se_hizo}/>
+
+                            {/* Gestión / Observación */}
+                            <td className="px-3 py-3 align-top">
+                              {isEditingCell(row.id, 'por_hacer') ? (
+                                <textarea
+                                  value={cellDraft}
+                                  onChange={e => setCellDraft(e.target.value)}
+                                  onBlur={() => commitCell(row.id, 'por_hacer')}
+                                  autoFocus rows={3}
+                                  className="w-full text-[12px] border border-blue-300 rounded-lg px-2.5 py-1.5 resize-none focus:outline-none bg-white leading-relaxed"
+                                  style={{ minHeight: 64 }}
+                                />
+                              ) : (
+                                <div
+                                  onClick={() => startEdit(row.id, 'por_hacer', row.por_hacer || '')}
+                                  className="text-[12px] text-gray-800 leading-relaxed cursor-text rounded-lg px-2 py-1 -mx-2 -my-1 hover:bg-gray-100/70 transition-colors whitespace-pre-wrap min-h-[2rem]"
+                                >
+                                  {row.por_hacer || row.nota || <span className="text-gray-300 italic text-[11px]">Clic para agregar…</span>}
+                                  {row.notas && (
+                                    <p className="text-[11px] text-gray-400 mt-1 leading-snug">{row.notas}</p>
+                                  )}
+                                </div>
+                              )}
                             </td>
-                            <td className="px-4 py-3">
-                              <p className="text-[12px] text-gray-500 leading-relaxed whitespace-pre-wrap">{row.notas || '—'}</p>
+
+                            {/* Estado — dropdown elegante */}
+                            <td className="px-3 py-3 align-top">
+                              <div className="relative">
+                                {openStatusId === row.id && (
+                                  <>
+                                    <div className="fixed inset-0 z-20" onClick={() => setOpenStatusId(null)} />
+                                    <div className="absolute z-30 top-full left-0 mt-1 bg-white border border-gray-100 rounded-xl shadow-lg py-1 min-w-[152px]">
+                                      {ESTADO_OPTS.map(opt => {
+                                        const c = SEG_ESTADO[opt]
+                                        return (
+                                          <button key={opt}
+                                            onClick={() => { handleUpdateSegRow(row.id, { que_se_hizo: opt }); setOpenStatusId(null) }}
+                                            className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-gray-50 transition-colors text-left">
+                                            <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: c.dot }}/>
+                                            <span className="text-[12px] font-medium" style={{ color: c.text }}>{opt}</span>
+                                            {row.que_se_hizo === opt && <Check size={9} className="ml-auto text-gray-300"/>}
+                                          </button>
+                                        )
+                                      })}
+                                    </div>
+                                  </>
+                                )}
+                                <button
+                                  onClick={() => setOpenStatusId(openStatusId === row.id ? null : row.id)}
+                                  className="inline-flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full whitespace-nowrap transition-all hover:opacity-80 cursor-pointer"
+                                  style={{ backgroundColor: estadoC.bg, color: estadoC.text }}
+                                >
+                                  <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: estadoC.dot }}/>
+                                  {row.que_se_hizo || 'Pendiente'}
+                                </button>
+                              </div>
                             </td>
-                            <td className="px-4 py-3" style={{ width: 72 }}>
+
+                            {/* Eliminar */}
+                            <td className="px-2 py-3 align-top">
                               {!isDelConfirm ? (
                                 <button onClick={e => { e.stopPropagation(); setConfirmDelSeg(row.id) }}
-                                  className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-all">
+                                  className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg text-gray-300 hover:text-red-400 hover:bg-red-50 transition-all">
                                   <Trash2 size={11}/>
                                 </button>
                               ) : (
-                                <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                                <div className="flex flex-col gap-1">
                                   <button onClick={() => handleDeleteSegRow(row.id)}
-                                    className="p-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors" title="Confirmar eliminar">
+                                    className="p-1.5 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 transition-colors" title="Confirmar">
                                     <Check size={11}/>
                                   </button>
                                   <button onClick={() => setConfirmDelSeg(null)}
@@ -2662,9 +2895,10 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
 }
 
 // ── helper avatar color por estado de cliente ─────────────────────────────
-function clienteAvatarColor(isSelected, clienteEstado) {
+// hasActiveCausas: true si el cliente tiene al menos una causa Abierta/Revisar
+function clienteAvatarColor(isSelected, hasActiveCausas) {
   if (isSelected) return '#1a2e4a'
-  return (clienteEstado === 'Activo' || !clienteEstado) ? '#2570ba' : '#9ca3af'
+  return hasActiveCausas ? '#2570ba' : '#9ca3af'
 }
 
 // ── Sidebar de navegación interna ─────────────────────────────────────────
@@ -2682,7 +2916,7 @@ function CausasSidebar({ causas, clienteActivo, onSelect, busquedaSidebar, setBu
       const key = (c.cliente_nombre || '').trim()
       if (!map[key]) map[key] = { nombre: key, total: 0, activas: 0, clienteId: c.cliente_id }
       map[key].total += 1
-      if (c.estado === 'En tramitación' || c.estado === 'Abierta') map[key].activas += 1
+      if (ACTIVAS.has(c.estado) || ACTIVAS.has(normalizeEstado(c.estado))) map[key].activas += 1
     })
     return Object.values(map).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
   }, [causas])
@@ -2743,10 +2977,10 @@ function CausasSidebar({ causas, clienteActivo, onSelect, busquedaSidebar, setBu
             <div key={letra}>
               <p className="px-4 pt-3 pb-0.5 text-[9px] font-bold text-gray-300 uppercase tracking-widest">{letra}</p>
               {grupo.map(c => {
-                const isSelected = clienteActivo === c.nombre
-                const estadoCl   = clienteEstadoMap[c.clienteId] ?? nombreEstadoMap[c.nombre] ?? 'Activo'
-                const isInactivo = estadoCl !== 'Activo'
-                const avatarBg   = clienteAvatarColor(isSelected, estadoCl)
+                const isSelected     = clienteActivo === c.nombre
+                const hasActiveCausas = c.activas > 0
+                const isInactivo    = !hasActiveCausas
+                const avatarBg      = clienteAvatarColor(isSelected, hasActiveCausas)
                 return (
                   <button key={c.nombre} onClick={() => onSelect(c.nombre)}
                     className={`w-full flex items-center justify-between px-4 py-1.5 text-left transition-colors group ${
@@ -2776,8 +3010,9 @@ function CausasSidebar({ causas, clienteActivo, onSelect, busquedaSidebar, setBu
 }
 
 // ── Vista agrupada ────────────────────────────────────────────────────────
-function GrupoCliente({ nombre, lista, seleccionada, onSelect }) {
-  const [abierto, setAbierto] = useState(true)
+function GrupoCliente({ nombre, lista, seleccionada, onSelect, forceOpen }) {
+  const [abierto, setAbierto] = useState(forceOpen !== undefined ? forceOpen : true)
+  useEffect(() => { if (forceOpen !== undefined) setAbierto(forceOpen) }, [forceOpen])
   return (
     <div>
       <button onClick={() => setAbierto(p => !p)}
@@ -2796,10 +3031,13 @@ function GrupoCliente({ nombre, lista, seleccionada, onSelect }) {
               onClick={() => onSelect(seleccionada?.id === c.id ? null : c)}
               className={`flex items-center gap-4 px-5 py-2.5 cursor-pointer transition-colors border-b border-gray-50 last:border-0 ${
                 seleccionada?.id === c.id ? 'bg-blue-50/50' : 'hover:bg-gray-50'
-              } ${CERRADAS.has(c.estado) ? 'opacity-55' : ''}`}>
+              } ${CERRADAS.has(normalizeEstado(c.estado)) ? 'opacity-55' : ''}`}>
               <div className="flex-1 min-w-0">
                 <p className="text-xs text-gray-800 truncate">{c.materia}</p>
-                <p className="text-[11px] font-mono text-gray-400 mt-0.5">{c.rit ?? '—'}</p>
+                {c.rit
+                  ? <CopyValue value={c.rit} className="text-[11px] text-gray-400 mt-0.5" />
+                  : <p className="text-[11px] font-mono text-gray-400 mt-0.5">—</p>
+                }
               </div>
               <AreaBadge area={c.area} />
               <EstadoBadge estado={c.estado} />
@@ -2823,11 +3061,20 @@ export default function Causas() {
   const [busquedaSidebar, setSidebar] = useState('')
   const [busqueda, setBusqueda]       = useState('')
   // ── Filtros persistentes en localStorage ──────────────────────────────────
-  const [filtroEstado, setEstadoRaw]          = useState(() => { try { return localStorage.getItem('filtros_causas.estado')    ?? '' } catch { return '' } })
+  const DEFAULT_ESTADOS_FILTRO = ['Abierta', 'Revisar']
+  const [filtroEstados, setEstadosRaw] = useState(() => {
+    try {
+      const stored = localStorage.getItem('filtros_causas.estados')
+      return stored ? JSON.parse(stored) : DEFAULT_ESTADOS_FILTRO
+    } catch { return DEFAULT_ESTADOS_FILTRO }
+  })
   const [filtroArea, setAreaRaw]              = useState(() => { try { return localStorage.getItem('filtros_causas.area')      ?? '' } catch { return '' } })
   const [filtroClienteEstado, setClEstadoRaw] = useState(() => { try { return localStorage.getItem('filtros_causas.clEstado') ?? '' } catch { return '' } }) // '' | 'Activo' | 'Inactivo'
 
-  const setEstado   = useCallback((v) => { setEstadoRaw(v);   try { v ? localStorage.setItem('filtros_causas.estado',    v) : localStorage.removeItem('filtros_causas.estado')    } catch {} }, [])
+  const setEstados  = useCallback((v) => { setEstadosRaw(v);  try { localStorage.setItem('filtros_causas.estados', JSON.stringify(v)) } catch {} }, [])
+  const toggleEstadoFiltro = useCallback((estado) => {
+    setEstados(prev => prev.includes(estado) ? prev.filter(e => e !== estado) : [...prev, estado])
+  }, [setEstados])
   const setArea     = useCallback((v) => { setAreaRaw(v);     try { v ? localStorage.setItem('filtros_causas.area',      v) : localStorage.removeItem('filtros_causas.area')      } catch {} }, [])
   const setClEstado = useCallback((v) => { setClEstadoRaw(v); try { v ? localStorage.setItem('filtros_causas.clEstado', v) : localStorage.removeItem('filtros_causas.clEstado') } catch {} }, [])
   const [vista, setVista]             = useState('tabla')
@@ -2878,12 +3125,33 @@ export default function Causas() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [causas, activeCausa?.id])
 
-  // Mapa clienteId → estado para colorear avatares y filtrar por estado de cliente
+  // Mapa clienteId → estado para filtrar por estado de cliente
   const clienteEstadoMap = useMemo(() => {
     const m = {}
     listaClientes.forEach(c => { m[c.id] = c.estado ?? 'Activo' })
     return m
   }, [listaClientes])
+
+  // Mapa clienteId/nombre → boolean: tiene al menos una causa activa (Abierta/Revisar)
+  const clienteActivoCausasMap = useMemo(() => {
+    const m = {}
+    causas.forEach(c => {
+      if (ACTIVAS.has(c.estado) || ACTIVAS.has(normalizeEstado(c.estado))) {
+        if (c.cliente_id) m[c.cliente_id] = true
+        if (c.cliente_nombre) m[c.cliente_nombre] = true
+      }
+    })
+    return m
+  }, [causas])
+
+  // Expand/colapsar todo en vista agrupada
+  const [expandTodos, setExpandTodosRaw] = useState(() => {
+    try { return localStorage.getItem('causas_expand_all') !== 'false' } catch { return true }
+  })
+  const setExpandTodos = useCallback((v) => {
+    setExpandTodosRaw(v)
+    try { localStorage.setItem('causas_expand_all', String(v)) } catch {}
+  }, [])
 
   // ── Guardar (crear / editar) ─────────────────────────────────────────────
   const handleGuardar = async (form) => {
@@ -2988,25 +3256,31 @@ export default function Causas() {
   }
 
   // ── Filtrado ────────────────────────────────────────────────────────────
-  const filtradas = useMemo(() => {
+  // filtradasSinCliente: aplica todos los filtros EXCEPTO clienteActivo.
+  // Es lo que el sidebar debe mostrar — clientes del universo filtrado.
+  const filtradasSinCliente = useMemo(() => {
     const q = busqueda.toLowerCase().trim()
     return causas.filter(c => {
-      const matchCliente = !clienteActivo || c.cliente_nombre === clienteActivo
       const matchQ = !q ||
         c.cliente_nombre.toLowerCase().includes(q) ||
         c.materia.toLowerCase().includes(q) ||
         c.tribunal.toLowerCase().includes(q) ||
         (c.rit ?? '').toLowerCase().includes(q)
-      const matchEstado = !filtroEstado ||
-        (filtroEstado === 'Cerradas' ? CERRADAS.has(c.estado) : c.estado === filtroEstado)
+      const estadoNorm = normalizeEstado(c.estado)
+      const matchEstado = filtroEstados.length === 0 || filtroEstados.includes(estadoNorm)
       const matchArea   = !filtroArea   || c.area   === filtroArea
-      // Filtro por estado del cliente (Activo / Inactivo)
       const estadoCliente = clienteEstadoMap[c.cliente_id] ?? 'Activo'
       const matchClEst = !filtroClienteEstado ||
         (filtroClienteEstado === 'Inactivo' ? estadoCliente !== 'Activo' : estadoCliente === 'Activo')
-      return matchCliente && matchQ && matchEstado && matchArea && matchClEst
+      return matchQ && matchEstado && matchArea && matchClEst
     })
-  }, [causas, clienteActivo, busqueda, filtroEstado, filtroArea, filtroClienteEstado, clienteEstadoMap])
+  }, [causas, busqueda, filtroEstados, filtroArea, filtroClienteEstado, clienteEstadoMap])
+
+  const filtradas = useMemo(() =>
+    clienteActivo
+      ? filtradasSinCliente.filter(c => c.cliente_nombre === clienteActivo)
+      : filtradasSinCliente
+  , [filtradasSinCliente, clienteActivo])
 
   const ordenadas = useMemo(() =>
     [...filtradas].sort((a, b) => a.cliente_nombre.localeCompare(b.cliente_nombre, 'es'))
@@ -3023,8 +3297,47 @@ export default function Causas() {
     return Object.entries(grupos).sort(([a], [b]) => a.localeCompare(b))
   }, [ordenadas])
 
-  const hayFiltros = filtroEstado || filtroArea || filtroClienteEstado
+  const isDefaultEstadoFiltro = filtroEstados.length === DEFAULT_ESTADOS_FILTRO.length &&
+    DEFAULT_ESTADOS_FILTRO.every(e => filtroEstados.includes(e))
+  const hayFiltros = !isDefaultEstadoFiltro || filtroArea || filtroClienteEstado
   const tituloVista = clienteActivo
+
+  // ── Keyboard navigation in list (arrow keys + Enter) ──────────────────────
+  const [focusedCausaIdx, setFocusedCausaIdx] = useState(-1)
+
+  useEffect(() => {
+    if (seleccionada || formulario) return
+    const fn = (e) => {
+      const tag = document.activeElement?.tagName
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(tag)) return
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setFocusedCausaIdx(i => Math.min(i + 1, ordenadas.length - 1))
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setFocusedCausaIdx(i => Math.max(i - 1, 0))
+      } else if (e.key === 'Enter' && focusedCausaIdx >= 0) {
+        e.preventDefault()
+        const causa = ordenadas[focusedCausaIdx]
+        if (causa) { setSeleccionada(causa); setFormulario(null) }
+      } else if (e.key === 'Escape') {
+        setFocusedCausaIdx(-1)
+      }
+    }
+    window.addEventListener('keydown', fn)
+    return () => window.removeEventListener('keydown', fn)
+  }, [seleccionada, formulario, ordenadas, focusedCausaIdx])
+
+  // Esc closes open panel or form (form takes priority)
+  useEffect(() => {
+    const fn = () => {
+      if (formulario) setFormulario(null)
+      else if (seleccionada) setSeleccionada(null)
+    }
+    window.addEventListener('modal:close', fn)
+    return () => window.removeEventListener('modal:close', fn)
+  }, [formulario, seleccionada])
+
     ? clienteActivo.split(' ').slice(0, 2).join(' ')
     : 'Todas las causas'
 
@@ -3033,7 +3346,7 @@ export default function Causas() {
   return (
     <div className="flex h-full min-h-screen">
       <CausasSidebar
-        causas={causas}
+        causas={filtradasSinCliente}
         clienteActivo={clienteActivo}
         onSelect={n => { setCliente(n); setSeleccionada(null); setBusqueda('') }}
         busquedaSidebar={busquedaSidebar}
@@ -3080,9 +3393,10 @@ export default function Causas() {
                   <h1 className="text-xl font-semibold text-gray-900">{tituloVista}</h1>
                   <p className="mt-0.5 text-xs text-gray-400">
                     {loading ? 'Cargando…' : (() => {
-                      const activas  = ordenadas.filter(c => !CERRADAS.has(c.estado)).length
-                      const cerradas = ordenadas.filter(c =>  CERRADAS.has(c.estado)).length
-                      return `${activas} activa${activas !== 1 ? 's' : ''}${cerradas ? ` · ${cerradas} cerrada${cerradas !== 1 ? 's' : ''}` : ''}`
+                      const total    = ordenadas.length
+                      const activas  = ordenadas.filter(c => ACTIVAS.has(normalizeEstado(c.estado))).length
+                      const cerradas = total - activas
+                      return `${total} causa${total !== 1 ? 's' : ''} · ${activas} activa${activas !== 1 ? 's' : ''}${cerradas ? ` · ${cerradas} cerrada${cerradas !== 1 ? 's' : ''}` : ''}`
                     })()}
                   </p>
                 </div>
@@ -3117,46 +3431,69 @@ export default function Causas() {
                     <Layers size={12} />
                   </button>
                 </div>
+                {vista === 'agrupado' && (
+                  <button onClick={() => setExpandTodos(!expandTodos)}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-gray-500 hover:text-gray-800 border border-gray-200 rounded-lg transition-colors">
+                    {expandTodos ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+                    {expandTodos ? 'Colapsar todo' : 'Expandir todo'}
+                  </button>
+                )}
               </div>
               {mostrarFiltros && (
-                <div className="flex items-center gap-3 mt-3 pt-3 border-t border-gray-100 flex-wrap">
-                  <span className="text-xs text-gray-400">Filtrar por:</span>
-                  <select value={filtroEstado} onChange={e => setEstado(e.target.value)}
-                    className="px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg outline-none focus:border-[#2570ba] text-gray-600 bg-white">
-                    <option value="">Todos los estados</option>
-                    <option value="Cerradas">— Cerradas (Terminada + Archivada)</option>
-                    {ESTADOS.map(e => <option key={e}>{e}</option>)}
-                  </select>
-                  <select value={filtroArea} onChange={e => setArea(e.target.value)}
-                    className="px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg outline-none focus:border-[#2570ba] text-gray-600 bg-white">
-                    <option value="">Todas las áreas</option>
-                    {AREAS.map(a => <option key={a}>{a}</option>)}
-                  </select>
-                  {/* Chips estado de cliente */}
-                  <div className="flex items-center gap-1.5 border-l border-gray-100 pl-3">
-                    <span className="text-[11px] text-gray-400">Cliente:</span>
-                    {[['', 'Todos'], ['Activo', 'Activos'], ['Inactivo', 'Inactivos']].map(([val, label]) => (
-                      <button key={val} onClick={() => setClEstado(val)}
-                        className={`inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium rounded-lg border transition-all ${
-                          filtroClienteEstado === val
-                            ? val === '' ? 'bg-gray-100 text-gray-700 border-gray-300'
-                              : val === 'Activo' ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                              : 'bg-gray-100 text-gray-500 border-gray-300'
-                            : 'bg-white text-gray-400 border-gray-200 hover:border-gray-300'
-                        }`}>
-                        <span className={`w-1.5 h-1.5 rounded-full ${
-                          val === '' ? 'bg-gray-300'
-                          : val === 'Activo' ? 'bg-emerald-400'
-                          : 'bg-gray-400'
-                        }`} />
-                        {label}
-                      </button>
-                    ))}
+                <div className="flex items-start gap-4 mt-3 pt-3 border-t border-gray-100 flex-wrap">
+                  {/* Estado chips */}
+                  <div className="flex flex-col gap-1.5">
+                    <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Estado</span>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {ESTADOS.map(e => {
+                        const active = filtroEstados.includes(e)
+                        const s = ESTADO_STYLES[e]
+                        return (
+                          <button key={e} onClick={() => toggleEstadoFiltro(e)}
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium rounded-lg border transition-all ${
+                              active ? `${s.badge} border-transparent` : 'bg-white text-gray-400 border-gray-200 hover:border-gray-300'
+                            }`}>
+                            <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${active ? s.dot : 'bg-gray-300'}`} />
+                            {e}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                  {/* Área */}
+                  <div className="flex flex-col gap-1.5">
+                    <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Área</span>
+                    <select value={filtroArea} onChange={e => setArea(e.target.value)}
+                      className="px-2.5 py-1 text-xs border border-gray-200 rounded-lg outline-none focus:border-[#2570ba] text-gray-600 bg-white">
+                      <option value="">Todas</option>
+                      {AREAS.map(a => <option key={a}>{a}</option>)}
+                    </select>
+                  </div>
+                  {/* Cliente */}
+                  <div className="flex flex-col gap-1.5">
+                    <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Cliente</span>
+                    <div className="flex items-center gap-1.5">
+                      {[['', 'Todos'], ['Activo', 'Activos'], ['Inactivo', 'Inactivos']].map(([val, label]) => (
+                        <button key={val} onClick={() => setClEstado(val)}
+                          className={`inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium rounded-lg border transition-all ${
+                            filtroClienteEstado === val
+                              ? val === '' ? 'bg-gray-100 text-gray-700 border-gray-300'
+                                : val === 'Activo' ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                : 'bg-gray-100 text-gray-500 border-gray-300'
+                              : 'bg-white text-gray-400 border-gray-200 hover:border-gray-300'
+                          }`}>
+                          {label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                   {hayFiltros && (
-                    <button onClick={() => { setEstado(''); setArea(''); setClEstado('') }} className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1">
-                      <X size={11} />Limpiar
-                    </button>
+                    <div className="flex flex-col gap-1.5">
+                      <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide opacity-0">·</span>
+                      <button onClick={() => { setEstados(DEFAULT_ESTADOS_FILTRO); setArea(''); setClEstado('') }} className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1 py-1">
+                        <X size={11} />Restablecer
+                      </button>
+                    </div>
                   )}
                 </div>
               )}
@@ -3212,17 +3549,23 @@ export default function Causas() {
                             <span className="text-[11px] font-bold text-gray-300 uppercase tracking-widest">{letra}</span>
                           </td>
                         </tr>
-                        {grupo.map(c => (
+                        {grupo.map(c => {
+                          const flatIdx = ordenadas.indexOf(c)
+                          const isFocused = flatIdx === focusedCausaIdx
+                          return (
                           <tr key={c.id}
+                            tabIndex={0}
                             onClick={() => { setSeleccionada(seleccionada?.id === c.id ? null : c); setFormulario(null) }}
-                            className={`group border-b border-gray-50 cursor-pointer transition-colors ${
+                            onFocus={() => setFocusedCausaIdx(flatIdx)}
+                            className={`group border-b border-gray-50 cursor-pointer transition-colors outline-none ${
+                              isFocused ? 'bg-[#2570ba]/[0.05] ring-1 ring-inset ring-[#2570ba]/20' :
                               seleccionada?.id === c.id ? 'bg-blue-50/40' : 'hover:bg-gray-50/60'
-                            } ${CERRADAS.has(c.estado) ? 'opacity-55' : ''}`}>
+                            } ${CERRADAS.has(normalizeEstado(c.estado)) ? 'opacity-55' : ''}`}>
                             {!clienteActivo && (
                               <td className="pl-7 pr-3 py-2.5">
                                 <div className="flex items-center gap-2">
                                   <div className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[9px] font-bold flex-shrink-0"
-                                    style={{ backgroundColor: clienteAvatarColor(false, clienteEstadoMap[c.cliente_id]) }}>
+                                    style={{ backgroundColor: clienteAvatarColor(false, clienteActivoCausasMap[c.cliente_id] ?? clienteActivoCausasMap[c.cliente_nombre] ?? true) }}>
                                     {initials(c.cliente_nombre)}
                                   </div>
                                   <span className={`text-xs whitespace-nowrap ${
@@ -3235,8 +3578,8 @@ export default function Causas() {
                             <td className={`${clienteActivo ? 'pl-7' : ''} px-3 py-2.5`}>
                               <span className="text-xs text-gray-600">{c.parte}</span>
                             </td>
-                            <td className="px-3 py-2.5"><span className="text-xs font-mono text-gray-400">{c.ruc ?? '—'}</span></td>
-                            <td className="px-3 py-2.5"><span className="text-xs font-mono text-gray-500">{c.rit ?? '—'}</span></td>
+                            <td className="px-3 py-2.5">{c.ruc ? <CopyValue value={c.ruc} className="text-xs text-gray-400" /> : <span className="text-xs text-gray-300">—</span>}</td>
+                            <td className="px-3 py-2.5">{c.rit ? <CopyValue value={c.rit} className="text-xs text-gray-500" /> : <span className="text-xs text-gray-300">—</span>}</td>
                             <td className="px-3 py-2.5 max-w-[140px]"><p className="text-xs text-gray-600 truncate">{c.tribunal.split('—')[0]?.trim()}</p></td>
                             <td className="px-3 py-2.5"><span className="text-xs text-gray-400">{c.fiscalia ?? '—'}</span></td>
                             <td className="px-3 py-2.5"><AreaBadge area={c.area} /></td>
@@ -3253,7 +3596,8 @@ export default function Causas() {
                               </div>
                             </td>
                           </tr>
-                        ))}
+                          )
+                        })}
                       </>
                     ))}
                   </tbody>
@@ -3281,7 +3625,8 @@ export default function Causas() {
                           </div>
                           {gruposLetra.map(({ nombre, lista }) => (
                             <GrupoCliente key={nombre} nombre={nombre} lista={lista}
-                              seleccionada={seleccionada} onSelect={c => { setSeleccionada(c); setFormulario(null) }} />
+                              seleccionada={seleccionada} onSelect={c => { setSeleccionada(c); setFormulario(null) }}
+                              forceOpen={expandTodos} />
                           ))}
                         </div>
                       ))

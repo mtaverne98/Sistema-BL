@@ -1,16 +1,97 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   ChevronRight, ChevronDown, Search, Plus, ArrowLeft,
-  FileText, Clock, CheckCircle2, AlertCircle, X, Check, Edit2, Loader2, Scale, Table2, Trash2, Target,
+  FileText, Clock, CheckCircle2, AlertCircle, X, Check, Edit2, Loader2,
+  Scale, Table2, Trash2, Target, ExternalLink, RefreshCw,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
+import { useNavigation } from '../context/NavigationContext'
 import CargaMasivaModal from '../components/CargaMasivaModal'
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal'
+import CopyValue from '../components/CopyValue'
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 const TODAY = new Date().toISOString().slice(0, 10)
 
-// Estado options y estilos — idénticos a la tab en Causas
+// ─── Revisado Esta Semana ─────────────────────────────────────────────────────
+const SEMANA_LS_KEY = 'semana-revisado-inicio'
+
+function getSemanaInicio() {
+  try {
+    const v = localStorage.getItem(SEMANA_LS_KEY)
+    if (v?.match(/^\d{4}-\d{2}-\d{2}$/)) return v
+  } catch {}
+  try { localStorage.setItem(SEMANA_LS_KEY, TODAY) } catch {}
+  return TODAY
+}
+
+function mkSemanaKey(inicio) { return `W-${inicio}` }
+
+const REV_SEM_OPTS = [
+  { value: 'SI', label: 'SI', bg: '#dcfce7', color: '#166534' },
+  { value: 'NO', label: 'NO', bg: '#fee2e2', color: '#991b1b' },
+  { value: null, label: '—',  bg: '#f3f4f6', color: '#9ca3af' },
+]
+
+function RevisadoSemanaCell({ value, onChange }) {
+  const [open, setOpen] = useState(false)
+  const opt = REV_SEM_OPTS.find(o => o.value === (value ?? null)) ?? REV_SEM_OPTS[2]
+  return (
+    <div className="relative flex-shrink-0" onClick={e => e.stopPropagation()}>
+      <button onClick={e => { e.stopPropagation(); setOpen(o => !o) }}
+        title="Revisado esta semana"
+        style={{ backgroundColor: opt.bg, color: opt.color }}
+        className="text-[11px] font-bold px-2.5 py-1 rounded-lg min-w-[46px] text-center transition-all">
+        {opt.label}
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-20" onClick={e => { e.stopPropagation(); setOpen(false) }} />
+          <div className="absolute right-0 top-full mt-1 bg-white rounded-xl shadow-xl border border-gray-100 z-30 overflow-hidden min-w-[72px]">
+            {REV_SEM_OPTS.map(o => (
+              <button key={String(o.value)}
+                onClick={e => { e.stopPropagation(); onChange(o.value); setOpen(false) }}
+                style={{ backgroundColor: o.bg, color: o.color }}
+                className="block w-full text-left px-4 py-2.5 text-[12px] font-bold hover:brightness-95 transition-all">
+                {o.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+function ModalNuevaSemana({ onConfirm, onCancel }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/25" onClick={onCancel}>
+      <div className="bg-white rounded-2xl shadow-2xl border border-gray-100 w-[400px] p-6" onClick={e => e.stopPropagation()}>
+        <div className="flex items-start gap-3 mb-5">
+          <div className="w-9 h-9 rounded-full bg-blue-50 flex items-center justify-center flex-shrink-0">
+            <RefreshCw size={16} className="text-blue-500" />
+          </div>
+          <div>
+            <h3 className="text-[15px] font-semibold text-gray-900">¿Iniciar nueva semana?</h3>
+            <p className="text-[12px] text-gray-500 mt-1 leading-relaxed">
+              Todos los valores SI/NO se limpiarán y comenzará una nueva semana desde hoy. Los registros anteriores quedan guardados.
+            </p>
+          </div>
+        </div>
+        <div className="flex justify-end gap-2">
+          <button onClick={onCancel} className="text-[12px] px-4 py-2 rounded-lg text-gray-600 border border-gray-200 hover:bg-gray-50">
+            Cancelar
+          </button>
+          <button onClick={onConfirm} className="text-[12px] px-4 py-2 rounded-lg font-medium bg-[#1a2e4a] text-white hover:bg-[#1a2e4a]/90 flex items-center gap-1.5">
+            <RefreshCw size={12} /> Nueva semana
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 const SEG_ESTADO = {
   'Pendiente':     { bg: 'bg-amber-50',  text: 'text-amber-700',  dot: 'bg-amber-400',  border: 'border-amber-200'  },
   'En progreso':   { bg: 'bg-blue-50',   text: 'text-blue-700',   dot: 'bg-blue-400',   border: 'border-blue-200'   },
@@ -18,6 +99,12 @@ const SEG_ESTADO = {
   'Sin novedades': { bg: 'bg-gray-100',  text: 'text-gray-500',   dot: 'bg-gray-400',   border: 'border-gray-200'   },
 }
 const ESTADO_OPTS = Object.keys(SEG_ESTADO)
+
+const RESPONSABLE_INFO = {
+  MT: { nombre: 'Macarena T.', color: '#1a2e4a' },
+  AB: { nombre: 'Angélica B.', color: '#2570ba' },
+  CL: { nombre: 'Claudia L.',  color: '#059669' },
+}
 
 function fmtDate(iso) {
   if (!iso) return '—'
@@ -28,48 +115,48 @@ function fmtDate(iso) {
 }
 
 // ─── Mapeo desde tabla revisiones ─────────────────────────────────────────────
-// revisiones columns used here:
-//   fecha_revision → fecha (display)
-//   por_hacer      → por_hacer
-//   que_se_hizo    → estado (UI label)
-//   notas          → notas
 function mapRow(row) {
   return {
     id:             row.id,
     created_at:     row.created_at,
     fecha:          row.fecha_revision || row.fecha || TODAY,
-    por_hacer:      row.por_hacer      || '',
+    por_hacer:      row.por_hacer      || row.nota  || '',
     estado:         row.que_se_hizo    || 'Pendiente',
-    notas:          row.notas          || '',
+    notas:          row.notas          || row.nota  || '',
+    responsable:    row.responsable    || 'MT',
     causa_rit:      row.causa_rit      || '',
     cliente_nombre: row.cliente_nombre || '',
-    causa_id:       row.causa_id       || null,
+    causa_id:       row.causa_id       ? String(row.causa_id) : null,
     cliente_id:     row.cliente_id     || null,
+    revisado:       row.revisado       || false,
   }
 }
 
-// Build insert payload for revisiones
 function toRevisionesPayload(fields, causaObj) {
   return {
-    fecha_revision: fields.fecha    || TODAY,
-    por_hacer:      fields.por_hacer?.trim() || null,
-    que_se_hizo:    fields.estado   || 'Pendiente',
-    notas:          fields.notas?.trim()    || null,
-    causa_rit:      causaObj.rit    || null,
-    causa_id:       causaObj.id     || null,
+    fecha_revision: fields.fecha        || TODAY,
+    por_hacer:      fields.por_hacer?.trim()  || null,
+    que_se_hizo:    fields.estado       || 'Pendiente',
+    notas:          fields.notas?.trim() || null,
+    responsable:    fields.responsable  || 'MT',
+    causa_rit:      causaObj.rit        || null,
+    causa_id:       causaObj.id         || null,
     cliente_nombre: causaObj.cliente_nombre || null,
+    cliente_id:     causaObj.cliente_id || null,
     semana_key:     null,
     revisada:       false,
+    revisado:       false,
   }
 }
 
-// Build update payload (only changed fields)
 function toUpdatePayload(cambios) {
   const p = {}
-  if (cambios.fecha     !== undefined) p.fecha_revision = cambios.fecha
-  if (cambios.por_hacer !== undefined) p.por_hacer      = cambios.por_hacer
-  if (cambios.estado    !== undefined) p.que_se_hizo    = cambios.estado
-  if (cambios.notas     !== undefined) p.notas          = cambios.notas
+  if (cambios.fecha       !== undefined) p.fecha_revision = cambios.fecha
+  if (cambios.por_hacer   !== undefined) p.por_hacer      = cambios.por_hacer
+  if (cambios.estado      !== undefined) p.que_se_hizo    = cambios.estado
+  if (cambios.notas       !== undefined) p.notas          = cambios.notas
+  if (cambios.responsable !== undefined) p.responsable    = cambios.responsable
+  if (cambios.revisado    !== undefined) p.revisado       = cambios.revisado
   return p
 }
 
@@ -94,22 +181,66 @@ function EstadoSelect({ value, onChange }) {
   )
 }
 
+function RespBadge({ resp }) {
+  const info = RESPONSABLE_INFO[resp]
+  if (!info) return null
+  return (
+    <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full"
+      style={{ backgroundColor: info.color + '18', color: info.color }}>
+      {resp}
+    </span>
+  )
+}
+
+function RespSelect({ value, onChange }) {
+  return (
+    <select value={value || 'MT'} onChange={e => onChange(e.target.value)}
+      onClick={e => e.stopPropagation()}
+      className="text-[11px] border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:border-blue-300 w-full">
+      {Object.entries(RESPONSABLE_INFO).map(([k, v]) => (
+        <option key={k} value={k}>{v.nombre}</option>
+      ))}
+    </select>
+  )
+}
+
 // ─── RegistrosTable ───────────────────────────────────────────────────────────
 function RegistrosTable({ grupo, registrosAll, causaObj, onUpdate, onAdd, onDelete, onBack, clienteNombre }) {
+  const navigate = useNavigate()
+  const { setActiveCausa, setActiveTab } = useNavigation()
+
+  // Filter by causa_id when available, fallback to causa_rit + cliente_nombre
   const registros = useMemo(() =>
     registrosAll
-      .filter(r => r.causa_rit === grupo.causa_rit && r.cliente_nombre === clienteNombre)
+      .filter(r => {
+        if (causaObj.id && r.causa_id) return r.causa_id === causaObj.id
+        return r.causa_rit === grupo.causa_rit && r.cliente_nombre === clienteNombre
+      })
       .sort((a, b) => (b.fecha || '').localeCompare(a.fecha || '')),
-    [registrosAll, grupo.causa_rit, clienteNombre])
+    [registrosAll, causaObj.id, grupo.causa_rit, clienteNombre])
 
-  const [newRow,          setNewRow]          = useState(null)    // inline add
+  const [newRow,          setNewRow]          = useState(null)
   const [editingId,       setEditingId]       = useState(null)
   const [editDraft,       setEditDraft]       = useState({})
   const [savingNew,       setSavingNew]       = useState(false)
   const [showCargaMasiva, setShowCargaMasiva] = useState(false)
   const [deleteTarget,    setDeleteTarget]    = useState(null)
 
-  const COLS = ['Fecha', 'Por hacer', 'Estado', 'Notas', '']
+  const COLS = ['', 'Fecha', 'Gestión / Observación', 'Estado', 'Responsable', 'Notas', '']
+
+  async function toggleRevisado(row, e) {
+    e.stopPropagation()
+    const next = !row.revisado
+    onUpdate(row.id, { revisado: next })
+    await supabase.from('revisiones').update({ revisado: next }).eq('id', row.id)
+  }
+
+  function openFicha() {
+    if (!causaObj.id) return
+    setActiveCausa(causaObj)
+    setActiveTab('resumen')
+    navigate('/causas')
+  }
 
   // ── Add inline ──
   async function handleSaveNew() {
@@ -156,7 +287,10 @@ function RegistrosTable({ grupo, registrosAll, causaObj, onUpdate, onAdd, onDele
           <ChevronRight size={10} className="text-gray-300"/>
           <button onClick={() => onBack('causas')} className="hover:text-[#1a2e4a] font-medium transition-colors truncate max-w-[160px]">{clienteNombre}</button>
           <ChevronRight size={10} className="text-gray-300"/>
-          <span className="font-mono font-semibold text-[#1a2e4a]">{grupo.causa_rit || 'Sin RIT'}</span>
+          {grupo.causa_rit
+            ? <CopyValue value={grupo.causa_rit} className="font-semibold text-[#1a2e4a]" />
+            : <span className="font-mono font-semibold text-[#1a2e4a]">{causaObj.materia || 'Sin RIT'}</span>
+          }
         </nav>
 
         <div className="flex items-center justify-between">
@@ -167,18 +301,26 @@ function RegistrosTable({ grupo, registrosAll, causaObj, onUpdate, onAdd, onDele
             </button>
             <div className="w-px h-4 bg-gray-200"/>
             <div>
-              <h2 className="text-sm font-bold text-[#1a2e4a] font-mono">{grupo.causa_rit || 'Sin RIT'}</h2>
+              <h2 className="text-sm font-bold text-[#1a2e4a] font-mono">
+                {grupo.causa_rit || 'Sin RIT'}
+              </h2>
               {causaObj?.materia && <p className="text-[11px] text-gray-400 mt-0.5">{causaObj.materia}</p>}
             </div>
           </div>
           <div className="flex items-center gap-2.5">
+            {causaObj.id && (
+              <button onClick={openFicha}
+                className="flex items-center gap-1.5 text-[11px] font-medium text-[#2570ba] hover:underline transition-colors">
+                <ExternalLink size={12}/> Abrir ficha
+              </button>
+            )}
             <span className="text-[11px] text-gray-400">{registros.length} entrada{registros.length !== 1 ? 's' : ''}</span>
             <button onClick={() => setShowCargaMasiva(true)}
               className="flex items-center gap-1.5 text-xs font-medium text-gray-500 px-3 py-2 rounded-xl border border-gray-200 hover:bg-gray-50 transition-colors">
               <Table2 size={13}/> Carga masiva
             </button>
             <button
-              onClick={() => { setNewRow({ fecha: TODAY, por_hacer: '', estado: 'Pendiente', notas: '' }); setEditingId(null) }}
+              onClick={() => { setNewRow({ fecha: TODAY, por_hacer: '', estado: 'Pendiente', notas: '', responsable: 'MT' }); setEditingId(null) }}
               disabled={!!newRow}
               className="flex items-center gap-1.5 text-xs font-semibold bg-[#2570BA] text-white px-3.5 py-2 rounded-xl hover:bg-[#2570BA]/90 disabled:opacity-40 transition-colors shadow-sm">
               <Plus size={13}/> Agregar
@@ -203,6 +345,9 @@ function RegistrosTable({ grupo, registrosAll, causaObj, onUpdate, onAdd, onDele
             {/* ── Inline add row ── */}
             {newRow && (
               <tr className="bg-[#1a2e4a]/[0.025] border-b border-gray-100">
+                <td className="px-3 py-2.5 text-center" style={{ width: 40 }}>
+                  <div className="w-4 h-4 rounded border-2 border-gray-300 bg-white mx-auto" />
+                </td>
                 <td className="px-4 py-2.5" style={{ width: 120 }}>
                   <input type="date" value={newRow.fecha}
                     onChange={e => setNewRow(p => ({ ...p, fecha: e.target.value }))}
@@ -210,11 +355,15 @@ function RegistrosTable({ grupo, registrosAll, causaObj, onUpdate, onAdd, onDele
                 </td>
                 <td className="px-4 py-2.5">
                   <textarea value={newRow.por_hacer} onChange={e => setNewRow(p => ({ ...p, por_hacer: e.target.value }))}
-                    rows={2} autoFocus placeholder="¿Qué hay que hacer?"
+                    rows={2} autoFocus
+                    placeholder="Ej: Revisado PJUD. Sin movimientos. / Llamado al cliente. / Preparar recurso…"
                     className="w-full text-[12px] border border-gray-200 rounded-lg px-2.5 py-1.5 resize-none focus:outline-none focus:border-blue-300 bg-white placeholder:text-gray-300"/>
                 </td>
-                <td className="px-4 py-2.5" style={{ width: 160 }}>
+                <td className="px-4 py-2.5" style={{ width: 150 }}>
                   <EstadoSelect value={newRow.estado} onChange={v => setNewRow(p => ({ ...p, estado: v }))}/>
+                </td>
+                <td className="px-4 py-2.5" style={{ width: 130 }}>
+                  <RespSelect value={newRow.responsable} onChange={v => setNewRow(p => ({ ...p, responsable: v }))}/>
                 </td>
                 <td className="px-4 py-2.5">
                   <textarea value={newRow.notas} onChange={e => setNewRow(p => ({ ...p, notas: e.target.value }))}
@@ -239,12 +388,15 @@ function RegistrosTable({ grupo, registrosAll, causaObj, onUpdate, onAdd, onDele
             {/* ── Empty state ── */}
             {!newRow && registros.length === 0 && (
               <tr>
-                <td colSpan={5}>
+                <td colSpan={6}>
                   <div className="py-16 text-center">
                     <Target size={28} strokeWidth={1.5} className="mx-auto mb-2 text-gray-200"/>
                     <p className="text-[13px] text-gray-400 font-medium">Sin entradas de seguimiento</p>
-                    <button onClick={() => setNewRow({ fecha: TODAY, por_hacer: '', estado: 'Pendiente', notas: '' })}
-                      className="mt-2 text-[12px] text-[#2570ba] hover:underline font-medium">
+                    <p className="text-[11px] text-gray-300 mt-1 max-w-xs mx-auto">
+                      Registra revisiones de PJUD, SIAU, llamadas, reuniones, análisis de carpeta y cualquier gestión realizada.
+                    </p>
+                    <button onClick={() => setNewRow({ fecha: TODAY, por_hacer: '', estado: 'Pendiente', notas: '', responsable: 'MT' })}
+                      className="mt-3 text-[12px] text-[#2570ba] hover:underline font-medium">
                       + Agregar primera entrada
                     </button>
                   </div>
@@ -259,6 +411,13 @@ function RegistrosTable({ grupo, registrosAll, causaObj, onUpdate, onAdd, onDele
 
               if (isEditing) return (
                 <tr key={row.id} className="bg-blue-50/20 border-b border-gray-100">
+                  <td className="px-3 py-2.5 text-center" style={{ width: 40 }}>
+                    <div className={`w-4 h-4 rounded border-2 mx-auto flex items-center justify-center cursor-pointer transition-colors ${
+                      editDraft.revisado ? 'bg-emerald-500 border-emerald-500' : 'border-gray-300 bg-white'
+                    }`} onClick={e => { e.stopPropagation(); ed('revisado', !editDraft.revisado) }}>
+                      {editDraft.revisado && <Check size={10} className="text-white" strokeWidth={3}/>}
+                    </div>
+                  </td>
                   <td className="px-4 py-2.5" style={{ width: 120 }}>
                     <input type="date" value={editDraft.fecha || ''}
                       onChange={e => ed('fecha', e.target.value)}
@@ -270,8 +429,11 @@ function RegistrosTable({ grupo, registrosAll, causaObj, onUpdate, onAdd, onDele
                       rows={2} onClick={e => e.stopPropagation()}
                       className="w-full text-[12px] border border-gray-200 rounded-lg px-2.5 py-1.5 resize-none focus:outline-none focus:border-blue-300 bg-white"/>
                   </td>
-                  <td className="px-4 py-2.5" style={{ width: 160 }}>
+                  <td className="px-4 py-2.5" style={{ width: 150 }}>
                     <EstadoSelect value={editDraft.estado} onChange={v => ed('estado', v)}/>
+                  </td>
+                  <td className="px-4 py-2.5" style={{ width: 130 }}>
+                    <RespSelect value={editDraft.responsable} onChange={v => ed('responsable', v)}/>
                   </td>
                   <td className="px-4 py-2.5">
                     <textarea value={editDraft.notas || ''} onChange={e => ed('notas', e.target.value)}
@@ -287,23 +449,39 @@ function RegistrosTable({ grupo, registrosAll, causaObj, onUpdate, onAdd, onDele
                 </tr>
               )
 
+              const done = row.revisado
               return (
                 <tr key={row.id}
                   onClick={() => { setEditingId(row.id); setEditDraft({ ...row }); setNewRow(null) }}
-                  className={`border-b border-gray-50 cursor-pointer transition-colors group ${
-                    altRow ? 'bg-gray-50/60 hover:bg-gray-100/60' : 'bg-white hover:bg-gray-50'
+                  className={`border-b border-gray-50 cursor-pointer transition-all group ${
+                    done
+                      ? 'bg-green-50/30 hover:bg-green-50/50 opacity-60'
+                      : altRow ? 'bg-gray-50/60 hover:bg-gray-100/60' : 'bg-white hover:bg-gray-50'
                   }`}>
+                  <td className="px-3 py-3 text-center" style={{ width: 40 }}>
+                    <button
+                      onClick={e => toggleRevisado(row, e)}
+                      title={done ? 'Desmarcar' : 'Marcar como revisado'}
+                      className={`w-4 h-4 rounded border-2 flex items-center justify-center mx-auto transition-all duration-150 flex-shrink-0 ${
+                        done ? 'bg-emerald-500 border-emerald-500 hover:bg-emerald-600' : 'border-gray-300 bg-white hover:border-emerald-400'
+                      }`}>
+                      {done && <Check size={10} className="text-white" strokeWidth={3}/>}
+                    </button>
+                  </td>
                   <td className="px-4 py-3 whitespace-nowrap" style={{ width: 120 }}>
-                    <span className="text-[12px] text-gray-500 font-mono">{fmtDate(row.fecha)}</span>
+                    <span className={`text-[12px] font-mono ${done ? 'text-gray-400 line-through' : 'text-gray-500'}`}>{fmtDate(row.fecha)}</span>
                   </td>
                   <td className="px-4 py-3">
-                    <p className="text-[12px] text-gray-800 leading-relaxed whitespace-pre-wrap">{row.por_hacer || '—'}</p>
+                    <p className={`text-[12px] leading-relaxed whitespace-pre-wrap ${done ? 'text-gray-400 line-through' : 'text-gray-800'}`}>{row.por_hacer || '—'}</p>
                   </td>
-                  <td className="px-4 py-3" style={{ width: 160 }}>
-                    <EstadoBadge v={row.estado}/>
+                  <td className="px-4 py-3" style={{ width: 150 }}>
+                    <span className={done ? 'opacity-50' : ''}><EstadoBadge v={row.estado}/></span>
+                  </td>
+                  <td className="px-4 py-3" style={{ width: 130 }}>
+                    <span className={done ? 'opacity-50' : ''}><RespBadge resp={row.responsable}/></span>
                   </td>
                   <td className="px-4 py-3">
-                    <p className="text-[12px] text-gray-500 leading-relaxed whitespace-pre-wrap">{row.notas || '—'}</p>
+                    <p className={`text-[12px] leading-relaxed whitespace-pre-wrap ${done ? 'text-gray-400 line-through' : 'text-gray-500'}`}>{row.notas || '—'}</p>
                   </td>
                   <td className="px-4 py-3" style={{ width: 72 }}>
                     <button onClick={e => { e.stopPropagation(); setDeleteTarget({ id: row.id, name: `la entrada del ${fmtDate(row.fecha)}` }) }}
@@ -338,23 +516,28 @@ function RegistrosTable({ grupo, registrosAll, causaObj, onUpdate, onAdd, onDele
 }
 
 // ─── CausaCard ─────────────────────────────────────────────────────────────────
-function CausaCard({ grupo, registrosAll, clienteNombre, onClick }) {
-  const regs       = registrosAll.filter(r => r.causa_rit === grupo.causa_rit && r.cliente_nombre === clienteNombre)
+function CausaCard({ grupo, registrosAll, clienteNombre, onClick, revisadoSemana, onUpdateRevisadoSemana }) {
+  const regs = registrosAll.filter(r => {
+    if (grupo.causaInfo?.id && r.causa_id) return r.causa_id === String(grupo.causaInfo.id)
+    return r.causa_rit === grupo.causa_rit && r.cliente_nombre === clienteNombre
+  })
   const pendientes = regs.filter(r => r.estado === 'Pendiente').length
+  const enProgreso = regs.filter(r => r.estado === 'En progreso').length
 
   return (
-    <button onClick={onClick}
-      className="w-full text-left flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-[#1a2e4a]/5 transition-colors group">
+    <div onClick={onClick}
+      className="w-full text-left flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-[#1a2e4a]/5 transition-colors group cursor-pointer">
       <div className="w-8 h-8 rounded-lg bg-[#1a2e4a]/8 flex items-center justify-center flex-shrink-0">
         <Scale size={14} className="text-[#1a2e4a]/50"/>
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <span className="text-xs font-bold font-mono text-[#1a2e4a] group-hover:text-[#2570ba] transition-colors">
-            {grupo.causa_rit || 'Sin RIT'}
-          </span>
+          {grupo.causa_rit
+            ? <CopyValue value={grupo.causa_rit} className="text-xs font-bold text-[#1a2e4a] group-hover:text-[#2570ba] transition-colors" />
+            : <span className="text-xs font-bold font-mono text-[#1a2e4a]">Sin RIT</span>
+          }
           {grupo.causaInfo?.ruc && (
-            <span className="text-[10px] font-mono text-gray-400">· RUC {grupo.causaInfo.ruc}</span>
+            <><span className="text-[10px] text-gray-300">·</span><CopyValue value={grupo.causaInfo.ruc} prefix="RUC" className="text-[10px] text-gray-400" /></>
           )}
         </div>
         {grupo.causaInfo?.materia && (
@@ -367,15 +550,21 @@ function CausaCard({ grupo, registrosAll, clienteNombre, onClick }) {
             {pendientes} pend.
           </span>
         )}
+        {enProgreso > 0 && (
+          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-100">
+            {enProgreso} progreso
+          </span>
+        )}
         <span className="text-[10px] text-gray-400">{regs.length} entr.</span>
+        <RevisadoSemanaCell value={revisadoSemana} onChange={v => onUpdateRevisadoSemana?.(grupo.causaInfo?.id, v)} />
         <ChevronRight size={13} className="text-gray-300 group-hover:text-[#2570ba] transition-colors"/>
       </div>
-    </button>
+    </div>
   )
 }
 
 // ─── ClienteRow ───────────────────────────────────────────────────────────────
-function ClienteRow({ grupo, registrosAll, isExpanded, onToggle, onSelectCausa }) {
+function ClienteRow({ grupo, registrosAll, isExpanded, onToggle, onSelectCausa, revisadoSemanaMap, onUpdateRevisadoSemana }) {
   const { clienteNombre, causasGrupos } = grupo
   const total      = registrosAll.filter(r => r.cliente_nombre === clienteNombre).length
   const pendientes = registrosAll.filter(r => r.cliente_nombre === clienteNombre && r.estado === 'Pendiente').length
@@ -410,9 +599,11 @@ function ClienteRow({ grupo, registrosAll, isExpanded, onToggle, onSelectCausa }
       {isExpanded && (
         <div className="border-t border-gray-100 bg-white px-3 py-2 space-y-0.5">
           {causasGrupos.map(g => (
-            <CausaCard key={g.causa_rit || 'sinrit'}
+            <CausaCard key={g.causaInfo?.id || g.causa_rit || 'sinrit'}
               grupo={g} registrosAll={registrosAll} clienteNombre={clienteNombre}
               onClick={() => onSelectCausa(clienteNombre, g)}
+              revisadoSemana={revisadoSemanaMap?.[String(g.causaInfo?.id)] ?? null}
+              onUpdateRevisadoSemana={onUpdateRevisadoSemana}
             />
           ))}
         </div>
@@ -429,34 +620,71 @@ export default function SeguimientoSemanal() {
   const [expandedSet, setExpanded]   = useState(new Set())
   const [search,      setSearch]     = useState('')
 
+  const [semanaInicio,      setSemanaInicio]      = useState(getSemanaInicio)
+  const [revisadoSemanaMap, setRevisadoSemanaMap] = useState({})
+  const [showNuevaSemana,   setShowNuevaSemana]   = useState(false)
+
   // Navigation
   const [view,        setView]       = useState('clientes')
   const [selCliente,  setSelCliente] = useState(null)
-  const [selCausaRit, setSelCausaRit] = useState(null)
+  const [selCausaId,  setSelCausaId] = useState(null)   // usa ID, no RIT
 
-  // ── Fetch: registros de seguimiento (revisiones con semana_key = null) ───────
+  // ── Fetch ────────────────────────────────────────────────────────────────────
   const fetchRegistros = useCallback(async () => {
     setCargando(true)
     const { data } = await supabase
       .from('revisiones')
       .select('*')
-      .is('semana_key', null)
+      .or('semana_key.is.null,semana_key.like.SEG-%')
       .order('fecha_revision', { ascending: false })
     setRegistros((data || []).map(mapRow))
     setCargando(false)
   }, [])
 
-  // ── Fetch: todas las causas activas ──────────────────────────────────────────
   const fetchCausas = useCallback(async () => {
     const { data } = await supabase
       .from('causas')
       .select('id,rit,ruc,materia,area,tribunal,cliente_nombre,cliente_id')
       .in('estado', ['En tramitación', 'Abierta'])
-      .order('rit')
+      .order('cliente_nombre')
     setAllCausas(data || [])
   }, [])
 
   useEffect(() => { fetchRegistros(); fetchCausas() }, [fetchRegistros, fetchCausas])
+
+  useEffect(() => {
+    async function fetchSemana() {
+      const sKey = mkSemanaKey(semanaInicio)
+      const { data } = await supabase
+        .from('revisiones')
+        .select('causa_id, revisado_semana')
+        .eq('semana_key', sKey)
+        .not('revisado_semana', 'is', null)
+      const m = {}
+      ;(data || []).forEach(r => { m[String(r.causa_id)] = r.revisado_semana })
+      setRevisadoSemanaMap(m)
+    }
+    fetchSemana()
+  }, [semanaInicio])
+
+  const updateRevisadoSemana = useCallback(async (causaId, valor) => {
+    if (!causaId) return
+    setRevisadoSemanaMap(prev => {
+      if (valor === null) { const { [String(causaId)]: _rm, ...rest } = prev; return rest }
+      return { ...prev, [String(causaId)]: valor }
+    })
+    const sKey = mkSemanaKey(semanaInicio)
+    await supabase.from('revisiones')
+      .upsert({ semana_key: sKey, causa_id: causaId, revisado_semana: valor, revisada: false },
+        { onConflict: 'semana_key,causa_id' })
+  }, [semanaInicio])
+
+  function handleNuevaSemana() {
+    try { localStorage.setItem(SEMANA_LS_KEY, TODAY) } catch {}
+    setSemanaInicio(TODAY)
+    setRevisadoSemanaMap({})
+    setShowNuevaSemana(false)
+  }
 
   // ── CRUD local ───────────────────────────────────────────────────────────────
   const handleUpdate = useCallback((id, cambios) => {
@@ -474,8 +702,8 @@ export default function SeguimientoSemanal() {
     return [...clienteSet].sort().map(clienteNombre => {
       const causasCliente = allCausas.filter(c => c.cliente_nombre === clienteNombre)
       const grupos = causasCliente.map(ci => ({
-        causa_rit:  ci.rit || null,
-        causaInfo:  ci,
+        causa_rit:      ci.rit || null,
+        causaInfo:      ci,
         cliente_nombre: clienteNombre,
       })).sort((a, b) => (a.causa_rit || '').localeCompare(b.causa_rit || ''))
       return { clienteNombre, causasGrupos: grupos }
@@ -505,36 +733,37 @@ export default function SeguimientoSemanal() {
     return Object.entries(map).sort(([a],[b]) => a.localeCompare(b))
   }, [filteredGrupos])
 
-  // ── Selected grupo (for table view) ─────────────────────────────────────────
+  // ── Selected grupo ───────────────────────────────────────────────────────────
   const selectedGrupo = useMemo(() => {
-    if (!selCausaRit || !selCliente) return null
+    if (!selCausaId || !selCliente) return null
     const cl = clienteGrupos.find(g => g.clienteNombre === selCliente)
-    return cl?.causasGrupos.find(g => g.causa_rit === selCausaRit) || null
-  }, [clienteGrupos, selCausaRit, selCliente])
+    return cl?.causasGrupos.find(g => String(g.causaInfo?.id) === selCausaId) || null
+  }, [clienteGrupos, selCausaId, selCliente])
 
   const selectedCausaObj = useMemo(() => {
     if (!selectedGrupo) return null
     const ci = selectedGrupo.causaInfo
     return {
-      rit:            ci?.rit            || selCausaRit,
+      rit:            ci?.rit            || selectedGrupo.causa_rit,
       ruc:            ci?.ruc            || null,
       cliente_nombre: selCliente,
-      id:             ci?.id             || null,
+      id:             ci?.id ? String(ci.id) : null,
       cliente_id:     ci?.cliente_id     || null,
       materia:        ci?.materia        || '',
       tribunal:       ci?.tribunal       || '',
+      area:           ci?.area           || '',
     }
-  }, [selectedGrupo, selCliente, selCausaRit])
+  }, [selectedGrupo, selCliente])
 
   function handleSelectCausa(clienteNombre, grupo) {
     setSelCliente(clienteNombre)
-    setSelCausaRit(grupo.causa_rit)
+    setSelCausaId(String(grupo.causaInfo?.id || ''))
     setView('tabla')
   }
 
   function handleBack(to) {
     setView('clientes')
-    if (to === 'clientes') { setSelCliente(null); setSelCausaRit(null) }
+    if (to === 'clientes') { setSelCliente(null); setSelCausaId(null) }
   }
 
   const toggleExpanded = nombre => setExpanded(prev => {
@@ -571,9 +800,16 @@ export default function SeguimientoSemanal() {
 
       {/* Header */}
       <div className="bg-white border-b border-gray-100 px-6 py-5 flex-shrink-0">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-1">
           <h1 className="text-lg font-bold text-[#1a2e4a]">Seguimiento semanal</h1>
+          <button onClick={() => setShowNuevaSemana(true)}
+            className="flex items-center gap-1.5 text-[12px] font-medium text-gray-500 px-3.5 py-2 rounded-xl border border-gray-200 hover:bg-gray-50 hover:text-gray-700 transition-colors flex-shrink-0">
+            <RefreshCw size={13} /> Nueva semana
+          </button>
         </div>
+        <p className="text-[11px] text-gray-400 mb-4">
+          Bitácora de gestiones operativas diarias — revisiones, llamadas, reuniones, escritos y observaciones
+        </p>
 
         {/* Stat cards */}
         {!cargando && (
@@ -610,6 +846,12 @@ export default function SeguimientoSemanal() {
         </div>
       </div>
 
+      {showNuevaSemana && (
+        <ModalNuevaSemana
+          onConfirm={handleNuevaSemana}
+          onCancel={() => setShowNuevaSemana(false)} />
+      )}
+
       {/* List */}
       <div className="flex-1 overflow-y-auto px-6 py-5">
         {cargando ? (
@@ -633,6 +875,8 @@ export default function SeguimientoSemanal() {
                       isExpanded={expandedSet.has(grupo.clienteNombre)}
                       onToggle={() => toggleExpanded(grupo.clienteNombre)}
                       onSelectCausa={handleSelectCausa}
+                      revisadoSemanaMap={revisadoSemanaMap}
+                      onUpdateRevisadoSemana={updateRevisadoSemana}
                     />
                   ))}
                 </div>

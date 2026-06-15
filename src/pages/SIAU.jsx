@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   ChevronRight, ChevronDown, ChevronLeft, Search, Plus, ArrowLeft,
@@ -8,6 +8,7 @@ import { supabase } from '../lib/supabase'
 import CargaMasivaModal from '../components/CargaMasivaModal'
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal'
 import { useNavigation } from '../context/NavigationContext'
+import useResizableColumns from '../hooks/useResizableColumns'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const TODAY = new Date().toISOString().slice(0, 10)
@@ -191,6 +192,15 @@ function FormNuevaSolicitud({ causa, causasInfo, globalMode, onSave, onClose }) 
     onClose()
   }
 
+  // Cmd+Enter submits this form
+  const saveRef = useRef(null)
+  saveRef.current = handleSave
+  useEffect(() => {
+    const fn = () => saveRef.current?.()
+    window.addEventListener('global:save', fn)
+    return () => window.removeEventListener('global:save', fn)
+  }, [])
+
   const L = ({ c }) => <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">{c}</p>
 
   return (
@@ -317,7 +327,7 @@ function FormNuevaSolicitud({ causa, causasInfo, globalMode, onSave, onClose }) 
 }
 
 // ── Tabla de solicitudes ──────────────────────────────────────────────────────
-function SolicitudesTable({ grupo, registrosAll, onUpdate, onAdd, onDelete, causasInfo, onBack, clienteNombre }) {
+export function SolicitudesTable({ grupo, registrosAll, onUpdate, onAdd, onDelete, causasInfo, onBack, clienteNombre, embedded = false }) {
   const registros  = useMemo(() =>
     registrosAll
       .filter(r => matchCausa(r, grupo, clienteNombre))
@@ -330,6 +340,16 @@ function SolicitudesTable({ grupo, registrosAll, onUpdate, onAdd, onDelete, caus
   const [showForm,        setShowForm]        = useState(false)
   const [showCargaMasiva, setShowCargaMasiva] = useState(false)
   const [deleteTarget,    setDeleteTarget]    = useState(null)
+
+  const { widths: siauW, getResizerProps: siauResizer } = useResizableColumns('cols-siau', [90, 80, 110, 200, 200, 90, 100, 140, 120, 50])
+  const siauMinWidth = siauW.reduce((s, w) => s + w, 0)
+
+  // Esc closes open form
+  useEffect(() => {
+    const fn = () => { if (showForm) setShowForm(false) }
+    window.addEventListener('modal:close', fn)
+    return () => window.removeEventListener('modal:close', fn)
+  }, [showForm])
 
   const handleDelete = async () => {
     if (!deleteTarget) return
@@ -348,49 +368,62 @@ function SolicitudesTable({ grupo, registrosAll, onUpdate, onAdd, onDelete, caus
   }
   const ed = (k, v) => setEditDraft(p => ({ ...p, [k]: v }))
 
-  const COLS = ['Fecha','Folio','Tipo solicitud','Solicitud','Respuesta','F. Respuesta','Documentos','Notas','Estado','']
-
   return (
     <div className="flex flex-col h-full bg-[#fafafa]">
 
-      {/* Header + breadcrumb */}
-      <div className="bg-white border-b border-gray-100 px-6 py-4 flex-shrink-0">
-        {/* Breadcrumb */}
-        <nav className="flex items-center gap-1.5 text-[11px] text-gray-400 mb-3">
-          <button onClick={() => onBack('clientes')} className="hover:text-[#1a2e4a] font-medium transition-colors">Clientes</button>
-          <ChevronRight size={10} className="text-gray-300"/>
-          <button onClick={() => onBack('causas')} className="hover:text-[#1a2e4a] font-medium transition-colors truncate max-w-[160px]">{clienteNombre}</button>
-          <ChevronRight size={10} className="text-gray-300"/>
-          <CausaIdentChip causa_rit={grupo.causa_rit} causa_ruc={grupo.causa_ruc} size="sm"/>
-        </nav>
-
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <button onClick={() => onBack('causas')}
-              className="flex items-center gap-1.5 text-xs font-medium text-gray-400 hover:text-[#1a2e4a] transition-colors">
-              <ArrowLeft size={13}/> Volver
-            </button>
-            <div className="w-px h-4 bg-gray-200"/>
-            <div>
-              <div className="flex items-center gap-2">
-                <CausaIdentChip causa_rit={grupo.causa_rit} causa_ruc={grupo.causa_ruc}/>
-              </div>
-              {grupo.causaInfo?.materia && <p className="text-[11px] text-gray-400 mt-0.5">{grupo.causaInfo.materia}</p>}
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="text-[11px] text-gray-400">{registros.length} solicitud{registros.length !== 1 ? 'es' : ''}</span>
+      {/* Header */}
+      {embedded ? (
+        <div className="px-6 py-3.5 border-b border-gray-50 flex items-center justify-between flex-shrink-0 bg-white">
+          <span className="text-[11px] text-gray-400">{registros.length} solicitud{registros.length !== 1 ? 'es' : ''}</span>
+          <div className="flex items-center gap-2">
             <button onClick={() => setShowCargaMasiva(true)}
               className="flex items-center gap-1.5 text-xs font-medium text-gray-500 px-3 py-2 rounded-xl border border-gray-200 hover:bg-gray-50 transition-colors">
               <Table2 size={13}/> Carga masiva
             </button>
-            <button onClick={() => setShowForm(true)}
+            <button onClick={() => setShowForm(true)} data-cmd-n
               className="flex items-center gap-1.5 text-xs font-semibold bg-[#2570BA] text-white px-3.5 py-2 rounded-xl hover:bg-[#2570BA]/90 transition-colors shadow-sm">
               <Plus size={13}/> Nueva solicitud
             </button>
           </div>
         </div>
-      </div>
+      ) : (
+        <div className="bg-white border-b border-gray-100 px-6 py-4 flex-shrink-0">
+          {/* Breadcrumb */}
+          <nav className="flex items-center gap-1.5 text-[11px] text-gray-400 mb-3">
+            <button onClick={() => onBack('clientes')} className="hover:text-[#1a2e4a] font-medium transition-colors">Clientes</button>
+            <ChevronRight size={10} className="text-gray-300"/>
+            <button onClick={() => onBack('causas')} className="hover:text-[#1a2e4a] font-medium transition-colors truncate max-w-[160px]">{clienteNombre}</button>
+            <ChevronRight size={10} className="text-gray-300"/>
+            <CausaIdentChip causa_rit={grupo.causa_rit} causa_ruc={grupo.causa_ruc} size="sm"/>
+          </nav>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <button onClick={() => onBack('causas')}
+                className="flex items-center gap-1.5 text-xs font-medium text-gray-400 hover:text-[#1a2e4a] transition-colors">
+                <ArrowLeft size={13}/> Volver
+              </button>
+              <div className="w-px h-4 bg-gray-200"/>
+              <div>
+                <div className="flex items-center gap-2">
+                  <CausaIdentChip causa_rit={grupo.causa_rit} causa_ruc={grupo.causa_ruc}/>
+                </div>
+                {grupo.causaInfo?.materia && <p className="text-[11px] text-gray-400 mt-0.5">{grupo.causaInfo.materia}</p>}
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-[11px] text-gray-400">{registros.length} solicitud{registros.length !== 1 ? 'es' : ''}</span>
+              <button onClick={() => setShowCargaMasiva(true)}
+                className="flex items-center gap-1.5 text-xs font-medium text-gray-500 px-3 py-2 rounded-xl border border-gray-200 hover:bg-gray-50 transition-colors">
+                <Table2 size={13}/> Carga masiva
+              </button>
+              <button onClick={() => setShowForm(true)}
+                className="flex items-center gap-1.5 text-xs font-semibold bg-[#2570BA] text-white px-3.5 py-2 rounded-xl hover:bg-[#2570BA]/90 transition-colors shadow-sm">
+                <Plus size={13}/> Nueva solicitud
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Table */}
       <div className="flex-1 overflow-auto">
@@ -403,14 +436,30 @@ function SolicitudesTable({ grupo, registrosAll, onUpdate, onAdd, onDelete, caus
             </button>
           </div>
         ) : (
-          <table className="w-full text-left border-collapse">
+          <table className="text-left border-collapse" style={{ tableLayout: 'fixed', width: siauMinWidth }}>
+            <colgroup>
+              <col style={{ width: siauW[0] }} />
+              <col style={{ width: siauW[1] }} />
+              <col style={{ width: siauW[2] }} />
+              <col style={{ width: siauW[3] }} />
+              <col style={{ width: siauW[4] }} />
+              <col style={{ width: siauW[5] }} />
+              <col style={{ width: siauW[6] }} />
+              <col style={{ width: siauW[7] }} />
+              <col style={{ width: siauW[8] }} />
+              <col style={{ width: siauW[9] }} />
+            </colgroup>
             <thead className="sticky top-0 z-10 bg-white border-b border-gray-100 shadow-[0_1px_0_#f3f4f6]">
               <tr>
-                {COLS.map(col => (
-                  <th key={col} className="px-3 py-2.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap first:pl-6 last:pr-4">
+                {['Fecha','Folio','Tipo solicitud','Solicitud','Respuesta','F. Respuesta','Documentos','Notas','Estado'].map((col, i) => (
+                  <th key={col} className="px-3 py-2.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap first:pl-6 relative select-none">
                     {col}
+                    <div {...siauResizer(i)} className="absolute right-0 top-0 h-full w-3 cursor-col-resize flex items-center justify-center z-10" onClick={e=>e.stopPropagation()}>
+                      <div className="w-px h-4 bg-[#2570ba]/30 opacity-0 hover:opacity-100 transition-opacity" />
+                    </div>
                   </th>
                 ))}
+                <th className="px-3 py-2.5 last:pr-4" />
               </tr>
             </thead>
             <tbody>
@@ -495,12 +544,12 @@ function SolicitudesTable({ grupo, registrosAll, onUpdate, onAdd, onDelete, caus
                           <td className="px-3 py-3">
                             <TipoBadge tipo={r.tipo_solicitud}/>
                           </td>
-                          <td className="px-3 py-3 max-w-[200px]">
+                          <td className="px-3 py-3">
                             <p className={`text-xs text-gray-700 leading-relaxed ${isExpanded ? '' : 'line-clamp-2'}`}>
                               {r.solicitud || '—'}
                             </p>
                           </td>
-                          <td className="px-3 py-3 max-w-[200px]">
+                          <td className="px-3 py-3">
                             <p className={`text-xs text-gray-500 leading-relaxed ${isExpanded ? '' : 'line-clamp-2'}`}>
                               {r.respuesta || <span className="text-gray-300 italic">—</span>}
                             </p>
@@ -511,8 +560,8 @@ function SolicitudesTable({ grupo, registrosAll, onUpdate, onAdd, onDelete, caus
                           <td className="px-3 py-3 whitespace-nowrap">
                             <span className="text-[11px] text-gray-400">{r.documento_nombre || '—'}</span>
                           </td>
-                          <td className="px-3 py-3 max-w-[140px]">
-                            <p className="text-[11px] text-gray-400 truncate">{r.notas || '—'}</p>
+                          <td className="px-3 py-3">
+                            <p className="text-[11px] text-gray-400 line-clamp-2">{r.notas || '—'}</p>
                           </td>
                           <td className="px-3 py-3 whitespace-nowrap">
                             <EstadoBadge estado={r.estado || 'Pendiente'}/>
@@ -647,7 +696,7 @@ function CausaCard({ grupo, registrosAll, clienteNombre, onClick, onOpenCausa })
 }
 
 // ── Cliente accordion row ─────────────────────────────────────────────────────
-function ClienteRow({ grupo, registrosAll, isExpanded, onToggle, onSelectCausa, onOpenCausa }) {
+function ClienteRow({ grupo, registrosAll, isExpanded, onToggle, onSelectCausa, onOpenCausa, hasActiveCausas }) {
   const { clienteNombre, causasGrupos } = grupo
   const total      = registrosAll.filter(r => r.cliente_nombre === clienteNombre).length
   const pendientes = registrosAll.filter(r => r.cliente_nombre === clienteNombre && r.estado === 'Pendiente').length
@@ -659,11 +708,12 @@ function ClienteRow({ grupo, registrosAll, isExpanded, onToggle, onSelectCausa, 
         className={`w-full flex items-center gap-3 px-5 py-3.5 text-left transition-colors ${
           isExpanded ? 'bg-[#1a2e4a]/[0.04]' : 'bg-white hover:bg-gray-50'
         }`}>
-        <div className="w-9 h-9 rounded-full bg-[#2570BA] flex items-center justify-center flex-shrink-0 text-white text-[11px] font-bold select-none">
+        <div className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 text-white text-[11px] font-bold select-none"
+          style={{ backgroundColor: hasActiveCausas ? '#2570BA' : '#9CA3AF' }}>
           {ini}
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-[13px] font-semibold text-[#1a2e4a] truncate">{clienteNombre}</p>
+          <p className={`text-[13px] font-semibold truncate ${hasActiveCausas ? 'text-[#1a2e4a]' : 'text-gray-400'}`}>{clienteNombre}</p>
           <p className="text-[11px] text-gray-400 mt-0.5">
             {causasGrupos.length} causa{causasGrupos.length !== 1 ? 's' : ''}
             {total > 0 && <span className="ml-1.5">· {total} solicitud{total !== 1 ? 'es' : ''}</span>}
@@ -702,6 +752,7 @@ export default function SIAU() {
   const [registros,  setRegistros]  = useState([])
   const [allCausas,  setAllCausas]  = useState([])
   const [cargando,   setCargando]   = useState(true)
+  const [clienteHasActiveCausasMap, setClienteHasActiveCausasMap] = useState({})
   const [expandedSet,    setExpanded]       = useState(new Set())
   const [search,         setSearch]         = useState('')
   const [showForm,       setShowForm]       = useState(false)
@@ -722,13 +773,28 @@ export default function SIAU() {
   const fetchCausas = useCallback(async () => {
     const { data } = await supabase
       .from('causas')
-      .select('id,rit,ruc,materia,area,fiscalia,tribunal,cliente_nombre,cliente_id')
-      .in('estado', ['En tramitación', 'Abierta'])
+      .select('id,rit,ruc,materia,area,fiscalia,tribunal,cliente_nombre,cliente_id,estado')
       .order('rit')
-    setAllCausas(data || [])
+    const activas = (data || []).filter(c => c.estado === 'Abierta' || c.estado === 'En tramitación')
+    setAllCausas(activas)
+    // Mapa nombre→hasActiveCausas para color de avatar
+    const map = {}
+    ;(data || []).forEach(c => {
+      if (!c.cliente_nombre) return
+      if (!map[c.cliente_nombre]) map[c.cliente_nombre] = false
+      if (c.estado === 'Abierta' || c.estado === 'Revisar') map[c.cliente_nombre] = true
+    })
+    setClienteHasActiveCausasMap(map)
   }, [])
 
   useEffect(() => { fetchRegistros(); fetchCausas() }, [fetchRegistros, fetchCausas])
+
+  // Esc closes open form
+  useEffect(() => {
+    const fn = () => { if (showForm) setShowForm(false) }
+    window.addEventListener('modal:close', fn)
+    return () => window.removeEventListener('modal:close', fn)
+  }, [showForm])
 
   const handleUpdate = useCallback(async (id, cambios) => {
     setRegistros(prev => prev.map(r => r.id === id ? { ...r, ...cambios } : r))
@@ -951,6 +1017,7 @@ export default function SIAU() {
                       onToggle={() => toggleExpanded(grupo.clienteNombre)}
                       onSelectCausa={handleSelectCausa}
                       onOpenCausa={handleOpenCausa}
+                      hasActiveCausas={clienteHasActiveCausasMap[grupo.clienteNombre] ?? true}
                     />
                   ))}
                 </div>
