@@ -1,4 +1,6 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { useNavigation } from '../context/NavigationContext'
 import {
   Search, Plus, X, Phone, Mail, FileText,
   Clock, Circle, CheckCircle2,
@@ -171,6 +173,8 @@ function ErrorBanner({ mensaje, onRetry }) {
 
 // ── Panel lateral – detalle cliente ───────────────────────────────────────
 function PanelCliente({ cliente, hasActiveCausas, onClose, onEstadoCambiar, onInlineSave, onRequestDelete }) {
+  const navigate = useNavigate()
+  const { setActiveCausa } = useNavigation()
   const [tab, setTab]                   = useState('causas')
   const [causas, setCausas]             = useState([])
   const [loadingCausas, setLoadingCausas] = useState(false)
@@ -179,7 +183,7 @@ function PanelCliente({ cliente, hasActiveCausas, onClose, onEstadoCambiar, onIn
     setLoadingCausas(true)
     supabase
       .from('causas')
-      .select('id, rit, materia, tribunal, estado')
+      .select('id, rit, ruc, materia, tribunal, estado')
       .eq('cliente_id', cliente.id)
       .then(({ data, error }) => {
         if (!error && data) setCausas(data)
@@ -325,7 +329,20 @@ function PanelCliente({ cliente, hasActiveCausas, onClose, onEstadoCambiar, onIn
             ) : causas.length === 0 ? (
               <p className="px-5 py-6 text-xs text-gray-400 text-center">Sin causas registradas</p>
             ) : causas.map(c => (
-              <div key={c.id} className="px-5 py-3.5 hover:bg-gray-50 transition-colors cursor-pointer">
+              <div key={c.id}
+                className="px-5 py-3.5 hover:bg-gray-50 transition-colors cursor-pointer"
+                onClick={() => {
+                  setActiveCausa({
+                    id:             c.id,
+                    rit:            c.rit || null,
+                    ruc:            c.ruc || null,
+                    materia:        c.materia || '',
+                    cliente_nombre: cliente.nombre || '',
+                    cliente_id:     cliente.id,
+                  })
+                  navigate('/causas')
+                }}
+              >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <p className="text-[11px] font-semibold text-gray-400 tabular-nums">{c.rit}</p>
