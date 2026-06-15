@@ -3646,7 +3646,7 @@ export default function Causas() {
                 const PRIORIDADES = ['Alta', 'Media', 'Baja']
                 const RESPONSABLES = Object.entries(RESPONSABLE_NAMES_C).map(([k,v]) => ({ key: k, label: v }))
 
-                const COLS = clienteActivo ? 12 : 13
+                const COLS = clienteActivo ? 11 : 12
 
                 return (
                 <>
@@ -3716,12 +3716,6 @@ export default function Causas() {
                 <table className="w-full">
                   <thead className="sticky top-0 bg-white z-10">
                     <tr className="border-b border-gray-100">
-                      {/* Checkbox select-all */}
-                      <th className="pl-4 pr-2 py-2.5 w-8">
-                        <input type="checkbox" checked={allSelected} ref={el => { if (el) el.indeterminate = someSelected && !allSelected }}
-                          onChange={toggleAll}
-                          className="w-3.5 h-3.5 rounded accent-[#2570BA] cursor-pointer" />
-                      </th>
                       {!clienteActivo && <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Cliente</th>}
                       <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Parte</th>
                       <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide">RIT</th>
@@ -3759,12 +3753,6 @@ export default function Causas() {
                               isFocused ? 'bg-[#2570ba]/[0.05] ring-1 ring-inset ring-[#2570ba]/20' :
                               seleccionada?.id === c.id ? 'bg-blue-50/40' : 'hover:bg-gray-50/60'
                             } ${CERRADAS.has(normalizeEstado(c.estado)) ? 'opacity-55' : ''}`}>
-
-                            {/* Checkbox */}
-                            <td className="pl-4 pr-2 py-2.5" onClick={e => e.stopPropagation()}>
-                              <input type="checkbox" checked={isSelected} onChange={() => toggleOne(c.id)}
-                                className="w-3.5 h-3.5 rounded accent-[#2570BA] cursor-pointer" />
-                            </td>
 
                             {/* Cliente */}
                             {!clienteActivo && (
