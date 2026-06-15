@@ -3183,12 +3183,12 @@ export default function Causas() {
   // ── Restaurar causa activa al volver desde PJUD/SIAU ──────────────────
   useEffect(() => {
     if (!activeCausa?.id || causas.length === 0) return
-    // Solo restaurar si no hay causa seleccionada (venimos de otro módulo)
     if (seleccionada?.id === activeCausa.id) return
     const causa = causas.find(c => c.id === activeCausa.id)
     if (causa) {
       setSeleccionada(causa)
       if (causa.cliente_nombre) setCliente(causa.cliente_nombre)
+      clearActiveCausa()
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [causas, activeCausa?.id])
