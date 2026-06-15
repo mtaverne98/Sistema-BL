@@ -39,7 +39,7 @@ const DASHBOARD_ITEM = { to: '/', icon: LayoutDashboard, label: 'Dashboard' }
 const SECTIONS = [
   { key: 'causas', label: 'Causas', items: [
     { to: '/clientes',    icon: Users,       label: 'Clientes'   },
-    { to: '/causas',      icon: Scale,       label: 'Causas'     },
+    { to: '/causas',      icon: Scale,       label: 'Causas',     state: { fromSidebar: true } },
     { to: '/prospectos',  icon: UserSearch,  label: 'Prospectos' },
   ]},
   { key: 'agenda', label: 'Agenda', items: [
@@ -72,11 +72,12 @@ const ALL_NAV = [
 // currentUser ahora viene de UserContext
 
 // ── NavItem ───────────────────────────────────────────────────────────────────
-function NavItem({ to, icon: Icon, label, badge, collapsed = false }) {
+function NavItem({ to, icon: Icon, label, badge, collapsed = false, state }) {
   return (
     <NavLink
       to={to}
       end={to === '/'}
+      state={state}
       title={collapsed ? label : undefined}
       className={({ isActive }) =>
         `relative flex items-center rounded-md text-[13px] transition-all duration-150 group select-none ${
@@ -755,12 +756,12 @@ export default function MainLayout() {
           style={{ backgroundColor: '#1A2E4A', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
           {[
             { to: '/',           icon: LayoutDashboard, label: 'Inicio'    },
-            { to: '/causas',     icon: Scale,           label: 'Causas'    },
+            { to: '/causas',     icon: Scale,           label: 'Causas',    state: { fromSidebar: true } },
             { to: '/tareas',     icon: CheckSquare,     label: 'Tareas'    },
             { to: '/audiencias', icon: Gavel,           label: 'Audiencias'},
             { to: '/revision',   icon: ClipboardCheck,  label: 'Revisión'  },
-          ].map(({ to, icon: Icon, label }) => (
-            <NavLink key={to} to={to} end={to === '/'}
+          ].map(({ to, icon: Icon, label, state }) => (
+            <NavLink key={to} to={to} end={to === '/'} state={state}
               className={({ isActive }) =>
                 `flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg transition-colors ${
                   isActive ? 'text-white' : 'text-white/40'

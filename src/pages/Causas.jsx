@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import {
   Search, Plus, X, Scale, Gavel, FileText,
   CheckSquare, BookOpen, Clock, Filter,
@@ -3088,7 +3088,13 @@ function GrupoCliente({ nombre, lista, seleccionada, onSelect, forceOpen }) {
 
 // ── Componente principal ──────────────────────────────────────────────────
 export default function Causas() {
+  const location = useLocation()
+  const _fromSidebar = location.state?.fromSidebar === true
   const [_ps] = useState(() => {
+    if (_fromSidebar) {
+      sessionStorage.removeItem('ps.causas')
+      return {}
+    }
     try { return JSON.parse(sessionStorage.getItem('ps.causas') ?? 'null') ?? {} }
     catch { return {} }
   })
