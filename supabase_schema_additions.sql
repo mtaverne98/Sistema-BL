@@ -5,6 +5,8 @@
 
 -- ── CAUSAS ────────────────────────────────────────────────────────────────────
 ALTER TABLE causas ADD COLUMN IF NOT EXISTS etapa_procesal text;
+ALTER TABLE causas ADD COLUMN IF NOT EXISTS responsable    text;
+ALTER TABLE causas ADD COLUMN IF NOT EXISTS prioridad      text DEFAULT 'Media';
 
 -- ── DOCUMENTOS ───────────────────────────────────────────────────────────────
 -- La tabla documentos existe con estructura mínima; aquí se agregan todos los

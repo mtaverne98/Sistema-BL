@@ -291,6 +291,8 @@ function mapCausa(row) {
     observaciones:    row.observaciones    ?? '',
     fecha_inicio:     row.fecha_inicio     ?? null,
     created_at:       row.created_at       ?? null,
+    responsable:      row.responsable      ?? null,
+    prioridad:        row.prioridad        ?? null,
     // Campos derivados (sin columna en DB)
     historial:       [],
     tareas:          [],
@@ -319,6 +321,8 @@ function mapToDb(form) {
     causa_origen_rit: (form.causa_origen_rit || '').trim()    || null,
     estado:           form.estado,
     observaciones:    (form.observaciones    || '').trim()    || null,
+    responsable:      form.responsable                        || null,
+    prioridad:        form.prioridad                          || null,
   }
 }
 
@@ -765,6 +769,26 @@ function FormCausa({ inicial, onClose, onGuardar, guardando, clientes = [], onCr
           {esEdicion ? 'Guardar cambios' : 'Guardar'}
         </button>
       </div>
+    </div>
+  )
+}
+
+// ── CellDropdown — Dropdown flotante para edición inline en tabla ─────────
+function CellDropdown({ value, options, onSelect, onClose, renderOption }) {
+  const ref = useRef()
+  useEffect(() => {
+    const h = e => { if (ref.current && !ref.current.contains(e.target)) onClose() }
+    document.addEventListener('mousedown', h, true)
+    return () => document.removeEventListener('mousedown', h, true)
+  }, [onClose])
+  return (
+    <div ref={ref} className="absolute z-[200] top-full left-0 mt-0.5 bg-white border border-gray-100 rounded-xl shadow-xl min-w-[150px] overflow-hidden py-1" style={{ boxShadow: '0 8px 30px rgba(0,0,0,0.12)' }}>
+      {options.map(opt => (
+        <button key={opt} onMouseDown={e => { e.preventDefault(); e.stopPropagation(); onSelect(opt) }}
+          className={`w-full text-left px-3 py-2 text-xs transition-colors flex items-center gap-2 ${opt === value ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-gray-700 hover:bg-gray-50'}`}>
+          {renderOption ? renderOption(opt) : opt}
+        </button>
+      ))}
     </div>
   )
 }
@@ -3087,6 +3111,9 @@ export default function Causas() {
   const [formulario, setFormulario]   = useState(null) // null | 'nueva' | objeto causa para editar
   const [deleteTarget, setDeleteTarget] = useState(null) // { causa, fromView }
   const [deleteError, setDeleteError]   = useState(null)
+  const [selectedIds, setSelectedIds] = useState(new Set())
+  const [tableEdit, setTableEdit]     = useState(null)  // { id, field }
+  const [bulkField, setBulkField]     = useState(null)  // campo activo del bulk action bar
 
   const { activeCausa } = useNavigation()
 
@@ -3195,6 +3222,22 @@ export default function Causas() {
       setSeleccionada(actualizada)
     }
   }, [seleccionada])
+
+  // ── Edición rápida inline desde la tabla ────────────────────────────────
+  const quickUpdate = useCallback(async (id, field, value) => {
+    setTableEdit(null)
+    setCausas(prev => prev.map(c => c.id === id ? { ...c, [field]: value } : c))
+    await supabase.from('causas').update({ [field]: value }).eq('id', id)
+    if (seleccionada?.id === id) setSeleccionada(prev => ({ ...prev, [field]: value }))
+  }, [seleccionada])
+
+  const bulkUpdate = useCallback(async (field, value) => {
+    setBulkField(null)
+    const ids = [...selectedIds]
+    setCausas(prev => prev.map(c => ids.includes(c.id) ? { ...c, [field]: value } : c))
+    await supabase.from('causas').update({ [field]: value }).in('id', ids)
+    setSelectedIds(new Set())
+  }, [selectedIds])
 
   // ── Eliminar ────────────────────────────────────────────────────────────
   /** Abre el modal de confirmación para una causa */
@@ -3531,73 +3574,299 @@ export default function Causas() {
                     </button>
                   )}
                 </div>
-              ) : vista === 'tabla' ? (
+              ) : vista === 'tabla' ? ((() => {
+                // ── helpers inline ────────────────────────────────────────
+                const isEditing = (id, field) => tableEdit?.id === id && tableEdit?.field === field
+                const startEdit = (e, id, field) => { e.stopPropagation(); setTableEdit({ id, field }) }
+
+                const allVisible   = ordenadas
+                const allSelected  = allVisible.length > 0 && allVisible.every(c => selectedIds.has(c.id))
+                const someSelected = allVisible.some(c => selectedIds.has(c.id))
+                const toggleAll    = () => setSelectedIds(allSelected ? new Set() : new Set(allVisible.map(c => c.id)))
+                const toggleOne    = (id) => setSelectedIds(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s })
+
+                const PRIORIDAD_STYLES = {
+                  'Alta':  'bg-red-50 text-red-600',
+                  'Media': 'bg-amber-50 text-amber-600',
+                  'Baja':  'bg-gray-100 text-gray-500',
+                }
+                const PRIORIDADES = ['Alta', 'Media', 'Baja']
+                const RESPONSABLES = Object.entries(RESPONSABLE_NAMES_C).map(([k,v]) => ({ key: k, label: v }))
+
+                const COLS = clienteActivo ? 12 : 13
+
+                return (
+                <>
+                {/* Bulk action bar */}
+                {selectedIds.size > 0 && (
+                  <div className="sticky top-0 z-30 flex items-center gap-3 px-6 py-2.5 bg-[#1a2e4a] text-white text-xs shadow-md">
+                    <span className="font-semibold">{selectedIds.size} causa{selectedIds.size !== 1 ? 's' : ''} seleccionada{selectedIds.size !== 1 ? 's' : ''}</span>
+                    <span className="text-white/30">·</span>
+                    <span className="text-white/60">Cambiar:</span>
+
+                    {/* Estado bulk */}
+                    <div className="relative">
+                      <button onClick={() => setBulkField(bulkField === 'estado' ? null : 'estado')}
+                        className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 transition-colors">
+                        Estado <ChevronDown size={11} />
+                      </button>
+                      {bulkField === 'estado' && (
+                        <CellDropdown value={null} options={ESTADOS} onClose={() => setBulkField(null)}
+                          onSelect={v => bulkUpdate('estado', v)} />
+                      )}
+                    </div>
+
+                    {/* Responsable bulk */}
+                    <div className="relative">
+                      <button onClick={() => setBulkField(bulkField === 'responsable' ? null : 'responsable')}
+                        className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 transition-colors">
+                        Responsable <ChevronDown size={11} />
+                      </button>
+                      {bulkField === 'responsable' && (
+                        <CellDropdown value={null} options={RESPONSABLES.map(r => r.key)} onClose={() => setBulkField(null)}
+                          onSelect={v => bulkUpdate('responsable', v)}
+                          renderOption={v => RESPONSABLE_NAMES_C[v] || v} />
+                      )}
+                    </div>
+
+                    {/* Etapa bulk */}
+                    <div className="relative">
+                      <button onClick={() => setBulkField(bulkField === 'etapa_procesal' ? null : 'etapa_procesal')}
+                        className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 transition-colors">
+                        Etapa <ChevronDown size={11} />
+                      </button>
+                      {bulkField === 'etapa_procesal' && (
+                        <CellDropdown value={null} options={[...ETAPAS.penal, ...ETAPAS.general, ...ETAPAS.corte]} onClose={() => setBulkField(null)}
+                          onSelect={v => bulkUpdate('etapa_procesal', v)} />
+                      )}
+                    </div>
+
+                    {/* Prioridad bulk */}
+                    <div className="relative">
+                      <button onClick={() => setBulkField(bulkField === 'prioridad' ? null : 'prioridad')}
+                        className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 transition-colors">
+                        Prioridad <ChevronDown size={11} />
+                      </button>
+                      {bulkField === 'prioridad' && (
+                        <CellDropdown value={null} options={PRIORIDADES} onClose={() => setBulkField(null)}
+                          onSelect={v => bulkUpdate('prioridad', v)} />
+                      )}
+                    </div>
+
+                    <button onClick={() => setSelectedIds(new Set())}
+                      className="ml-auto flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 transition-colors">
+                      <X size={11} /> Cancelar
+                    </button>
+                  </div>
+                )}
+
                 <table className="w-full">
                   <thead className="sticky top-0 bg-white z-10">
                     <tr className="border-b border-gray-100">
-                      {(clienteActivo
-                        ? ['Parte', 'RUC', 'RIT', 'Tribunal', 'Fiscalía', 'Área', 'Materia', 'Estado']
-                        : ['Cliente', 'Parte', 'RUC', 'RIT', 'Tribunal', 'Fiscalía', 'Área', 'Materia', 'Estado']
-                      ).map(col => (
-                        <th key={col} className="px-3 py-2.5 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide first:pl-7">
-                          {col}
-                        </th>
-                      ))}
+                      {/* Checkbox select-all */}
+                      <th className="pl-4 pr-2 py-2.5 w-8">
+                        <input type="checkbox" checked={allSelected} ref={el => { if (el) el.indeterminate = someSelected && !allSelected }}
+                          onChange={toggleAll}
+                          className="w-3.5 h-3.5 rounded accent-[#2570BA] cursor-pointer" />
+                      </th>
+                      {!clienteActivo && <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Cliente</th>}
+                      <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Parte</th>
+                      <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide">RIT</th>
+                      <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Tribunal</th>
+                      <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Fiscalía</th>
+                      <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Área</th>
+                      <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Etapa</th>
+                      <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Resp.</th>
+                      <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Prior.</th>
+                      <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Estado</th>
+                      <th className="px-3 py-2.5 w-6" />
                     </tr>
                   </thead>
                   <tbody>
                     {agrupadas.map(([letra, grupo]) => (
                       <>
                         <tr key={`letra-${letra}`}>
-                          <td colSpan={clienteActivo ? 8 : 9} className="pl-7 pt-5 pb-1.5">
+                          <td colSpan={COLS} className="pl-7 pt-5 pb-1.5">
                             <span className="text-[11px] font-bold text-gray-300 uppercase tracking-widest">{letra}</span>
                           </td>
                         </tr>
                         {grupo.map(c => {
                           const flatIdx = ordenadas.indexOf(c)
                           const isFocused = flatIdx === focusedCausaIdx
+                          const isSelected = selectedIds.has(c.id)
+                          const areaGroup = getAreaGroup(c.area)
+                          const parteOpts = PARTE_OPCIONES[areaGroup] ?? PARTE_OPCIONES.general
                           return (
                           <tr key={c.id}
                             tabIndex={0}
-                            onClick={() => { setSeleccionada(seleccionada?.id === c.id ? null : c); setFormulario(null) }}
+                            onClick={() => { if (tableEdit) { setTableEdit(null); return } setSeleccionada(seleccionada?.id === c.id ? null : c); setFormulario(null) }}
                             onFocus={() => setFocusedCausaIdx(flatIdx)}
                             className={`group border-b border-gray-50 cursor-pointer transition-colors outline-none ${
+                              isSelected ? 'bg-blue-50/50' :
                               isFocused ? 'bg-[#2570ba]/[0.05] ring-1 ring-inset ring-[#2570ba]/20' :
                               seleccionada?.id === c.id ? 'bg-blue-50/40' : 'hover:bg-gray-50/60'
                             } ${CERRADAS.has(normalizeEstado(c.estado)) ? 'opacity-55' : ''}`}>
+
+                            {/* Checkbox */}
+                            <td className="pl-4 pr-2 py-2.5" onClick={e => e.stopPropagation()}>
+                              <input type="checkbox" checked={isSelected} onChange={() => toggleOne(c.id)}
+                                className="w-3.5 h-3.5 rounded accent-[#2570BA] cursor-pointer" />
+                            </td>
+
+                            {/* Cliente */}
                             {!clienteActivo && (
-                              <td className="pl-7 pr-3 py-2.5">
+                              <td className="px-3 py-2.5">
                                 <div className="flex items-center gap-2">
                                   <div className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[9px] font-bold flex-shrink-0"
                                     style={{ backgroundColor: clienteAvatarColor(false, clienteActivoCausasMap[c.cliente_id] ?? clienteActivoCausasMap[c.cliente_nombre] ?? true) }}>
                                     {initials(c.cliente_nombre)}
                                   </div>
-                                  <span className={`text-xs whitespace-nowrap ${
-                                    clienteEstadoMap[c.cliente_id] && clienteEstadoMap[c.cliente_id] !== 'Activo'
-                                      ? 'text-gray-400' : 'text-gray-800'
-                                  }`}>{c.cliente_nombre}</span>
+                                  <span className={`text-xs whitespace-nowrap ${clienteEstadoMap[c.cliente_id] && clienteEstadoMap[c.cliente_id] !== 'Activo' ? 'text-gray-400' : 'text-gray-800'}`}>
+                                    {c.cliente_nombre}
+                                  </span>
                                 </div>
                               </td>
                             )}
-                            <td className={`${clienteActivo ? 'pl-7' : ''} px-3 py-2.5`}>
-                              <span className="text-xs text-gray-600">{c.parte}</span>
+
+                            {/* Parte — dropdown */}
+                            <td className={`${clienteActivo ? 'pl-4' : ''} px-3 py-2.5 relative`} onClick={e => e.stopPropagation()}>
+                              <button onClick={e => startEdit(e, c.id, 'parte')}
+                                className="text-xs text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-1.5 py-0.5 rounded transition-colors flex items-center gap-1">
+                                {c.parte || <span className="text-gray-300">—</span>}
+                                <ChevronDown size={9} className="text-gray-300" />
+                              </button>
+                              {isEditing(c.id, 'parte') && (
+                                <CellDropdown value={c.parte} options={parteOpts} onClose={() => setTableEdit(null)}
+                                  onSelect={v => quickUpdate(c.id, 'parte', v)} />
+                              )}
                             </td>
-                            <td className="px-3 py-2.5">{c.ruc ? <CopyValue value={c.ruc} className="text-xs text-gray-400" /> : <span className="text-xs text-gray-300">—</span>}</td>
+
+                            {/* RIT */}
                             <td className="px-3 py-2.5">{c.rit ? <CopyValue value={c.rit} className="text-xs text-gray-500" /> : <span className="text-xs text-gray-300">—</span>}</td>
-                            <td className="px-3 py-2.5 max-w-[140px]"><p className="text-xs text-gray-600 truncate">{c.tribunal.split('—')[0]?.trim()}</p></td>
-                            <td className="px-3 py-2.5"><span className="text-xs text-gray-400">{c.fiscalia ?? '—'}</span></td>
-                            <td className="px-3 py-2.5"><AreaBadge area={c.area} /></td>
-                            <td className="px-3 py-2.5 max-w-[140px]"><p className="text-xs text-gray-700 truncate">{c.materia}</p></td>
-                            <td className="px-3 py-2.5">
-                              <div className="flex items-center gap-2">
+
+                            {/* Tribunal — text inline */}
+                            <td className="px-3 py-2.5 max-w-[140px]" onClick={e => e.stopPropagation()}>
+                              {isEditing(c.id, 'tribunal') ? (
+                                <input autoFocus className="w-full text-xs px-1.5 py-0.5 border border-blue-300 rounded-lg outline-none bg-white"
+                                  defaultValue={c.tribunal}
+                                  onKeyDown={e => { if (e.key === 'Enter') quickUpdate(c.id, 'tribunal', e.target.value); if (e.key === 'Escape') setTableEdit(null) }}
+                                  onBlur={e => quickUpdate(c.id, 'tribunal', e.target.value)} />
+                              ) : (
+                                <span onClick={e => startEdit(e, c.id, 'tribunal')}
+                                  className="text-xs text-gray-600 hover:text-gray-900 cursor-text hover:bg-gray-100 px-1.5 py-0.5 rounded transition-colors block truncate">
+                                  {c.tribunal?.split('—')[0]?.trim() || <span className="text-gray-300">—</span>}
+                                </span>
+                              )}
+                            </td>
+
+                            {/* Fiscalía — text inline */}
+                            <td className="px-3 py-2.5 max-w-[110px]" onClick={e => e.stopPropagation()}>
+                              {isEditing(c.id, 'fiscalia') ? (
+                                <input autoFocus className="w-full text-xs px-1.5 py-0.5 border border-blue-300 rounded-lg outline-none bg-white"
+                                  defaultValue={c.fiscalia || ''}
+                                  onKeyDown={e => { if (e.key === 'Enter') quickUpdate(c.id, 'fiscalia', e.target.value || null); if (e.key === 'Escape') setTableEdit(null) }}
+                                  onBlur={e => quickUpdate(c.id, 'fiscalia', e.target.value || null)} />
+                              ) : (
+                                <span onClick={e => startEdit(e, c.id, 'fiscalia')}
+                                  className="text-xs text-gray-400 hover:text-gray-700 cursor-text hover:bg-gray-100 px-1.5 py-0.5 rounded transition-colors block truncate">
+                                  {c.fiscalia || <span className="text-gray-300">—</span>}
+                                </span>
+                              )}
+                            </td>
+
+                            {/* Área — dropdown */}
+                            <td className="px-3 py-2.5 relative" onClick={e => e.stopPropagation()}>
+                              <button onClick={e => startEdit(e, c.id, 'area')}
+                                className="hover:ring-1 hover:ring-gray-200 rounded transition-all">
+                                <AreaBadge area={c.area} />
+                              </button>
+                              {isEditing(c.id, 'area') && (
+                                <CellDropdown value={c.area} options={AREAS} onClose={() => setTableEdit(null)}
+                                  onSelect={v => quickUpdate(c.id, 'area', v)}
+                                  renderOption={v => <><span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium ${AREA_STYLES[v] || 'bg-gray-100 text-gray-500'}`}>{v}</span></>} />
+                              )}
+                            </td>
+
+                            {/* Etapa — dropdown */}
+                            <td className="px-3 py-2.5 relative max-w-[130px]" onClick={e => e.stopPropagation()}>
+                              <button onClick={e => startEdit(e, c.id, 'etapa_procesal')}
+                                className="text-xs text-gray-500 hover:text-gray-800 hover:bg-gray-100 px-1.5 py-0.5 rounded transition-colors flex items-center gap-1 truncate max-w-full">
+                                <span className="truncate">{c.etapa_procesal || <span className="text-gray-300">—</span>}</span>
+                                <ChevronDown size={9} className="text-gray-300 flex-shrink-0" />
+                              </button>
+                              {isEditing(c.id, 'etapa_procesal') && (
+                                <CellDropdown value={c.etapa_procesal} options={ETAPAS[areaGroup] ?? ETAPAS.general} onClose={() => setTableEdit(null)}
+                                  onSelect={v => quickUpdate(c.id, 'etapa_procesal', v)} />
+                              )}
+                            </td>
+
+                            {/* Responsable — dropdown */}
+                            <td className="px-3 py-2.5 relative" onClick={e => e.stopPropagation()}>
+                              <button onClick={e => startEdit(e, c.id, 'responsable')}
+                                className="flex items-center gap-1 hover:bg-gray-100 px-1.5 py-0.5 rounded transition-colors">
+                                {c.responsable ? (
+                                  <span className="w-5 h-5 rounded-full text-[9px] font-bold text-white flex items-center justify-center flex-shrink-0"
+                                    style={{ backgroundColor: RESPONSABLE_COLORS_C[c.responsable] || '#9CA3AF' }}>
+                                    {c.responsable}
+                                  </span>
+                                ) : <span className="text-xs text-gray-300">—</span>}
+                              </button>
+                              {isEditing(c.id, 'responsable') && (
+                                <CellDropdown value={c.responsable} options={Object.keys(RESPONSABLE_NAMES_C)} onClose={() => setTableEdit(null)}
+                                  onSelect={v => quickUpdate(c.id, 'responsable', v)}
+                                  renderOption={v => (
+                                    <div className="flex items-center gap-2">
+                                      <span className="w-5 h-5 rounded-full text-[9px] font-bold text-white flex items-center justify-center"
+                                        style={{ backgroundColor: RESPONSABLE_COLORS_C[v] || '#9CA3AF' }}>{v}</span>
+                                      {RESPONSABLE_NAMES_C[v]}
+                                    </div>
+                                  )} />
+                              )}
+                            </td>
+
+                            {/* Prioridad — dropdown */}
+                            <td className="px-3 py-2.5 relative" onClick={e => e.stopPropagation()}>
+                              <button onClick={e => startEdit(e, c.id, 'prioridad')}
+                                className="hover:ring-1 hover:ring-gray-200 rounded transition-all">
+                                {c.prioridad ? (
+                                  <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${PRIORIDAD_STYLES[c.prioridad] || 'bg-gray-100 text-gray-500'}`}>
+                                    {c.prioridad}
+                                  </span>
+                                ) : <span className="text-xs text-gray-300">—</span>}
+                              </button>
+                              {isEditing(c.id, 'prioridad') && (
+                                <CellDropdown value={c.prioridad} options={PRIORIDADES} onClose={() => setTableEdit(null)}
+                                  onSelect={v => quickUpdate(c.id, 'prioridad', v)}
+                                  renderOption={v => <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium ${PRIORIDAD_STYLES[v]}`}>{v}</span>} />
+                              )}
+                            </td>
+
+                            {/* Estado — dropdown */}
+                            <td className="px-3 py-2.5 relative" onClick={e => e.stopPropagation()}>
+                              <button onClick={e => startEdit(e, c.id, 'estado')}
+                                className="hover:ring-1 hover:ring-gray-200 rounded transition-all">
                                 <EstadoBadge estado={c.estado} />
-                                <button
-                                  onClick={e => { e.stopPropagation(); handleRequestDelete(c) }}
-                                  className="opacity-0 group-hover:opacity-100 p-1 rounded-lg text-gray-300 hover:text-red-400 hover:bg-red-50 transition-colors flex-shrink-0"
-                                  title="Eliminar causa">
-                                  <Trash2 size={11} />
-                                </button>
-                              </div>
+                              </button>
+                              {isEditing(c.id, 'estado') && (
+                                <CellDropdown value={c.estado} options={ESTADOS} onClose={() => setTableEdit(null)}
+                                  onSelect={v => quickUpdate(c.id, 'estado', v)}
+                                  renderOption={v => {
+                                    const s = ESTADO_STYLES[v] ?? ESTADO_STYLES['Abierta']
+                                    return <span className={`inline-flex items-center gap-1.5 text-[10px] font-medium px-2 py-0.5 rounded-full ${s.badge}`}>
+                                      <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />{v}
+                                    </span>
+                                  }} />
+                              )}
+                            </td>
+
+                            {/* Delete */}
+                            <td className="px-2 py-2.5">
+                              <button
+                                onClick={e => { e.stopPropagation(); handleRequestDelete(c) }}
+                                className="opacity-0 group-hover:opacity-100 p-1 rounded-lg text-gray-300 hover:text-red-400 hover:bg-red-50 transition-colors"
+                                title="Eliminar causa">
+                                <Trash2 size={11} />
+                              </button>
                             </td>
                           </tr>
                           )
@@ -3606,7 +3875,9 @@ export default function Causas() {
                     ))}
                   </tbody>
                 </table>
-              ) : (
+                </>
+                )
+              })()) : (
                 <div className="divide-y divide-gray-50">
                   {(() => {
                     const grupos = {}
