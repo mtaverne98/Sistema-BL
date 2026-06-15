@@ -873,7 +873,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
   const [showCargaMasivaSeg, setShowCargaMasivaSeg] = useState(false)
   const [editingCell,       setEditingCell]       = useState(null)  // { id, field }
   const [cellDraft,         setCellDraft]         = useState('')
-  const [openStatusId,      setOpenStatusId]      = useState(null)
+  const [openStatusId,      setOpenStatusId]      = useState(null) // kept for compatibility
   // Seguimiento — columnas redimensionables: [0]=FECHA [1]=ESTADO
   const { widths: segW, getResizerProps: segResizer } = useResizableColumns('cols-seguimiento', [100, 140])
 
@@ -2646,7 +2646,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
             'Listo':         { bg: '#D1FAE5', text: '#065F46', dot: '#10B981' },
             'Sin novedades': { bg: '#F3F4F6', text: '#6B7280', dot: '#9CA3AF' },
           }
-          const ESTADO_OPTS = Object.keys(SEG_ESTADO)
+          const SEG_ESTADO_FALLBACK = { bg: '#F3F4F6', text: '#6B7280', dot: '#9CA3AF' }
 
           function fmtSegFecha(iso) {
             if (!iso) return '—'
@@ -2741,10 +2741,10 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                               className="w-full text-[12px] border border-gray-200 rounded-lg px-2.5 py-1.5 resize-none focus:outline-none focus:border-blue-300 bg-white placeholder:text-gray-300"/>
                           </td>
                           <td className="px-3 py-3">
-                            <select value={newSegRow.que_se_hizo} onChange={e => setNewSegRow(p => ({ ...p, que_se_hizo: e.target.value }))}
-                              className="text-[11px] border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:border-blue-300 w-full">
-                              {ESTADO_OPTS.map(o => <option key={o}>{o}</option>)}
-                            </select>
+                            <input type="text" value={newSegRow.que_se_hizo || ''}
+                              onChange={e => setNewSegRow(p => ({ ...p, que_se_hizo: e.target.value }))}
+                              placeholder="Ej: Pendiente, Listo…"
+                              className="text-[11px] border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:border-blue-300 w-full" />
                           </td>
                           <td className="px-3 py-3">
                             <div className="flex flex-col gap-1">
@@ -2781,7 +2781,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                       {segRows.map(row => {
                         const isRevisada   = !!row.revisada
                         const isDelConfirm = confirmDelSeg === row.id
-                        const estadoC      = SEG_ESTADO[row.que_se_hizo] || SEG_ESTADO['Pendiente']
+                        const estadoC      = SEG_ESTADO[row.que_se_hizo] || SEG_ESTADO_FALLBACK
 
                         return (
                           <tr key={row.id}
@@ -2843,37 +2843,28 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                               )}
                             </td>
 
-                            {/* Estado — dropdown elegante */}
+                            {/* Estado — texto libre editable inline */}
                             <td className="px-3 py-3 align-top">
-                              <div className="relative">
-                                {openStatusId === row.id && (
-                                  <>
-                                    <div className="fixed inset-0 z-20" onClick={() => setOpenStatusId(null)} />
-                                    <div className="absolute z-30 top-full left-0 mt-1 bg-white border border-gray-100 rounded-xl shadow-lg py-1 min-w-[152px]">
-                                      {ESTADO_OPTS.map(opt => {
-                                        const c = SEG_ESTADO[opt]
-                                        return (
-                                          <button key={opt}
-                                            onClick={() => { handleUpdateSegRow(row.id, { que_se_hizo: opt }); setOpenStatusId(null) }}
-                                            className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-gray-50 transition-colors text-left">
-                                            <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: c.dot }}/>
-                                            <span className="text-[12px] font-medium" style={{ color: c.text }}>{opt}</span>
-                                            {row.que_se_hizo === opt && <Check size={9} className="ml-auto text-gray-300"/>}
-                                          </button>
-                                        )
-                                      })}
-                                    </div>
-                                  </>
-                                )}
+                              {isEditingCell(row.id, 'que_se_hizo') ? (
+                                <input type="text" value={cellDraft}
+                                  onChange={e => setCellDraft(e.target.value)}
+                                  onBlur={() => commitCell(row.id, 'que_se_hizo')}
+                                  onKeyDown={e => {
+                                    if (e.key === 'Enter') e.currentTarget.blur()
+                                    if (e.key === 'Escape') setEditingCell(null)
+                                  }}
+                                  autoFocus
+                                  className="text-[11px] border border-blue-300 rounded-lg px-2 py-1 bg-white focus:outline-none w-full" />
+                              ) : (
                                 <button
-                                  onClick={() => setOpenStatusId(openStatusId === row.id ? null : row.id)}
-                                  className="inline-flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full whitespace-nowrap transition-all hover:opacity-80 cursor-pointer"
+                                  onClick={() => startEdit(row.id, 'que_se_hizo', row.que_se_hizo || '')}
+                                  className="inline-flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full whitespace-nowrap hover:opacity-80 cursor-pointer transition-opacity"
                                   style={{ backgroundColor: estadoC.bg, color: estadoC.text }}
                                 >
                                   <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: estadoC.dot }}/>
                                   {row.que_se_hizo || 'Pendiente'}
                                 </button>
-                              </div>
+                              )}
                             </td>
 
                             {/* Eliminar */}

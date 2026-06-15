@@ -112,8 +112,9 @@ function TipoBadge({ tipo }) {
 }
 
 // ── EstadoBadge ───────────────────────────────────────────────────────────────
+const ESTADO_FALLBACK = { bg: 'bg-gray-100', text: 'text-gray-600', dot: 'bg-gray-400' }
 function EstadoBadge({ estado }) {
-  const cfg = ESTADO_CONFIG[estado] || ESTADO_CONFIG['Pendiente']
+  const cfg = ESTADO_CONFIG[estado] || ESTADO_FALLBACK
   return (
     <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full whitespace-nowrap ${cfg.bg} ${cfg.text}`}>
       <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${cfg.dot}`}/>
@@ -248,10 +249,9 @@ function FormNuevaSolicitud({ causa, causasInfo, globalMode, onSave, onClose }) 
             </div>
             <div>
               <L c="Estado" />
-              <select value={form.estado} onChange={e => f('estado', e.target.value)}
-                className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 focus:outline-none focus:border-blue-300">
-                {ESTADO_OPTS.map(e => <option key={e}>{e}</option>)}
-              </select>
+              <input type="text" value={form.estado} onChange={e => f('estado', e.target.value)}
+                placeholder="Ej: Pendiente, Respondido…"
+                className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 focus:outline-none focus:border-blue-300" />
             </div>
           </div>
 
@@ -520,11 +520,10 @@ export function SolicitudesTable({ grupo, registrosAll, onUpdate, onAdd, onDelet
                               className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 w-full focus:outline-none focus:border-blue-300 bg-white min-w-[120px]"/>
                           </td>
                           <td className="px-3 py-2">
-                            <select value={editDraft.estado||'Pendiente'} onChange={e=>ed('estado',e.target.value)}
+                            <input type="text" value={editDraft.estado||''} onChange={e=>ed('estado',e.target.value)}
                               onClick={e=>e.stopPropagation()}
-                              className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:border-blue-300 w-32">
-                              {ESTADO_OPTS.map(o => <option key={o}>{o}</option>)}
-                            </select>
+                              placeholder="Estado…"
+                              className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:border-blue-300 w-32" />
                           </td>
                           <td className="px-3 py-2 pr-4">
                             <div className="flex items-center gap-1" onClick={e=>e.stopPropagation()}>

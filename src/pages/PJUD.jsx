@@ -107,8 +107,10 @@ function addDays(iso, n) {
 }
 
 // ── Atoms ─────────────────────────────────────────────────────────────────────
+const ESTADO_FALLBACK = { bg: 'bg-gray-100', text: 'text-gray-600', dot: 'bg-gray-400' }
+
 function EstadoBadge({ estado }) {
-  const cfg = ESTADO_CONFIG[estado] || ESTADO_CONFIG['Pendiente']
+  const cfg = ESTADO_CONFIG[estado] || ESTADO_FALLBACK
   return (
     <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${cfg.bg} ${cfg.text} whitespace-nowrap`}>
       <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${cfg.dot}`} />{estado}
@@ -116,39 +118,38 @@ function EstadoBadge({ estado }) {
   )
 }
 
-function EstadoDropdown({ estado, onChange }) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef(null)
-  const cfg = ESTADO_CONFIG[estado] || ESTADO_CONFIG['Pendiente']
-  useEffect(() => {
-    if (!open) return
-    const h = e => { if (!ref.current?.contains(e.target)) setOpen(false) }
-    document.addEventListener('mousedown', h)
-    return () => document.removeEventListener('mousedown', h)
-  }, [open])
+function EstadoInline({ estado, onChange }) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(estado)
+  const cfg = ESTADO_CONFIG[estado] || ESTADO_FALLBACK
+
+  function commit() {
+    setEditing(false)
+    const val = draft.trim() || estado
+    if (val !== estado) onChange(val)
+  }
+
+  if (editing) return (
+    <input
+      type="text"
+      value={draft}
+      autoFocus
+      onChange={e => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={e => {
+        if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur() }
+        if (e.key === 'Escape') { setDraft(estado); setEditing(false) }
+      }}
+      onClick={e => e.stopPropagation()}
+      className="text-[11px] border border-blue-300 rounded-lg px-2 py-0.5 bg-white focus:outline-none w-36"
+    />
+  )
   return (
-    <div ref={ref} className="relative inline-flex" onClick={e => e.stopPropagation()}>
-      <button onClick={() => setOpen(o => !o)}
-        className={`inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${cfg.bg} ${cfg.text} whitespace-nowrap hover:opacity-80 transition-opacity cursor-pointer`}>
-        <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${cfg.dot}`} />{estado}
-        <ChevronDown size={9} className="opacity-50 -mr-0.5" />
-      </button>
-      {open && (
-        <div className="absolute top-full left-0 mt-1.5 z-50 bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden min-w-[180px] py-1">
-          {ESTADOS_PJUD.map(e => {
-            const c = ESTADO_CONFIG[e]
-            return (
-              <button key={e} onClick={() => { onChange(e); setOpen(false) }}
-                className={`w-full text-left px-3 py-1.5 flex items-center gap-2 hover:bg-gray-50 transition-colors ${e === estado ? 'bg-gray-50/80' : ''}`}>
-                <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${c.dot}`} />
-                <span className={`text-[11px] font-medium ${e === estado ? c.text : 'text-gray-600'}`}>{e}</span>
-                {e === estado && <Check size={10} className="ml-auto text-gray-400" />}
-              </button>
-            )
-          })}
-        </div>
-      )}
-    </div>
+    <button
+      onClick={e => { e.stopPropagation(); setDraft(estado); setEditing(true) }}
+      className={`inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${cfg.bg} ${cfg.text} whitespace-nowrap hover:opacity-80 transition-opacity cursor-pointer`}>
+      <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${cfg.dot}`} />{estado}
+    </button>
   )
 }
 
@@ -436,9 +437,8 @@ function FormNuevaEntrada({ causa, causasInfo, onSave, onClose, globalMode = fal
               </select>
             </F>
             <F label="Estado">
-              <select value={form.estado} onChange={e => setForm(f => ({ ...f, estado: e.target.value }))} className={inp + ' bg-white'}>
-                {ESTADOS_PJUD.map(e => <option key={e} value={e}>{e}</option>)}
-              </select>
+              <input type="text" value={form.estado} onChange={e => setForm(f => ({ ...f, estado: e.target.value }))}
+                placeholder="Ej: Pendiente, Respondido…" className={inp + ' bg-white'} />
             </F>
           </div>
           <F label="Solicitud / Movimiento *">
@@ -524,7 +524,7 @@ function MovimientoDetail({ mov, causaRit, clienteNombre, onUpdate, addTarea, ad
     <div className="rounded-2xl border border-[#1a2e4a]/8 bg-[#1a2e4a]/[0.025] p-5 space-y-4" onClick={e => e.stopPropagation()}>
       {/* Meta */}
       <div className="flex items-center gap-3 flex-wrap">
-        <EstadoDropdown estado={mov.estado} onChange={e => onUpdate(mov.id, { estado: e })} />
+        <EstadoInline estado={mov.estado} onChange={e => onUpdate(mov.id, { estado: e })} />
         <PresentaBadge presenta={mov.presenta || 'Otro'} />
         <TipoSolicitudBadge tipo={mov.tipo_solicitud} />
         <span className="text-[11px] text-gray-400">{fmtFechaLarga(mov.fecha)}</span>
@@ -926,7 +926,7 @@ export function MovimientosTable({ causaData, rowsAll, onUpdate, onAdd, onDelete
                           </td>
                           <td className="px-3 py-3">
                             <div className="space-y-1">
-                              <EstadoDropdown estado={r.estado} onChange={e => onUpdate(r.id, { estado: e })} />
+                              <EstadoInline estado={r.estado} onChange={e => onUpdate(r.id, { estado: e })} />
                               {r.respuesta?.trim() && (
                                 <p className={`text-[10px] text-gray-500 leading-snug ${isExpanded ? '' : 'line-clamp-2'}`}>
                                   {r.respuesta}

@@ -161,8 +161,10 @@ function toUpdatePayload(cambios) {
 }
 
 // ─── EstadoBadge & Select ─────────────────────────────────────────────────────
+const SEG_ESTADO_FALLBACK = { bg: 'bg-gray-100', text: 'text-gray-500', dot: 'bg-gray-400', border: 'border-gray-200' }
+
 function EstadoBadge({ v }) {
-  const c = SEG_ESTADO[v] || SEG_ESTADO['Pendiente']
+  const c = SEG_ESTADO[v] || SEG_ESTADO_FALLBACK
   return (
     <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border whitespace-nowrap ${c.bg} ${c.text} ${c.border}`}>
       <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${c.dot}`}/>
@@ -171,13 +173,13 @@ function EstadoBadge({ v }) {
   )
 }
 
-function EstadoSelect({ value, onChange }) {
+function EstadoInput({ value, onChange }) {
   return (
-    <select value={value || 'Pendiente'} onChange={e => onChange(e.target.value)}
+    <input type="text" value={value || ''}
+      onChange={e => onChange(e.target.value)}
       onClick={e => e.stopPropagation()}
-      className="text-[11px] border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:border-blue-300 w-full">
-      {ESTADO_OPTS.map(o => <option key={o}>{o}</option>)}
-    </select>
+      placeholder="Ej: Pendiente, Listo…"
+      className="text-[11px] border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:border-blue-300 w-full" />
   )
 }
 
@@ -360,7 +362,7 @@ function RegistrosTable({ grupo, registrosAll, causaObj, onUpdate, onAdd, onDele
                     className="w-full text-[12px] border border-gray-200 rounded-lg px-2.5 py-1.5 resize-none focus:outline-none focus:border-blue-300 bg-white placeholder:text-gray-300"/>
                 </td>
                 <td className="px-4 py-2.5" style={{ width: 150 }}>
-                  <EstadoSelect value={newRow.estado} onChange={v => setNewRow(p => ({ ...p, estado: v }))}/>
+                  <EstadoInput value={newRow.estado} onChange={v => setNewRow(p => ({ ...p, estado: v }))}/>
                 </td>
                 <td className="px-4 py-2.5" style={{ width: 130 }}>
                   <RespSelect value={newRow.responsable} onChange={v => setNewRow(p => ({ ...p, responsable: v }))}/>
@@ -430,7 +432,7 @@ function RegistrosTable({ grupo, registrosAll, causaObj, onUpdate, onAdd, onDele
                       className="w-full text-[12px] border border-gray-200 rounded-lg px-2.5 py-1.5 resize-none focus:outline-none focus:border-blue-300 bg-white"/>
                   </td>
                   <td className="px-4 py-2.5" style={{ width: 150 }}>
-                    <EstadoSelect value={editDraft.estado} onChange={v => ed('estado', v)}/>
+                    <EstadoInput value={editDraft.estado} onChange={v => ed('estado', v)}/>
                   </td>
                   <td className="px-4 py-2.5" style={{ width: 130 }}>
                     <RespSelect value={editDraft.responsable} onChange={v => ed('responsable', v)}/>
