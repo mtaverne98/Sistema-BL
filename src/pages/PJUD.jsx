@@ -16,32 +16,32 @@ const TODAY = new Date().toISOString().slice(0, 10)
 
 // ── Configs ──────────────────────────────────────────────────────────────────
 const ESTADO_CONFIG = {
-  'Pendiente':            { bg: 'bg-amber-50',  text: 'text-amber-700',   dot: 'bg-amber-500'   },
-  'Respondido':           { bg: 'bg-green-50',  text: 'text-green-700',   dot: 'bg-green-500'   },
-  'Escrito presentado':   { bg: 'bg-blue-50',   text: 'text-blue-700',    dot: 'bg-blue-500'    },
-  'Resolución pendiente': { bg: 'bg-violet-50', text: 'text-violet-700',  dot: 'bg-violet-500'  },
-  'Proveído':             { bg: 'bg-teal-50',   text: 'text-teal-700',    dot: 'bg-teal-500'    },
-  'No ha lugar':          { bg: 'bg-slate-100', text: 'text-slate-600',   dot: 'bg-slate-400'   },
-  'Urgente':              { bg: 'bg-red-50',    text: 'text-red-700',     dot: 'bg-red-500'     },
-  'Archivado':            { bg: 'bg-gray-100',  text: 'text-gray-500',    dot: 'bg-gray-400'    },
+  'Respondido':           { bg: 'bg-[#1a2e4a]',             text: 'text-white',      dot: 'bg-white',         border: 'border-transparent'          },
+  'Proveído':             { bg: 'bg-[#1a2e4a]',             text: 'text-white',      dot: 'bg-white',         border: 'border-transparent'          },
+  'Archivado':            { bg: 'bg-[#1a2e4a]',             text: 'text-white',      dot: 'bg-white',         border: 'border-transparent'          },
+  'Pendiente':            { bg: 'bg-[rgba(26,46,74,0.08)]', text: 'text-[#1a2e4a]', dot: 'bg-[#1a2e4a]',    border: 'border-[rgba(26,46,74,0.2)]' },
+  'Escrito presentado':   { bg: 'bg-[rgba(26,46,74,0.08)]', text: 'text-[#1a2e4a]', dot: 'bg-[#1a2e4a]',    border: 'border-[rgba(26,46,74,0.2)]' },
+  'Resolución pendiente': { bg: 'bg-[rgba(26,46,74,0.08)]', text: 'text-[#1a2e4a]', dot: 'bg-[#1a2e4a]',    border: 'border-[rgba(26,46,74,0.2)]' },
+  'No ha lugar':          { bg: 'bg-[#f1f5f9]',             text: 'text-[#64748b]',  dot: 'bg-[#94a3b8]',    border: 'border-[#e2e8f0]'            },
+  'Urgente':              { bg: 'bg-[#fee2e2]',             text: 'text-[#991b1b]',  dot: 'bg-[#991b1b]',    border: 'border-transparent'          },
 }
 const ESTADOS_PJUD = Object.keys(ESTADO_CONFIG)
 
 const PRESENTA_CONFIG = {
-  'Nosotros':           { bg: 'bg-blue-50',   text: 'text-blue-700',   icon: Briefcase,      short: 'Nos.'   },
-  'Contraparte':        { bg: 'bg-red-50',    text: 'text-red-700',    icon: Users,          short: 'Ctra.'  },
-  'Ministerio Público': { bg: 'bg-violet-50', text: 'text-violet-700', icon: Gavel,          short: 'Min.P.' },
-  'Tribunal':           { bg: 'bg-amber-50',  text: 'text-amber-700',  icon: Landmark,       short: 'Trib.'  },
-  'Otro':               { bg: 'bg-gray-100',  text: 'text-gray-500',   icon: MoreHorizontal, short: 'Otro'   },
+  'Nosotros':           { bg: 'bg-[rgba(26,46,74,0.08)]', text: 'text-[#1a2e4a]', icon: Briefcase,      short: 'Nos.'   },
+  'Contraparte':        { bg: 'bg-[#fef2f2]',             text: 'text-[#991b1b]', icon: Users,          short: 'Ctra.'  },
+  'Ministerio Público': { bg: 'bg-[#f1f5f9]',             text: 'text-[#475569]', icon: Gavel,          short: 'Min.P.' },
+  'Tribunal':           { bg: 'bg-[#f1f5f9]',             text: 'text-[#475569]', icon: Landmark,       short: 'Trib.'  },
+  'Otro':               { bg: 'bg-[#f8fafc]',             text: 'text-[#94a3b8]', icon: MoreHorizontal, short: 'Otro'   },
 }
 
 const TIPO_SOLICITUD_CONFIG = {
-  'Escrito':      { bg: 'bg-blue-50',    text: 'text-blue-700'    },
-  'Presentación': { bg: 'bg-indigo-50',  text: 'text-indigo-700'  },
-  'Recurso':      { bg: 'bg-violet-50',  text: 'text-violet-700'  },
-  'Otrosí':       { bg: 'bg-cyan-50',    text: 'text-cyan-700'    },
-  'Solicitud':    { bg: 'bg-teal-50',    text: 'text-teal-700'    },
-  'Otro':         { bg: 'bg-gray-100',   text: 'text-gray-500'    },
+  'Escrito':      { bg: 'bg-[#f1f5f9]', text: 'text-[#475569]' },
+  'Presentación': { bg: 'bg-[#f1f5f9]', text: 'text-[#475569]' },
+  'Recurso':      { bg: 'bg-[#f1f5f9]', text: 'text-[#475569]' },
+  'Otrosí':       { bg: 'bg-[#f1f5f9]', text: 'text-[#475569]' },
+  'Solicitud':    { bg: 'bg-[#f1f5f9]', text: 'text-[#475569]' },
+  'Otro':         { bg: 'bg-[#f1f5f9]', text: 'text-[#475569]' },
 }
 const TIPOS_SOLICITUD = Object.keys(TIPO_SOLICITUD_CONFIG)
 
@@ -107,12 +107,12 @@ function addDays(iso, n) {
 }
 
 // ── Atoms ─────────────────────────────────────────────────────────────────────
-const ESTADO_FALLBACK = { bg: 'bg-gray-100', text: 'text-gray-600', dot: 'bg-gray-400' }
+const ESTADO_FALLBACK = { bg: 'bg-[#f8fafc]', text: 'text-[#94a3b8]', dot: 'bg-[#94a3b8]', border: 'border-transparent' }
 
 function EstadoBadge({ estado }) {
   const cfg = ESTADO_CONFIG[estado] || ESTADO_FALLBACK
   return (
-    <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${cfg.bg} ${cfg.text} whitespace-nowrap`}>
+    <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full border whitespace-nowrap ${cfg.bg} ${cfg.text} ${cfg.border || 'border-transparent'}`}>
       <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${cfg.dot}`} />{estado}
     </span>
   )
@@ -147,7 +147,7 @@ function EstadoInline({ estado, onChange }) {
   return (
     <button
       onClick={e => { e.stopPropagation(); setDraft(estado); setEditing(true) }}
-      className={`inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${cfg.bg} ${cfg.text} whitespace-nowrap hover:opacity-80 transition-opacity cursor-pointer`}>
+      className={`inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full border whitespace-nowrap hover:opacity-80 transition-opacity cursor-pointer ${cfg.bg} ${cfg.text} ${cfg.border || 'border-transparent'}`}>
       <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${cfg.dot}`} />{estado}
     </button>
   )
@@ -679,7 +679,7 @@ export function MovimientosTable({ causaData, rowsAll, onUpdate, onAdd, onDelete
   const [search,          setSearch]          = useState('')
   const [deleteTarget,    setDeleteTarget]    = useState(null)
 
-  const { widths: pjudW, getResizerProps: pjudResizer } = useResizableColumns('cols-pjud', [90, 80, 110, 200, 200, 90, 100, 140, 50])
+  const { widths: pjudW, getResizerProps: pjudResizer } = useResizableColumns('cols-pjud', [90, 80, 110, 250, 250, 90, 110, 150, 45])
   const pjudMinWidth = pjudW.reduce((s, w) => s + w, 0)
 
   const handleDelete = async () => {
@@ -810,7 +810,7 @@ export function MovimientosTable({ causaData, rowsAll, onUpdate, onAdd, onDelete
             )}
           </div>
         ) : (
-          <table className="text-left border-collapse" style={{ tableLayout: 'fixed', width: pjudMinWidth }}>
+          <table className="text-left border-collapse" style={{ minWidth: pjudMinWidth }}>
             <colgroup>
               <col style={{ width: pjudW[0] }} />
               <col style={{ width: pjudW[1] }} />

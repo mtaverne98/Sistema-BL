@@ -21,25 +21,25 @@ const DB_FIELDS = new Set([
 ])
 
 const TIPO_CONFIG = {
-  'Copia de carpeta investigativa': 'bg-sky-50 text-sky-700 border-sky-100',
-  'Solicitud de entrevista':        'bg-violet-50 text-violet-700 border-violet-100',
-  'Solicitud de diligencias':       'bg-amber-50 text-amber-700 border-amber-100',
-  'Solicitud de información':       'bg-blue-50 text-blue-700 border-blue-100',
-  'Solicitud de documento':         'bg-emerald-50 text-emerald-700 border-emerald-100',
-  'Otro':                           'bg-gray-100 text-gray-500 border-gray-200',
+  'Copia de carpeta investigativa': 'bg-[#f1f5f9] text-[#475569] border-[#e2e8f0]',
+  'Solicitud de entrevista':        'bg-[#f1f5f9] text-[#475569] border-[#e2e8f0]',
+  'Solicitud de diligencias':       'bg-[#f1f5f9] text-[#475569] border-[#e2e8f0]',
+  'Solicitud de información':       'bg-[#f1f5f9] text-[#475569] border-[#e2e8f0]',
+  'Solicitud de documento':         'bg-[#f1f5f9] text-[#475569] border-[#e2e8f0]',
+  'Otro':                           'bg-[#f1f5f9] text-[#475569] border-[#e2e8f0]',
 }
 const TIPO_OPTS = Object.keys(TIPO_CONFIG)
 
 const ESTADO_CONFIG = {
-  'Pendiente':           { bg: 'bg-amber-50',   text: 'text-amber-700',   dot: 'bg-amber-500'   },
-  'En proceso':          { bg: 'bg-blue-50',    text: 'text-blue-700',    dot: 'bg-blue-500'    },
-  'Respondida':          { bg: 'bg-green-50',   text: 'text-green-700',   dot: 'bg-green-500'   },
-  'Sin respuesta':       { bg: 'bg-gray-100',   text: 'text-gray-500',    dot: 'bg-gray-400'    },
-  'Urgente':             { bg: 'bg-red-50',     text: 'text-red-700',     dot: 'bg-red-500'     },
-  'No ha lugar':         { bg: 'bg-slate-100',  text: 'text-slate-600',   dot: 'bg-slate-400'   },
-  'Entrevista agendada': { bg: 'bg-indigo-50',  text: 'text-indigo-700',  dot: 'bg-indigo-500'  },
-  'Fiscal contactó':     { bg: 'bg-purple-50',  text: 'text-purple-700',  dot: 'bg-purple-500'  },
-  'Archivado':           { bg: 'bg-gray-100',   text: 'text-gray-500',    dot: 'bg-gray-400'    },
+  'Respondida':          { bg: 'bg-[#1a2e4a]',             text: 'text-white',      dot: 'bg-white',         border: 'border-transparent'          },
+  'Archivado':           { bg: 'bg-[#1a2e4a]',             text: 'text-white',      dot: 'bg-white',         border: 'border-transparent'          },
+  'Pendiente':           { bg: 'bg-[rgba(26,46,74,0.08)]', text: 'text-[#1a2e4a]', dot: 'bg-[#1a2e4a]',    border: 'border-[rgba(26,46,74,0.2)]' },
+  'En proceso':          { bg: 'bg-[rgba(26,46,74,0.08)]', text: 'text-[#1a2e4a]', dot: 'bg-[#1a2e4a]',    border: 'border-[rgba(26,46,74,0.2)]' },
+  'Entrevista agendada': { bg: 'bg-[rgba(26,46,74,0.08)]', text: 'text-[#1a2e4a]', dot: 'bg-[#1a2e4a]',    border: 'border-[rgba(26,46,74,0.2)]' },
+  'Fiscal contactó':     { bg: 'bg-[rgba(26,46,74,0.08)]', text: 'text-[#1a2e4a]', dot: 'bg-[#1a2e4a]',    border: 'border-[rgba(26,46,74,0.2)]' },
+  'No ha lugar':         { bg: 'bg-[#f1f5f9]',             text: 'text-[#64748b]',  dot: 'bg-[#94a3b8]',    border: 'border-[#e2e8f0]'            },
+  'Sin respuesta':       { bg: 'bg-[#f1f5f9]',             text: 'text-[#64748b]',  dot: 'bg-[#94a3b8]',    border: 'border-[#e2e8f0]'            },
+  'Urgente':             { bg: 'bg-[#fee2e2]',             text: 'text-[#991b1b]',  dot: 'bg-[#991b1b]',    border: 'border-transparent'          },
 }
 const ESTADO_OPTS = Object.keys(ESTADO_CONFIG)
 
@@ -101,11 +101,11 @@ function TipoBadge({ tipo }) {
 }
 
 // ── EstadoBadge ───────────────────────────────────────────────────────────────
-const ESTADO_FALLBACK = { bg: 'bg-gray-100', text: 'text-gray-600', dot: 'bg-gray-400' }
+const ESTADO_FALLBACK = { bg: 'bg-[#f8fafc]', text: 'text-[#94a3b8]', dot: 'bg-[#94a3b8]', border: 'border-transparent' }
 function EstadoBadge({ estado }) {
   const cfg = ESTADO_CONFIG[estado] || ESTADO_FALLBACK
   return (
-    <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full whitespace-nowrap ${cfg.bg} ${cfg.text}`}>
+    <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full border whitespace-nowrap ${cfg.bg} ${cfg.text} ${cfg.border || 'border-transparent'}`}>
       <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${cfg.dot}`}/>
       {estado || 'Pendiente'}
     </span>
@@ -330,7 +330,7 @@ export function SolicitudesTable({ grupo, registrosAll, onUpdate, onAdd, onDelet
   const [showCargaMasiva, setShowCargaMasiva] = useState(false)
   const [deleteTarget,    setDeleteTarget]    = useState(null)
 
-  const { widths: siauW, getResizerProps: siauResizer } = useResizableColumns('cols-siau', [90, 80, 110, 200, 200, 90, 100, 140, 120, 50])
+  const { widths: siauW, getResizerProps: siauResizer } = useResizableColumns('cols-siau', [90, 75, 155, 250, 250, 90, 110, 150, 130, 45])
   const siauMinWidth = siauW.reduce((s, w) => s + w, 0)
 
   // Esc closes open form
@@ -425,7 +425,7 @@ export function SolicitudesTable({ grupo, registrosAll, onUpdate, onAdd, onDelet
             </button>
           </div>
         ) : (
-          <table className="text-left border-collapse" style={{ tableLayout: 'fixed', width: siauMinWidth }}>
+          <table className="text-left border-collapse" style={{ minWidth: siauMinWidth }}>
             <colgroup>
               <col style={{ width: siauW[0] }} />
               <col style={{ width: siauW[1] }} />
