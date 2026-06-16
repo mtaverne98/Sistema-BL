@@ -876,7 +876,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
   const [cellDraft,         setCellDraft]         = useState('')
   const [openStatusId,      setOpenStatusId]      = useState(null) // kept for compatibility
   // Seguimiento — columnas redimensionables: [0]=FECHA [1]=ESTADO
-  const { widths: segW, getResizerProps: segResizer } = useResizableColumns('cols-seguimiento', [100, 140])
+  const { widths: segW, getResizerProps: segResizer } = useResizableColumns('cols-seguimiento-v2', [100, 260, 200])
 
   // Datos rápidos para el resumen (1 fila c/u)
   const [lastPjud,        setLastPjud]        = useState(undefined) // undefined = loading, null = empty
@@ -2694,8 +2694,8 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                     <colgroup>
                       <col style={{ width: 36 }} />
                       <col style={{ width: segW[0] }} />
-                      <col />
                       <col style={{ width: segW[1] }} />
+                      <col style={{ width: segW[2] }} />
                       <col style={{ width: 36 }} />
                     </colgroup>
                     <thead className="sticky top-0 z-10 bg-gray-50/90" style={{ backdropFilter: 'blur(4px)', borderBottom: '1px solid #efefef' }}>
@@ -2707,10 +2707,15 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                             <div className="w-px h-4 bg-[#2570ba]/30 opacity-0 hover:opacity-100 transition-opacity" />
                           </div>
                         </th>
-                        <th className="px-3 py-2.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Gestión / Observación</th>
+                        <th className="px-3 py-2.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wider relative select-none">
+                          Gestión / Observación
+                          <div {...segResizer(1)} className="absolute right-0 top-0 h-full w-3 cursor-col-resize flex items-center justify-center z-10" onClick={e=>e.stopPropagation()}>
+                            <div className="w-px h-4 bg-[#2570ba]/30 opacity-0 hover:opacity-100 transition-opacity" />
+                          </div>
+                        </th>
                         <th className="px-3 py-2.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wider relative select-none">
                           Estado
-                          <div {...segResizer(1)} className="absolute right-0 top-0 h-full w-3 cursor-col-resize flex items-center justify-center z-10" onClick={e=>e.stopPropagation()}>
+                          <div {...segResizer(2)} className="absolute right-0 top-0 h-full w-3 cursor-col-resize flex items-center justify-center z-10" onClick={e=>e.stopPropagation()}>
                             <div className="w-px h-4 bg-[#2570ba]/30 opacity-0 hover:opacity-100 transition-opacity" />
                           </div>
                         </th>
