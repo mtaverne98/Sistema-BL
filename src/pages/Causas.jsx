@@ -2641,14 +2641,6 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
 
         {/* SEGUIMIENTO */}
         {tab === 'seguimiento' && (() => {
-          const SEG_ESTADO = {
-            'Pendiente':     { bg: '#FEF3C7', text: '#B45309', dot: '#F59E0B' },
-            'En progreso':   { bg: '#DBEAFE', text: '#1D4ED8', dot: '#3B82F6' },
-            'Listo':         { bg: '#D1FAE5', text: '#065F46', dot: '#10B981' },
-            'Sin novedades': { bg: '#F3F4F6', text: '#6B7280', dot: '#9CA3AF' },
-          }
-          const SEG_ESTADO_FALLBACK = { bg: '#F3F4F6', text: '#6B7280', dot: '#9CA3AF' }
-
           function fmtSegFecha(iso) {
             if (!iso) return '—'
             const [y, m, d] = iso.split('-')
@@ -2782,7 +2774,6 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                       {segRows.map(row => {
                         const isRevisada   = !!row.revisada
                         const isDelConfirm = confirmDelSeg === row.id
-                        const estadoC      = SEG_ESTADO[row.que_se_hizo] || SEG_ESTADO_FALLBACK
 
                         return (
                           <tr key={row.id}
@@ -2844,7 +2835,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                               )}
                             </td>
 
-                            {/* Estado — texto libre editable inline */}
+                            {/* Estado — texto simple editable inline */}
                             <td className="px-3 py-3 align-top">
                               {isEditingCell(row.id, 'que_se_hizo') ? (
                                 <input type="text" value={cellDraft}
@@ -2855,16 +2846,16 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                                     if (e.key === 'Escape') setEditingCell(null)
                                   }}
                                   autoFocus
-                                  className="text-[11px] border border-blue-300 rounded-lg px-2 py-1 bg-white focus:outline-none w-full" />
+                                  className="text-[12px] border border-blue-300 rounded-lg px-2 py-1 bg-white focus:outline-none w-full" />
                               ) : (
-                                <button
+                                <div
                                   onClick={() => startEdit(row.id, 'que_se_hizo', row.que_se_hizo || '')}
-                                  className="inline-flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full whitespace-nowrap hover:opacity-80 cursor-pointer transition-opacity"
-                                  style={{ backgroundColor: estadoC.bg, color: estadoC.text }}
+                                  className="text-[12px] text-gray-500 leading-relaxed cursor-text rounded-lg px-2 py-1 -mx-2 -my-1 hover:bg-gray-100/70 transition-colors"
                                 >
-                                  <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: estadoC.dot }}/>
-                                  {row.que_se_hizo || 'Pendiente'}
-                                </button>
+                                  {row.que_se_hizo
+                                    ? row.que_se_hizo
+                                    : <span className="text-gray-300">—</span>}
+                                </div>
                               )}
                             </td>
 
