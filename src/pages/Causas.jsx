@@ -3105,7 +3105,7 @@ export default function Causas() {
   }, [setEstados])
   const setArea     = useCallback((v) => { setAreaRaw(v);     try { v ? localStorage.setItem('filtros_causas.area',      v) : localStorage.removeItem('filtros_causas.area')      } catch {} }, [])
   const setClEstado = useCallback((v) => { setClEstadoRaw(v); try { v ? localStorage.setItem('filtros_causas.clEstado', v) : localStorage.removeItem('filtros_causas.clEstado') } catch {} }, [])
-  const [vista, setVista]             = useState('tabla')
+  const [vista, setVista]             = useState('agrupado')
   const [seleccionada, setSeleccionada] = useState(null)
   const [mostrarFiltros, setFiltros]  = useState(false)
   const [formulario, setFormulario]   = useState(null) // null | 'nueva' | objeto causa para editar
