@@ -117,7 +117,7 @@ function loadWS() {
 // ── CheckItem ─────────────────────────────────────────────────────────────────
 function CheckItem({ item, onToggle, onDelete, onMove }) {
   return (
-    <div className="flex items-start gap-2 group py-[3px]">
+    <div className="flex items-start gap-3 group py-1.5">
       <button onClick={() => onToggle(item.id)}
         className="mt-[1px] flex-shrink-0 text-gray-300 hover:text-[#1a2e4a] transition-colors">
         {item.done ? <CheckCircle2 size={13} className="text-[#1a2e4a]" /> : <Circle size={13} />}
@@ -415,20 +415,23 @@ function WeekRow({ week, semana, audiencias, tareas, isCurrent, isPast,
             <p className="py-1.5 text-[11px] text-gray-300 italic">Sin actividad registrada</p>
           )}
 
-          {(isCurrent ? displayDays : activeDays).map(date => {
-            const auds   = audiencias.filter(a => a.fecha === date)
-            const tars   = tareas.filter(t => t.fecha_vencimiento === date && t.estado !== 'Completada')
-            const custom = semana[date] || []
+          {(isCurrent ? displayDays : activeDays).flatMap((date, idx, arr) => {
+            const auds    = audiencias.filter(a => a.fecha === date)
+            const tars    = tareas.filter(t => t.fecha_vencimiento === date && t.estado !== 'Completada')
+            const custom  = semana[date] || []
             const isToday = date === TODAY
+            const sep     = idx < arr.length - 1
+              ? [<hr key={`sep-${date}`} className="border-gray-100 my-2" />]
+              : []
 
             if (isToday) {
-              return (
-                <div key={date} className="mb-2 mt-1">
-                  <div className="relative pl-3 py-2 pr-2 rounded-xl bg-gray-50/80"
+              return [
+                <div key={date} className="mb-3 mt-1">
+                  <div className="relative pl-3 py-3 pr-3 rounded-xl bg-gray-50/80"
                     style={{ borderLeft: '2.5px solid #2570BA' }}>
-                    <div className="flex items-center gap-2 mb-1.5">
+                    <div className="flex items-center gap-2 mb-2.5">
                       <Sun size={12} className="text-[#2570BA]/60 flex-shrink-0" />
-                      <span className="text-[12px] font-bold text-[#1a2e4a] tracking-wide">
+                      <span className="text-[13px] font-bold text-[#1a2e4a] tracking-wide">
                         {dowShort(date)} {dayNum(date)}
                       </span>
                       <span className="text-[8px] font-bold bg-[#2570BA] text-white px-1.5 py-0.5 rounded-full uppercase tracking-wide">
@@ -442,14 +445,14 @@ function WeekRow({ week, semana, audiencias, tareas, isCurrent, isPast,
                     </div>
 
                     {auds.map(a => (
-                      <div key={a.id} className="flex items-center gap-2 py-[2px]">
+                      <div key={a.id} className="flex items-center gap-3 py-1.5">
                         <Gavel size={11} className="text-[#1a2e4a]/40 flex-shrink-0" />
                         <span className="text-[12.5px] text-gray-800 font-semibold flex-1 truncate">{a.causa_rit}</span>
                         {a.hora && <span className="text-[11px] text-[#1a2e4a]/50 tabular-nums font-medium flex-shrink-0">{a.hora}</span>}
                       </div>
                     ))}
                     {tars.map(t => (
-                      <div key={t.id} className="flex items-center gap-2 py-[2px]">
+                      <div key={t.id} className="flex items-center gap-3 py-1.5">
                         <span className="w-2.5 h-2.5 rounded-full border-2 border-amber-400 flex-shrink-0" />
                         <span className="text-[12.5px] text-gray-600 flex-1 truncate">{t.titulo}</span>
                       </div>
@@ -468,29 +471,30 @@ function WeekRow({ week, semana, audiencias, tareas, isCurrent, isPast,
                     ))}
                     <InlineAdd onAdd={onAddHo} placeholder="Agregar a HOY..." />
                   </div>
-                </div>
-              )
+                </div>,
+                ...sep,
+              ]
             }
 
-            return (
-              <div key={date} className="mb-1.5 mt-1">
-                <div className="flex items-center gap-1.5 mb-0.5">
-                  <span className={`text-[10px] font-semibold ${isPast ? 'text-gray-300' : 'text-gray-400'}`}>
+            return [
+              <div key={date} className="mb-3 mt-1">
+                <div className="flex items-center gap-1.5 mb-2.5">
+                  <span className={`text-[13px] font-semibold ${isPast ? 'text-gray-300' : 'text-gray-400'}`}>
                     {dowShort(date)} {dayNum(date)}
                   </span>
                   <div className={`flex-1 h-px ${isPast ? 'bg-gray-50' : 'bg-gray-100'}`} />
                 </div>
                 {auds.map(a => (
-                  <div key={a.id} className="flex items-center gap-2 py-[2px] pl-0.5">
+                  <div key={a.id} className="flex items-center gap-3 py-1.5 pl-0.5">
                     <Gavel size={11} className="text-[#1a2e4a]/35 flex-shrink-0" />
-                    <span className={`text-[12px] font-medium flex-1 truncate ${isPast ? 'text-gray-400' : 'text-gray-700'}`}>{a.causa_rit}</span>
+                    <span className={`text-[12.5px] font-medium flex-1 truncate ${isPast ? 'text-gray-400' : 'text-gray-700'}`}>{a.causa_rit}</span>
                     {a.hora && <span className={`text-[11px] tabular-nums flex-shrink-0 ${isPast ? 'text-gray-300' : 'text-gray-400'}`}>{a.hora}</span>}
                   </div>
                 ))}
                 {tars.map(t => (
-                  <div key={t.id} className="flex items-center gap-2 py-[2px] pl-0.5">
+                  <div key={t.id} className="flex items-center gap-3 py-1.5 pl-0.5">
                     <span className={`w-2.5 h-2.5 rounded-full border-2 flex-shrink-0 ${isPast ? 'border-gray-200' : 'border-amber-300'}`} />
-                    <span className={`text-[12px] flex-1 truncate ${isPast ? 'text-gray-400' : 'text-gray-600'}`}>{t.titulo}</span>
+                    <span className={`text-[12.5px] flex-1 truncate ${isPast ? 'text-gray-400' : 'text-gray-600'}`}>{t.titulo}</span>
                   </div>
                 ))}
                 {custom.map(item => (
@@ -504,8 +508,9 @@ function WeekRow({ week, semana, audiencias, tareas, isCurrent, isPast,
                 {isCurrent && (
                   <InlineAdd onAdd={text => onAdd(date, text)} placeholder="Agregar..." />
                 )}
-              </div>
-            )
+              </div>,
+              ...sep,
+            ]
           })}
 
           {picker ? (
@@ -532,8 +537,8 @@ function WeekRow({ week, semana, audiencias, tareas, isCurrent, isPast,
             </div>
           ) : (
             <button onClick={openPicker}
-              className="flex items-center gap-1 mt-0.5 text-[11px] text-gray-300 hover:text-[#1a2e4a] transition-colors group">
-              <Plus size={10} /> agregar
+              className="flex items-center gap-1.5 mt-0.5 py-1 px-2 text-[12px] text-gray-300 hover:text-[#1a2e4a] transition-colors group">
+              <Plus size={12} /> agregar
             </button>
           )}
         </div>
