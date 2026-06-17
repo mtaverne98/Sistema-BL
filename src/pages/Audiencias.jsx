@@ -5,6 +5,7 @@ import {
   Download, Plus, AlignLeft, X, Loader2, AlertCircle, Trash2,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
+import { GCal, syncViaEdgeFunction, checkConnectionServer } from '../lib/googleCalendar'
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal'
 
 // ── Constantes ────────────────────────────────────────────────────────────────
@@ -28,7 +29,7 @@ const MESES_CORTO = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct'
 const DIAS_SEMANA = ['dom','lun','mar','mié','jue','vie','sáb']
 
 // Campos que existen en la BD (se persisten al actualizar)
-const DB_FIELDS = new Set(['estado','notas','tipo','fecha','hora','tribunal','sala','resultado','cliente_nombre','causa_rit','cliente_id','causa_id'])
+const DB_FIELDS = new Set(['estado','notas','tipo','fecha','hora','tribunal','sala','resultado','cliente_nombre','causa_rit','cliente_id','causa_id','google_event_id'])
 
 // ── Mappers ───────────────────────────────────────────────────────────────────
 function mapRow(row) {
@@ -47,6 +48,7 @@ function mapRow(row) {
     causa_rit:      row.causa_rit      || '',
     causa_id:       row.causa_id       || null,
     cliente_id:     row.cliente_id     || null,
+    google_event_id: row.google_event_id || null,
     // Campos UI-only (no están en la BD)
     asiste:   [],
     minuta:   '',
@@ -481,6 +483,24 @@ function CardAudiencia({ audiencia: aud, onUpdate, onDeleteRequest }) {
 
         {/* Badges + expand */}
         <div className="py-3 pr-4 flex items-center gap-2 flex-shrink-0">
+          {/* Google Calendar sync indicator */}
+          {aud.google_event_id && (
+            <a
+              href={`https://calendar.google.com/calendar/r/eventedit/${aud.google_event_id}`}
+              target="_blank" rel="noreferrer"
+              onClick={e => e.stopPropagation()}
+              title="Sincronizado con Google Calendar"
+              className="flex-shrink-0 w-5 h-5"
+            >
+              <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M19.5 3h-1.5V1.5h-1.5V3h-9V1.5H6V3H4.5A1.5 1.5 0 003 4.5v15A1.5 1.5 0 004.5 21h15a1.5 1.5 0 001.5-1.5v-15A1.5 1.5 0 0019.5 3z" fill="#4285F4"/>
+                <rect x="3" y="9" width="18" height="12" rx="1.5" fill="white"/>
+                <path d="M12 10.5a3.75 3.75 0 100 7.5 3.75 3.75 0 000-7.5z" fill="#EA4335"/>
+                <path d="M4.5 6.75h15v3h-15z" fill="#4285F4"/>
+              </svg>
+            </a>
+          )}
+
           {/* RIT badge */}
           {aud.causa_rit && (
             <span className="hidden sm:inline-flex items-center gap-1.5 text-[10px] font-semibold bg-violet-50 text-violet-600 px-2.5 py-1 rounded-full">
@@ -1046,6 +1066,14 @@ export default function Audiencias() {
     setDeleteTarget(null)
   }, [deleteTarget])
 
+  // ── Sync silencioso con Google Calendar (fire-and-forget) ──
+  const triggerGCalSync = useCallback(async () => {
+    try {
+      const connected = await checkConnectionServer(supabase)
+      if (connected) syncViaEdgeFunction(GCal.getCalendarId()).catch(() => {})
+    } catch { /* silencioso */ }
+  }, [])
+
   // ── Crear audiencia ──
   const handleCrear = useCallback(async (form) => {
     setGuardando(true)
@@ -1060,9 +1088,10 @@ export default function Audiencias() {
     } else {
       setAudiencias(prev => [mapRow(data), ...prev])
       setMostrarForm(false)
+      triggerGCalSync()
     }
     setGuardando(false)
-  }, [])
+  }, [triggerGCalSync])
 
   // Keep state ref synced for the unmount closure
   const _stRef = useRef({})

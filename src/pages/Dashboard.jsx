@@ -140,7 +140,7 @@ export default function Dashboard() {
 
   const fetchAudiencias = useCallback(async () => {
     const { data } = await supabase.from('audiencias')
-      .select('id, tipo, fecha, hora, tribunal, sala, estado, modalidad, cliente_nombre, causa_rit')
+      .select('id, tipo, fecha, hora, tribunal, sala, estado, modalidad, cliente_nombre, causa_rit, google_event_id')
     if (data) setAudiencias(data)
   }, [])
 
@@ -576,7 +576,17 @@ export default function Dashboard() {
                         <span>· {a.tipo}</span>
                       </span>
                     </div>
-                    <Avatar quien="MT" />
+                    <div className="flex flex-col items-center gap-1.5 flex-shrink-0">
+                      <Avatar quien="MT" />
+                      {a.google_event_id && (
+                        <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 opacity-60" title="En Google Calendar" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M19.5 3h-1.5V1.5h-1.5V3h-9V1.5H6V3H4.5A1.5 1.5 0 003 4.5v15A1.5 1.5 0 004.5 21h15a1.5 1.5 0 001.5-1.5v-15A1.5 1.5 0 0019.5 3z" fill="#4285F4"/>
+                          <rect x="3" y="9" width="18" height="12" rx="1.5" fill="white"/>
+                          <path d="M12 10.5a3.75 3.75 0 100 7.5 3.75 3.75 0 000-7.5z" fill="#EA4335"/>
+                          <path d="M4.5 6.75h15v3h-15z" fill="#4285F4"/>
+                        </svg>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))}

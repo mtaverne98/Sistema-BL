@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useLocation } from 'react-router-dom'
 import {
   Settings, Link2, RefreshCw, CheckCircle, XCircle,
   ChevronDown, ExternalLink, AlertCircle, Calendar,
@@ -6,7 +7,8 @@ import {
 } from 'lucide-react'
 import {
   GCal, getAuthUrl, listCalendars,
-  createEvent, updateEvent,
+  checkConnectionServer, disconnectServer, syncViaEdgeFunction,
+  getAccessTokenServer,
 } from '../lib/googleCalendar'
 import { supabase } from '../lib/supabase'
 
@@ -27,29 +29,60 @@ function Section({ title, description, children }) {
 
 // ── Google Calendar integration card ─────────────────────────────────────────
 function GoogleCalendarCard() {
+  const location = useLocation()
   const [connected,     setConnected]     = useState(false)
+  const [loading,       setLoading]       = useState(true)
   const [calendars,     setCalendars]     = useState([])
   const [loadingCals,   setLoadingCals]   = useState(false)
   const [calError,      setCalError]      = useState('')
-  const [selectedCalId, setSelectedCalId] = useState('primary')
+  const [selectedCalId, setSelectedCalId] = useState(GCal.getCalendarId())
   const [syncStatus,    setSyncStatus]    = useState(null) // 'syncing'|'done'|'error'
   const [syncMsg,       setSyncMsg]       = useState('')
   const [showCalList,   setShowCalList]   = useState(false)
 
-  // Init
+  // Check connection via Supabase table (server-side tokens)
   useEffect(() => {
-    const ok = GCal.isConnected()
-    setConnected(ok)
-    setSelectedCalId(GCal.getCalendarId())
-    if (ok) loadCalendars()
+    async function check() {
+      setLoading(true)
+      const ok = await checkConnectionServer(supabase)
+      setConnected(ok)
+      setLoading(false)
+      if (ok) loadCalendars()
+    }
+    check()
   }, [])
+
+  // Handle redirect back from OAuth (?calendar=connected / ?calendar=error)
+  useEffect(() => {
+    const params = new URLSearchParams(location.search)
+    const cal    = params.get('calendar')
+    if (cal === 'connected') {
+      checkConnectionServer(supabase).then(ok => {
+        setConnected(ok)
+        if (ok) loadCalendars()
+      })
+      // Clean up URL
+      window.history.replaceState({}, '', '/configuracion')
+    } else if (cal === 'error') {
+      const msg = params.get('msg') || 'Error al conectar Google Calendar'
+      setSyncStatus('error')
+      setSyncMsg(decodeURIComponent(msg))
+      window.history.replaceState({}, '', '/configuracion')
+    }
+  }, [location.search])
 
   async function loadCalendars() {
     setLoadingCals(true)
     setCalError('')
     try {
-      const items = await listCalendars()
-      setCalendars(items)
+      // Get token from Supabase then call Calendar API
+      const token = await getAccessTokenServer(supabase)
+      const res   = await fetch('https://www.googleapis.com/calendar/v3/users/me/calendarList', {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const data = await res.json()
+      if (data.error) throw new Error(data.error.message)
+      setCalendars(data.items || [])
     } catch (e) {
       setCalError(e.message)
     } finally {
@@ -61,8 +94,8 @@ function GoogleCalendarCard() {
     window.location.href = getAuthUrl()
   }
 
-  function handleDisconnect() {
-    GCal.clearTokens()
+  async function handleDisconnect() {
+    await disconnectServer(supabase)
     setConnected(false)
     setCalendars([])
     setSyncStatus(null)
@@ -79,34 +112,11 @@ function GoogleCalendarCard() {
     setSyncStatus('syncing')
     setSyncMsg('Sincronizando audiencias…')
     try {
-      const { data: audiencias } = await supabase
-        .from('audiencias')
-        .select('id, tipo, fecha, hora, tribunal, sala, estado, notas, cliente_nombre, causa_rit')
-        .neq('estado', 'Suspendida')
-
-      if (!audiencias?.length) {
-        setSyncStatus('done')
-        setSyncMsg('No hay audiencias para sincronizar')
-        setTimeout(() => { setSyncStatus(null); setSyncMsg('') }, 3000)
-        return
-      }
-
-      const cal = selectedCalId
-      let count = 0
-      for (const a of audiencias) {
-        if (!a.fecha) continue
-        const existing = GCal.getEventId(a.id)
-        if (existing) {
-          await updateEvent(a, cal)
-        } else {
-          await createEvent(a, cal)
-        }
-        count++
-      }
-
+      const result = await syncViaEdgeFunction(selectedCalId)
+      const { created = 0, updated = 0, total = 0 } = result
       setSyncStatus('done')
-      setSyncMsg(`${count} audiencia${count !== 1 ? 's' : ''} sincronizada${count !== 1 ? 's' : ''}`)
-      setTimeout(() => { setSyncStatus(null); setSyncMsg('') }, 4000)
+      setSyncMsg(`${total} audiencias procesadas · ${created} creadas · ${updated} actualizadas`)
+      setTimeout(() => { setSyncStatus(null); setSyncMsg('') }, 5000)
     } catch (e) {
       setSyncStatus('error')
       setSyncMsg(e.message)
@@ -137,7 +147,12 @@ function GoogleCalendarCard() {
         </div>
 
         {/* Status badge */}
-        {connected ? (
+        {loading ? (
+          <span className="inline-flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1 rounded-full bg-gray-50 text-gray-300 border border-gray-100 flex-shrink-0">
+            <Loader size={10} className="animate-spin" />
+            Verificando…
+          </span>
+        ) : connected ? (
           <span className="inline-flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-100 flex-shrink-0">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
             Conectado

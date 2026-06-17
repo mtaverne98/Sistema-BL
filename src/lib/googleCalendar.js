@@ -1,10 +1,13 @@
 // ── Google Calendar Service ───────────────────────────────────────────────────
 // OAuth 2.0 + Calendar API for Sistema BL
+// Token exchange happens server-side via Supabase Edge Functions.
+// GOOGLE_CLIENT_SECRET is never sent to the browser.
 
-const CLIENT_ID     = import.meta.env.VITE_GOOGLE_CLIENT_ID
-const CLIENT_SECRET = import.meta.env.VITE_GOOGLE_CLIENT_SECRET
-const REDIRECT_URI  = import.meta.env.VITE_GOOGLE_REDIRECT_URI
-const SCOPES        = 'https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/calendar.events'
+const CLIENT_ID    = import.meta.env.VITE_GOOGLE_CLIENT_ID
+const REDIRECT_URI = 'https://zzcdkjoetgclbtcuqswr.supabase.co/functions/v1/google-oauth-callback'
+const SCOPES       = 'https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/calendar.events'
+const SYNC_URL     = 'https://zzcdkjoetgclbtcuqswr.supabase.co/functions/v1/google-calendar-sync'
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
 
 const TOKEN_KEY     = 'gcal_tokens'
 const EVENT_MAP_KEY = 'gcal_event_ids'   // { [audiencia_id]: gcal_event_id }
@@ -80,53 +83,57 @@ export function getAuthUrl() {
   return `https://accounts.google.com/o/oauth2/v2/auth?${params}`
 }
 
-export async function exchangeCode(code) {
-  const res = await fetch('https://oauth2.googleapis.com/token', {
-    method:  'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      code,
-      client_id:     CLIENT_ID,
-      client_secret: CLIENT_SECRET,
-      redirect_uri:  REDIRECT_URI,
-      grant_type:    'authorization_code',
-    }),
-  })
-  const data = await res.json()
-  if (data.error) throw new Error(data.error_description || data.error)
-  GCal.saveTokens(data)
-  return data
+// ── Server-side helpers (token exchange is now done by Edge Function) ─────────
+
+/** Check connection by reading google_tokens table */
+export async function checkConnectionServer(supabase) {
+  const { data } = await supabase
+    .from('google_tokens')
+    .select('id, expires_at')
+    .eq('id', '00000000-0000-0000-0000-000000000001')
+    .maybeSingle()
+  return !!data
 }
 
-async function _refreshToken() {
-  const tokens = GCal.loadTokens()
-  if (!tokens?.refresh_token) throw new Error('No refresh token — reconecta Google Calendar')
-  const res = await fetch('https://oauth2.googleapis.com/token', {
+/** Get access token from Supabase (server stored, no refresh client-side) */
+export async function getAccessTokenServer(supabase) {
+  const { data, error } = await supabase
+    .from('google_tokens')
+    .select('access_token, expires_at')
+    .eq('id', '00000000-0000-0000-0000-000000000001')
+    .single()
+  if (error || !data) throw new Error('No conectado a Google Calendar')
+  return data.access_token
+}
+
+/** Disconnect: remove server tokens */
+export async function disconnectServer(supabase) {
+  await supabase
+    .from('google_tokens')
+    .delete()
+    .eq('id', '00000000-0000-0000-0000-000000000001')
+  GCal.clearTokens()
+}
+
+/** Trigger server-side sync via Edge Function */
+export async function syncViaEdgeFunction(calendarId = 'primary') {
+  const res = await fetch(SYNC_URL, {
     method:  'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      refresh_token: tokens.refresh_token,
-      client_id:     CLIENT_ID,
-      client_secret: CLIENT_SECRET,
-      grant_type:    'refresh_token',
-    }),
+    headers: {
+      'Content-Type':  'application/json',
+      'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+    },
+    body: JSON.stringify({ calendar_id: calendarId }),
   })
   const data = await res.json()
-  if (data.error) {
-    if (data.error === 'invalid_grant') {
-      GCal.clearTokens()
-      throw new Error('Sesión expirada — por favor reconecta Google Calendar')
-    }
-    throw new Error(data.error_description || data.error)
-  }
-  GCal.saveTokens({ ...tokens, ...data })
-  return data.access_token
+  if (!data.ok) throw new Error(data.error || 'Error en la sincronización')
+  return data
 }
 
 export async function getAccessToken() {
   const tokens = GCal.loadTokens()
   if (!tokens?.access_token) throw new Error('No conectado a Google Calendar')
-  if (Date.now() >= (tokens.expires_at ?? 0)) return await _refreshToken()
+  if (Date.now() >= (tokens.expires_at ?? 0)) throw new Error('Token expirado — reconecta Google Calendar')
   return tokens.access_token
 }
 
