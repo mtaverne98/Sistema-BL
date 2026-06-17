@@ -190,7 +190,7 @@ export default function Dashboard() {
 
   const fetchCounts = useCallback(async () => {
     const [{ count: cCount }, { count: clCount }] = await Promise.all([
-      supabase.from('causas').select('id', { count: 'exact', head: true }),
+      supabase.from('causas').select('id', { count: 'exact', head: true }).in('estado', ['Abierta', 'Revisar']),
       supabase.from('clientes').select('id', { count: 'exact', head: true }),
     ])
     setCausasCount(cCount || 0)
