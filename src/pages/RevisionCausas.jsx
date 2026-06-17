@@ -153,7 +153,7 @@ function RespAvatar({ resp }) {
 // ── ModalCrearTarea ────────────────────────────────────────────────────────────
 function ModalCrearTarea({ causa, onSave, onClose }) {
   const [form, setForm] = useState({
-    titulo: causa.materia ? `Gestión — ${causa.materia}` : 'Nueva tarea',
+    titulo: '',
     categoria: 'Escrito', prioridad: 'Media',
     fecha_vencimiento: '', responsable: 'MT', notas: '',
   })
@@ -698,6 +698,8 @@ export default function RevisionCausas() {
     if (error) {
       console.error('Error al crear tarea:', error.message, error.details)
       alert(`Error al guardar la tarea: ${error.message}`)
+    } else {
+      window.dispatchEvent(new CustomEvent('tareas:updated'))
     }
   }, [])
 

@@ -1194,6 +1194,12 @@ export default function Tareas() {
     fetchCausas()
   }, [fetchTareas, fetchCausas])
 
+  useEffect(() => {
+    const fn = () => fetchTareas()
+    window.addEventListener('tareas:updated', fn)
+    return () => window.removeEventListener('tareas:updated', fn)
+  }, [fetchTareas])
+
   // Esc closes open form or panel (form takes priority)
   useEffect(() => {
     const fn = () => {
