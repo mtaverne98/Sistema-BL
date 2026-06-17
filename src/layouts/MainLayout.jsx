@@ -11,12 +11,12 @@ import {
   CheckCircle2, CalendarCheck,
   Menu, X,
 } from 'lucide-react'
-import { useSistema } from '../context/SistemaContext'
-import { CAUSAS }    from '../pages/Causas'
-import { CLIENTES }  from '../pages/Clientes'
-import { useUser }   from '../context/UserContext'
-import QuickAdd      from '../components/QuickAdd'
-import SlashCommands from '../components/SlashCommands'
+import { useSistema }    from '../context/SistemaContext'
+import { useNavigation } from '../context/NavigationContext'
+import { useUser }       from '../context/UserContext'
+import { supabase }      from '../lib/supabase'
+import QuickAdd          from '../components/QuickAdd'
+import SlashCommands     from '../components/SlashCommands'
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 const TODAY_LAYOUT = new Date().toISOString().slice(0, 10)
@@ -129,13 +129,16 @@ function Avatar({ quien, size = 16 }) {
 function GlobalCmdK({ open, onClose }) {
   const navigate = useNavigate()
   const { tareas, audiencias, plazos, documentos, addToRevisarJueves } = useSistema()
-  const [q, setQ]             = useState('')
-  const [selIdx, setSelIdx]   = useState(0)
+  const { setActiveCausa } = useNavigation()
+  const [q, setQ]               = useState('')
+  const [selIdx, setSelIdx]     = useState(0)
   const [feedback, setFeedback] = useState('')
+  const [dbClientes, setDbClientes] = useState([])
+  const [dbCausas,   setDbCausas]   = useState([])
   const inputRef = useRef(null)
 
   useEffect(() => {
-    if (open) { setQ(''); setSelIdx(0); setFeedback(''); setTimeout(() => inputRef.current?.focus(), 40) }
+    if (open) { setQ(''); setSelIdx(0); setFeedback(''); setDbClientes([]); setDbCausas([]); setTimeout(() => inputRef.current?.focus(), 40) }
   }, [open])
 
   useEffect(() => {
@@ -144,6 +147,32 @@ function GlobalCmdK({ open, onClose }) {
     window.addEventListener('keydown', fn)
     return () => window.removeEventListener('keydown', fn)
   }, [open, onClose])
+
+  // ── Búsqueda en tiempo real (Supabase, ≥2 chars, debounced 200ms) ──────────
+  useEffect(() => {
+    const trimmed = q.trim()
+    if (trimmed.length < 2) { setDbClientes([]); setDbCausas([]); return }
+    const timer = setTimeout(async () => {
+      const pat = `%${trimmed}%`
+      const [{ data: clientes }, { data: causas }] = await Promise.all([
+        supabase.from('clientes').select('id, nombre, rut')
+          .or(`nombre.ilike.${pat},rut.ilike.${pat}`).limit(5),
+        supabase.from('causas').select('id, rit, ruc, materia, cliente_nombre, cliente_id')
+          .or(`rit.ilike.${pat},ruc.ilike.${pat},cliente_nombre.ilike.${pat},materia.ilike.${pat}`).limit(5),
+      ])
+      // Contar causas activas por cliente
+      const ids = (clientes || []).map(c => c.id).filter(Boolean)
+      let counts = {}
+      if (ids.length > 0) {
+        const { data: activas } = await supabase.from('causas')
+          .select('cliente_id').in('cliente_id', ids).in('estado', ['Abierta', 'Revisar'])
+        ;(activas || []).forEach(c => { counts[c.cliente_id] = (counts[c.cliente_id] || 0) + 1 })
+      }
+      setDbClientes((clientes || []).map(c => ({ ...c, causasCount: counts[c.id] || 0 })))
+      setDbCausas(causas || [])
+    }, 200)
+    return () => clearTimeout(timer)
+  }, [q])
 
   // ── build results ──────────────────────────────────────────────────────────
   const results = useMemo(() => {
@@ -165,23 +194,20 @@ function GlobalCmdK({ open, onClose }) {
     const navMatches = ALL_NAV.filter(n => n.label.toLowerCase().includes(lq))
     navMatches.forEach(n => items.push({ group: 'MÓDULO', type: 'nav', label: n.label, path: n.to ?? n.path, icon: n.icon }))
 
-    // Clientes
-    CLIENTES.filter(c => {
-      const full = `${c.nombre} ${c.apellido}`.toLowerCase()
-      return full.includes(lq) || c.rut?.toLowerCase().includes(lq)
-    }).slice(0, 4).forEach(c => items.push({
-      group: 'CLIENTES', type: 'cliente', label: `${c.nombre} ${c.apellido}`,
-      sub: c.rut, path: '/clientes', icon: Users, data: c,
+    // Clientes (resultados de Supabase)
+    dbClientes.forEach(c => items.push({
+      group: 'CLIENTES', type: 'cliente',
+      label: c.nombre,
+      sub: [c.rut, `${c.causasCount} causa${c.causasCount !== 1 ? 's' : ''} activa${c.causasCount !== 1 ? 's' : ''}`].filter(Boolean).join(' · '),
+      path: '/clientes', icon: Users, data: c,
     }))
 
-    // Causas
-    CAUSAS.filter(c =>
-      c.cliente_nombre?.toLowerCase().includes(lq) ||
-      c.rit?.toLowerCase().includes(lq) ||
-      c.materia?.toLowerCase().includes(lq)
-    ).slice(0, 4).forEach(c => items.push({
-      group: 'CAUSAS', type: 'causa', label: c.rit,
-      sub: `${c.cliente_nombre} · ${c.materia}`, path: '/causas', icon: Scale, data: c,
+    // Causas (resultados de Supabase)
+    dbCausas.forEach(c => items.push({
+      group: 'CAUSAS', type: 'causa',
+      label: [c.rit, c.ruc].filter(Boolean).join(' · '),
+      sub: [c.materia, c.cliente_nombre].filter(Boolean).join(' · '),
+      path: '/causas', icon: Scale, data: c,
     }))
 
     // Tareas
@@ -236,7 +262,7 @@ function GlobalCmdK({ open, onClose }) {
     }
 
     return items
-  }, [q, tareas, audiencias, plazos, documentos])
+  }, [q, tareas, audiencias, plazos, documentos, dbClientes, dbCausas])
 
   // group results
   const grouped = useMemo(() => {
@@ -269,6 +295,22 @@ function GlobalCmdK({ open, onClose }) {
       addToRevisarJueves(txt)
       setFeedback(`✓ Agregado al jueves: "${txt}"`)
       setTimeout(() => { setFeedback(''); onClose() }, 1400)
+      return
+    }
+    if (item.type === 'causa') {
+      setActiveCausa({
+        id: item.data.id, rit: item.data.rit, ruc: item.data.ruc,
+        materia: item.data.materia, cliente_nombre: item.data.cliente_nombre,
+        cliente_id: item.data.cliente_id,
+      })
+      navigate('/causas')
+      onClose()
+      return
+    }
+    if (item.type === 'cliente') {
+      try { sessionStorage.setItem('ps.clientes', JSON.stringify({ selectedId: item.data.id })) } catch {}
+      navigate('/clientes')
+      onClose()
       return
     }
     if (item.path) {
