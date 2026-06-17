@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import {
   Plus, Trash2, ChevronRight, ChevronDown, ChevronLeft,
-  Clock, Gavel, ArrowRight, Command, Search, Calendar,
+  Gavel, ArrowRight, Command, Search, Calendar,
   Circle, CheckCircle2, AlignLeft, Star, Send,
   Sun, BookOpen, Database, CheckSquare, X, Shield,
 } from 'lucide-react'
@@ -676,7 +676,6 @@ export default function Apuntes() {
   const [tareas,     setTareas]     = useState([])
   const [clientes,   setClientes]   = useState([])
   const [causas,     setCausas]     = useState([])
-  const [esperando,  setEsperando]  = useState([])
   const [ws, setWs]                 = useState(loadWS)
   const [cmdOpen, setCmdOpen]       = useState(false)
 
@@ -697,26 +696,6 @@ export default function Apuntes() {
       .select('id, rit, ruc, cliente_nombre, materia, estado')
       .then(({ data }) => setCausas(data || []))
 
-    // Auto "Esperando respuesta" — SIAU + PJUD pendientes > 10 días
-    // Deduplica por causa_rit+tipo: solo el más antiguo por causa
-    Promise.all([
-      supabase.from('siau').select('id, fecha, estado, solicitud, causa_rit, cliente_nombre').eq('estado', 'Pendiente'),
-      supabase.from('pjud').select('id, fecha, estado, solicitud, causa_rit, cliente_nombre').eq('estado', 'Pendiente'),
-    ]).then(([{ data: siauData }, { data: pjudData }]) => {
-      const dedup = (rows, tipo) => {
-        const byKey = new Map()
-        for (const r of rows || []) {
-          const key = `${tipo}-${r.causa_rit || r.id}`
-          const dias = daysSince(r.fecha)
-          if (!byKey.has(key) || dias > byKey.get(key).dias)
-            byKey.set(key, { ...r, tipo, dias })
-        }
-        return [...byKey.values()]
-      }
-      const all = [...dedup(siauData, 'SIAU'), ...dedup(pjudData, 'PJUD')]
-        .sort((a, b) => b.dias - a.dias)
-      setEsperando(all)
-    })
   }, [])
 
   useEffect(() => { localStorage.setItem(STORAGE_KEY, JSON.stringify(ws)) }, [ws])
@@ -894,40 +873,6 @@ export default function Apuntes() {
               />
             </div>
 
-            {/* Esperando respuesta — auto desde SIAU/PJUD */}
-            <RightSection
-              title="Esperando respuesta"
-              icon={Clock}
-              iconColor="text-rose-400"
-              badge={esperando.length}
-            >
-              {esperando.length === 0 ? (
-                <p className="text-[11px] text-gray-300 italic">Sin solicitudes pendientes &gt;10 días.</p>
-              ) : (
-                <div className="space-y-0.5">
-                  {esperando.map(item => (
-                    <button
-                      key={`${item.tipo}-${item.id}`}
-                      onClick={() => item.causa_rit && navigate(`/causas?rit=${item.causa_rit}`)}
-                      className="w-full flex items-center gap-2 py-1 rounded-lg hover:bg-gray-50 transition-colors text-left group"
-                    >
-                      <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${item.dias > 30 ? 'bg-red-400' : 'bg-amber-400'}`} />
-                      <span className="text-[12px] text-gray-600 flex-1 truncate">
-                        {item.cliente_nombre || item.causa_rit || '—'}
-                      </span>
-                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 ${
-                        item.tipo === 'SIAU'
-                          ? 'bg-violet-50 text-violet-600'
-                          : 'bg-emerald-50 text-emerald-600'
-                      }`}>{item.tipo}</span>
-                      <span className={`text-[11px] font-semibold tabular-nums flex-shrink-0 ${item.dias > 30 ? 'text-red-500' : 'text-amber-500'}`}>
-                        {item.dias}d
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </RightSection>
 
             {/* Causas activas */}
             {causasActivas.length > 0 && (
