@@ -50,16 +50,15 @@ const SECTIONS = [
     { to: '/reuniones',   icon: MessageSquare, label: 'Reuniones'  },
   ]},
   { key: 'gestion', label: 'Gestión', items: [
-    { to: '/revision',      icon: ClipboardCheck, label: 'Revisión de causas' },
-    { to: '/mi-semana',     icon: CalendarCheck,  label: 'Mi semana'          },
-    { to: '/siau',          icon: Database,       label: 'SIAU'               },
-    { to: '/pjud',          icon: Shield,         label: 'PJUD'               },
-    { to: '/documentos',    icon: FolderOpen,     label: 'Documentos'         },
-    { to: '/configuracion', icon: Settings,       label: 'Configuración'      },
+    { to: '/revision',   icon: ClipboardCheck, label: 'Revisión de causas' },
+    { to: '/siau',       icon: Database,       label: 'SIAU'               },
+    { to: '/pjud',       icon: Shield,         label: 'PJUD'               },
+    { to: '/documentos', icon: FolderOpen,     label: 'Documentos'         },
   ]},
   { key: 'notas', label: 'Notas', items: [
-    { to: '/apuntes',     icon: BookOpen,  label: 'Agenda diaria' },
-    { to: '/gastos',      icon: Receipt,   label: 'Gastos'        },
+    { to: '/mi-semana', icon: CalendarCheck, label: 'Mi semana'    },
+    { to: '/apuntes',   icon: BookOpen,      label: 'Agenda diaria' },
+    { to: '/gastos',    icon: Receipt,       label: 'Gastos'        },
   ]},
 ]
 
@@ -729,6 +728,11 @@ export default function MainLayout() {
 
           </div>
         </nav>
+
+        {/* Configuración */}
+        <div className="flex-shrink-0" style={{ borderTop: '1px solid rgba(255,255,255,0.06)', padding: sbCollapsed ? '8px 4px' : '8px 6px' }}>
+          <NavItem to="/configuracion" icon={Settings} label="Configuración" collapsed={sbCollapsed} />
+        </div>
 
         {/* User */}
         <div className="flex-shrink-0" style={{ borderTop: '1px solid rgba(255,255,255,0.08)', padding: sbCollapsed ? '8px 4px' : '8px 6px' }}>
