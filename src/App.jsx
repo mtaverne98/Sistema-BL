@@ -15,6 +15,7 @@ import Plazos from './pages/Plazos'
 import PJUD from './pages/PJUD'
 import SIAU from './pages/SIAU'
 import RevisionCausas from './pages/RevisionCausas'
+import MiSemana from './pages/MiSemana'
 import Tareas from './pages/Tareas'
 import Reuniones from './pages/Reuniones'
 import SeguimientoSemanal from './pages/SeguimientoSemanal'
@@ -57,6 +58,7 @@ function AppInner() {
             <Route path="pjud"           element={<PJUD />} />
             <Route path="siau"           element={<SIAU />} />
             <Route path="revision"       element={<RevisionCausas />} />
+            <Route path="mi-semana"     element={<MiSemana />} />
             <Route path="seguimiento"    element={<SeguimientoSemanal />} />
             <Route path="tareas"         element={<Tareas />} />
             <Route path="reuniones"      element={<Reuniones />} />

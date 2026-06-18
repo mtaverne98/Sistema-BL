@@ -51,6 +51,7 @@ const SECTIONS = [
   ]},
   { key: 'gestion', label: 'Gestión', items: [
     { to: '/revision',      icon: ClipboardCheck, label: 'Revisión de causas' },
+    { to: '/mi-semana',     icon: CalendarCheck,  label: 'Mi semana'          },
     { to: '/siau',          icon: Database,       label: 'SIAU'               },
     { to: '/pjud',          icon: Shield,         label: 'PJUD'               },
     { to: '/documentos',    icon: FolderOpen,     label: 'Documentos'         },

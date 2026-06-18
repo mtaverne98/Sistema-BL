@@ -2836,6 +2836,23 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                                   {row.notas && (
                                     <p className="text-[11px] text-gray-400 mt-1 leading-snug">{row.notas}</p>
                                   )}
+                                  {row.es_revision_semanal && (
+                                    <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-[#1a2e4a]/8 text-[#1a2e4a]">
+                                        Revisión semanal
+                                      </span>
+                                      {row.siau_revisado && (
+                                        <span className="text-[9px] font-semibold text-emerald-600 flex items-center gap-0.5">
+                                          ✓ SIAU
+                                        </span>
+                                      )}
+                                      {row.pjud_revisado && (
+                                        <span className="text-[9px] font-semibold text-emerald-600 flex items-center gap-0.5">
+                                          ✓ PJUD
+                                        </span>
+                                      )}
+                                    </div>
+                                  )}
                                 </div>
                               )}
                             </td>
