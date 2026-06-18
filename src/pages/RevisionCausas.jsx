@@ -46,23 +46,9 @@ function daysSince(isoDate) {
   return Math.max(0, Math.floor((new Date(TODAY + 'T00:00:00') - new Date(s + 'T00:00:00')) / 86400000))
 }
 
-// ── Período de revisión (localStorage) ────────────────────────────────────────
-const PERIOD_KEY = 'revision-period-start'
-
-function getPeriodStart() {
-  try {
-    const stored = localStorage.getItem(PERIOD_KEY)
-    if (stored && stored.match(/^\d{4}-\d{2}-\d{2}$/)) return stored
-  } catch {}
-  // Si no hay período guardado, iniciar desde hoy
-  const today = TODAY
-  try { localStorage.setItem(PERIOD_KEY, today) } catch {}
-  return today
-}
-
-function setPeriodStart(date) {
-  try { localStorage.setItem(PERIOD_KEY, date) } catch {}
-}
+// ── Período de revisión (Supabase) ────────────────────────────────────────────
+// El period_start se guarda en la tabla revision_periodos (una fila activa a la vez).
+// Ningún estado local efímero — persiste entre recargas, browsers y sesiones.
 
 // ── semana_key para el período actual ─────────────────────────────────────────
 function periodKey(start) {
@@ -582,24 +568,51 @@ export default function RevisionCausas() {
   const [filtroClEst, setFiltroClEst] = useState('')
   const [showReset,   setShowReset]   = useState(false)
 
-  // Período actual
-  const [periodStart, setPeriodStartState] = useState(getPeriodStart)
-  const periodEnd = addDays(periodStart, 14)
-  const pKey = periodKey(periodStart)
+  // Período activo — persiste en Supabase (tabla revision_periodos)
+  const [periodStart, setPeriodStart] = useState(TODAY)
+  const [periodId,    setPeriodId]    = useState(null)
+  const periodEnd     = addDays(periodStart, 14)
+  const pKey          = periodKey(periodStart)
   const periodExpired = TODAY > periodEnd
 
   useEffect(() => {
     async function fetchAll() {
-      const [{ data: causasData }, { data: revData }, { data: clientesData }] = await Promise.all([
+      const [
+        { data: causasData },
+        { data: revData },
+        { data: clientesData },
+        { data: periodos },
+      ] = await Promise.all([
         supabase.from('causas')
           .select('id, rit, ruc, materia, area, tribunal, estado, cliente_nombre, cliente_id')
           .in('estado', ['Abierta', 'Revisar']),
         supabase.from('revisiones').select('*'),
         supabase.from('clientes').select('id, estado'),
+        supabase.from('revision_periodos')
+          .select('id, period_start')
+          .eq('activa', true)
+          .order('created_at', { ascending: false })
+          .limit(1),
       ])
+
       setCausasDB(causasData || [])
       setClientesDB(clientesData || [])
       setRevRows((revData || []).filter(r => r.semana_key != null && !r.semana_key.startsWith('SEG-')))
+
+      if (periodos?.length > 0) {
+        setPeriodStart(periodos[0].period_start.slice(0, 10))
+        setPeriodId(periodos[0].id)
+      } else {
+        // Primera vez: crear el período inicial en Supabase
+        const { data: newP } = await supabase
+          .from('revision_periodos')
+          .insert({ period_start: TODAY, activa: true })
+          .select('id')
+          .single()
+        setPeriodStart(TODAY)
+        if (newP?.id) setPeriodId(newP.id)
+      }
+
       setCargando(false)
     }
     fetchAll()
@@ -703,9 +716,19 @@ export default function RevisionCausas() {
     }
   }, [])
 
-  function handleReset() {
+  async function handleReset() {
+    // Cerrar período activo
+    if (periodId) {
+      await supabase.from('revision_periodos').update({ activa: false }).eq('id', periodId)
+    }
+    // Crear nuevo período desde hoy
+    const { data: newP } = await supabase
+      .from('revision_periodos')
+      .insert({ period_start: TODAY, activa: true })
+      .select('id')
+      .single()
     setPeriodStart(TODAY)
-    setPeriodStartState(TODAY)
+    if (newP?.id) setPeriodId(newP.id)
     setShowReset(false)
   }
 
