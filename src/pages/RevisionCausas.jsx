@@ -568,55 +568,77 @@ export default function RevisionCausas() {
   const [filtroClEst, setFiltroClEst] = useState('')
   const [showReset,   setShowReset]   = useState(false)
 
-  // Período activo — persiste en Supabase (tabla revision_periodos)
-  const [periodStart, setPeriodStart] = useState(TODAY)
-  const [periodId,    setPeriodId]    = useState(null)
+  // Revisión activa — persiste en Supabase (tabla revision_activa)
+  // Fuente de verdad: qué causas están marcadas + cuándo empezó el período.
+  const [revActiva, setRevActiva] = useState(null)
+
+  const periodStart   = revActiva?.fecha_inicio?.slice(0, 10) ?? TODAY
   const periodEnd     = addDays(periodStart, 14)
   const pKey          = periodKey(periodStart)
   const periodExpired = TODAY > periodEnd
 
+  // ── Carga inicial ──────────────────────────────────────────────────────────
   useEffect(() => {
     async function fetchAll() {
       const [
         { data: causasData },
         { data: revData },
         { data: clientesData },
-        { data: periodos },
+        { data: raData },
       ] = await Promise.all([
         supabase.from('causas')
           .select('id, rit, ruc, materia, area, tribunal, estado, cliente_nombre, cliente_id')
           .in('estado', ['Abierta', 'Revisar']),
         supabase.from('revisiones').select('*'),
         supabase.from('clientes').select('id, estado'),
-        supabase.from('revision_periodos')
-          .select('id, period_start')
+        supabase.from('revision_activa')
+          .select('*')
           .eq('activa', true)
           .order('created_at', { ascending: false })
-          .limit(1),
+          .limit(1)
+          .maybeSingle(),
       ])
 
       setCausasDB(causasData || [])
       setClientesDB(clientesData || [])
       setRevRows((revData || []).filter(r => r.semana_key != null && !r.semana_key.startsWith('SEG-')))
 
-      if (periodos?.length > 0) {
-        setPeriodStart(periodos[0].period_start.slice(0, 10))
-        setPeriodId(periodos[0].id)
+      if (raData) {
+        setRevActiva(raData)
       } else {
-        // Primera vez: crear el período inicial en Supabase
-        const { data: newP } = await supabase
-          .from('revision_periodos')
-          .insert({ period_start: TODAY, activa: true })
-          .select('id')
+        const { data: newRA } = await supabase
+          .from('revision_activa')
+          .insert({ causas_revisadas: [], total_revisadas: 0, activa: true })
+          .select()
           .single()
-        setPeriodStart(TODAY)
-        if (newP?.id) setPeriodId(newP.id)
+        setRevActiva(newRA)
       }
 
       setCargando(false)
     }
     fetchAll()
   }, [])
+
+  // ── Realtime: sincronización entre pestañas ────────────────────────────────
+  useEffect(() => {
+    if (!revActiva?.id) return
+    const channel = supabase.channel('revision-activa-sync')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'revision_activa' }, async (payload) => {
+        const row = payload.new
+        if (!row) return
+        // Si es la revisión activa actual → actualizar estado local
+        if (row.id === revActiva.id && row.activa) {
+          setRevActiva(row)
+          return
+        }
+        // Si se insertó una nueva revisión activa (reset desde otra pestaña)
+        if (row.activa && row.id !== revActiva.id) {
+          setRevActiva(row)
+        }
+      })
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [revActiva?.id])
 
   const clienteEstadoMap = useMemo(() => {
     const m = {}
@@ -640,14 +662,20 @@ export default function RevisionCausas() {
       cliente_id:     c.cliente_id ? String(c.cliente_id) : null,
     })), [causasDB])
 
+  // ── Set de causas revisadas (desde revision_activa) ───────────────────────
+  const revisadasSet = useMemo(
+    () => new Set((revActiva?.causas_revisadas ?? []).map(String)),
+    [revActiva]
+  )
+
   // ── Mapa de revisiones del período actual ──────────────────────────────────
   const reviewMap = useMemo(() => {
     const map = {}
-    // Current period rows
+    // Detalle de cada causa revisada en este período (nota, proxima_accion, etc.)
     revRows.filter(r => r.semana_key === pKey).forEach(r => {
       const cid = String(r.causa_id)
       map[cid] = {
-        revisada:       r.revisada || false,
+        revisada:       revisadasSet.has(cid), // fuente de verdad: revision_activa
         nota:           r.nota           || '',
         proxima_accion: r.proxima_accion || '',
         responsable:    r.responsable    || 'MT',
@@ -656,7 +684,12 @@ export default function RevisionCausas() {
         history:        [],
       }
     })
-    // Build history (all other periods)
+    // Causas marcadas en revision_activa sin fila en revisiones aún
+    for (const cid of revisadasSet) {
+      if (!map[cid]) map[cid] = { revisada: true, nota: '', proxima_accion: '', responsable: 'MT', fecha: TODAY, semana_key: pKey, history: [] }
+      else map[cid].revisada = true
+    }
+    // Historial (períodos anteriores)
     revRows.filter(r => r.semana_key !== pKey && r.revisada).forEach(r => {
       const cid = String(r.causa_id)
       if (!map[cid]) map[cid] = { revisada: false, nota: '', proxima_accion: '', responsable: 'MT', fecha: null, semana_key: null, history: [] }
@@ -669,30 +702,48 @@ export default function RevisionCausas() {
         revisada: r.revisada,
       })
     })
-    // Sort history descending
     Object.values(map).forEach(m => m.history?.sort((a, b) => (b.fecha || '').localeCompare(a.fecha || '')))
     return map
-  }, [revRows, pKey])
+  }, [revRows, pKey, revisadasSet])
 
   // ── CRUD ───────────────────────────────────────────────────────────────────
   const marcarRevision = useCallback(async (causaId, datos) => {
+    const cid = String(causaId)
+
+    // 1. Actualizar revision_activa (persiste el checkbox inmediatamente)
+    const prevIds = revActiva?.causas_revisadas ?? []
+    if (!prevIds.map(String).includes(cid)) {
+      const newIds = [...prevIds, cid]
+      const updated = { causas_revisadas: newIds, total_revisadas: newIds.length }
+      setRevActiva(prev => ({ ...prev, ...updated }))
+      await supabase.from('revision_activa').update(updated).eq('id', revActiva.id)
+    }
+
+    // 2. Guardar detalle en revisiones (para historial y nota)
     const payload = { semana_key: pKey, causa_id: causaId, revisada: true, ...datos }
     setRevRows(prev => {
-      const exists = prev.find(r => r.semana_key === pKey && String(r.causa_id) === String(causaId))
-      if (exists) return prev.map(r => r.semana_key === pKey && String(r.causa_id) === String(causaId) ? { ...r, ...datos, revisada: true } : r)
+      const exists = prev.find(r => r.semana_key === pKey && String(r.causa_id) === cid)
+      if (exists) return prev.map(r => r.semana_key === pKey && String(r.causa_id) === cid ? { ...r, ...datos, revisada: true } : r)
       return [...prev, { id: `tmp_${Date.now()}`, semana_key: pKey, causa_id: causaId, revisada: true, ...datos }]
     })
-    const { error } = await supabase.from('revisiones').upsert(payload, { onConflict: 'semana_key,causa_id' })
-    if (error && !error.message?.includes('does not exist')) console.error('Error al marcar revisión:', error.message)
-  }, [pKey])
+    await supabase.from('revisiones').upsert(payload, { onConflict: 'semana_key,causa_id' })
+  }, [pKey, revActiva])
 
   const desmarcarRevision = useCallback(async (causaId) => {
+    const cid = String(causaId)
+
+    // 1. Quitar de revision_activa
+    const newIds = (revActiva?.causas_revisadas ?? []).filter(id => String(id) !== cid)
+    const updated = { causas_revisadas: newIds, total_revisadas: newIds.length }
+    setRevActiva(prev => ({ ...prev, ...updated }))
+    await supabase.from('revision_activa').update(updated).eq('id', revActiva.id)
+
+    // 2. Actualizar revisiones
     setRevRows(prev => prev.map(r =>
-      r.semana_key === pKey && String(r.causa_id) === String(causaId) ? { ...r, revisada: false } : r
+      r.semana_key === pKey && String(r.causa_id) === cid ? { ...r, revisada: false } : r
     ))
-    const { error } = await supabase.from('revisiones').update({ revisada: false }).eq('semana_key', pKey).eq('causa_id', causaId)
-    if (error && !error.message?.includes('does not exist')) console.error('Error al desmarcar revisión:', error.message)
-  }, [pKey])
+    await supabase.from('revisiones').update({ revisada: false }).eq('semana_key', pKey).eq('causa_id', causaId)
+  }, [pKey, revActiva])
 
   const addTarea = useCallback(async (tarea) => {
     const payload = {
@@ -717,23 +768,22 @@ export default function RevisionCausas() {
   }, [])
 
   async function handleReset() {
-    // Cerrar período activo
-    if (periodId) {
-      await supabase.from('revision_periodos').update({ activa: false }).eq('id', periodId)
+    // Archivar revisión actual
+    if (revActiva?.id) {
+      await supabase.from('revision_activa').update({ activa: false }).eq('id', revActiva.id)
     }
-    // Crear nuevo período desde hoy
-    const { data: newP } = await supabase
-      .from('revision_periodos')
-      .insert({ period_start: TODAY, activa: true })
-      .select('id')
+    // Crear nueva revisión vacía
+    const { data: newRA } = await supabase
+      .from('revision_activa')
+      .insert({ causas_revisadas: [], total_revisadas: 0, activa: true })
+      .select()
       .single()
-    setPeriodStart(TODAY)
-    if (newP?.id) setPeriodId(newP.id)
+    setRevActiva(newRA)
     setShowReset(false)
   }
 
-  // ── Stats ─────────────────────────────────────────────────────────────────
-  const revisadasCount = causasActivas.filter(c => reviewMap[String(c.id)]?.revisada).length
+  // ── Stats — desde revision_activa (no derivadas de reviewMap) ─────────────
+  const revisadasCount = revActiva?.total_revisadas ?? 0
   const totalCausas = causasActivas.length
   const pctRevisadas = totalCausas > 0 ? Math.round((revisadasCount / totalCausas) * 100) : 0
 
