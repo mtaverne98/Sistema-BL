@@ -426,6 +426,7 @@ function CausaRow({ causa, revData, pKey, onMarcar, onDesmarcar, onCrearTarea })
                     ¿Qué se revisó? ¿Qué se conversó?
                   </label>
                   <textarea value={draft.nota} onChange={e => setDraft(d => ({ ...d, nota: e.target.value }))}
+                    onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleGuardar() } }}
                     rows={3} autoFocus
                     placeholder="Estado actual, novedades, pendientes, decisiones tomadas..."
                     className="w-full text-[12px] border border-gray-200 rounded-xl px-3 py-2.5 resize-none focus:outline-none focus:border-blue-400 bg-white transition-colors leading-relaxed" />
