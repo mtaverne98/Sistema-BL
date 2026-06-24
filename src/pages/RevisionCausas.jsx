@@ -594,7 +594,7 @@ export default function RevisionCausas() {
         supabase.from('revision_activa')
           .select('*')
           .eq('activa', true)
-          .order('created_at', { ascending: false })
+          .order('creado_en', { ascending: false })
           .limit(1)
           .maybeSingle(),
       ])
