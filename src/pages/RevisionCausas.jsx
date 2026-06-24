@@ -568,9 +568,29 @@ export default function RevisionCausas() {
   const [filtroClEst, setFiltroClEst] = useState('')
   const [showReset,   setShowReset]   = useState(false)
 
-  // Revisión activa — persiste en Supabase (tabla revision_activa)
+  // Revisión activa — persiste en localStorage
   // Fuente de verdad: qué causas están marcadas + cuándo empezó el período.
-  const [revActiva, setRevActiva] = useState(null)
+  const STORAGE_KEY = 'revision_activa_state'
+
+  function loadStoredRevActiva() {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY)
+      if (stored) return JSON.parse(stored)
+    } catch {}
+    return null
+  }
+
+  function makeNewRevActiva() {
+    return { id: `local_${Date.now()}`, causas_revisadas: [], total_revisadas: 0, fecha_inicio: new Date().toISOString(), activa: true }
+  }
+
+  const [revActiva, setRevActivaState] = useState(() => loadStoredRevActiva() ?? makeNewRevActiva())
+
+  function setRevActiva(value) {
+    const next = typeof value === 'function' ? value(revActiva) : value
+    setRevActivaState(next)
+    if (next) localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
+  }
 
   const periodStart   = revActiva?.fecha_inicio?.slice(0, 10) ?? TODAY
   const periodEnd     = addDays(periodStart, 14)
@@ -584,62 +604,22 @@ export default function RevisionCausas() {
         { data: causasData },
         { data: revData },
         { data: clientesData },
-        { data: raData },
       ] = await Promise.all([
         supabase.from('causas')
           .select('id, rit, ruc, materia, area, tribunal, estado, cliente_nombre, cliente_id')
           .in('estado', ['Abierta', 'Revisar']),
         supabase.from('revisiones').select('*'),
         supabase.from('clientes').select('id, estado'),
-        supabase.from('revision_activa')
-          .select('*')
-          .eq('activa', true)
-          .order('creado_en', { ascending: false })
-          .limit(1)
-          .maybeSingle(),
       ])
 
       setCausasDB(causasData || [])
       setClientesDB(clientesData || [])
       setRevRows((revData || []).filter(r => r.semana_key != null && !r.semana_key.startsWith('SEG-')))
 
-      if (raData) {
-        setRevActiva(raData)
-      } else {
-        const { data: newRA, error: insertErr } = await supabase
-          .from('revision_activa')
-          .insert({ causas_revisadas: [], total_revisadas: 0, activa: true })
-          .select()
-          .single()
-        if (insertErr) console.error('Error creando revision_activa:', insertErr)
-        setRevActiva(newRA)
-      }
-
       setCargando(false)
     }
     fetchAll()
   }, [])
-
-  // ── Realtime: sincronización entre pestañas ────────────────────────────────
-  useEffect(() => {
-    if (!revActiva?.id) return
-    const channel = supabase.channel('revision-activa-sync')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'revision_activa' }, async (payload) => {
-        const row = payload.new
-        if (!row) return
-        // Si es la revisión activa actual → actualizar estado local
-        if (row.id === revActiva.id && row.activa) {
-          setRevActiva(row)
-          return
-        }
-        // Si se insertó una nueva revisión activa (reset desde otra pestaña)
-        if (row.activa && row.id !== revActiva.id) {
-          setRevActiva(row)
-        }
-      })
-      .subscribe()
-    return () => { supabase.removeChannel(channel) }
-  }, [revActiva?.id])
 
   const clienteEstadoMap = useMemo(() => {
     const m = {}
@@ -711,13 +691,11 @@ export default function RevisionCausas() {
   const marcarRevision = useCallback(async (causaId, datos) => {
     const cid = String(causaId)
 
-    // 1. Actualizar revision_activa (persiste el checkbox inmediatamente)
+    // 1. Actualizar localStorage (persiste el checkbox inmediatamente)
     const prevIds = revActiva?.causas_revisadas ?? []
     if (!prevIds.map(String).includes(cid)) {
       const newIds = [...prevIds, cid]
-      const updated = { causas_revisadas: newIds, total_revisadas: newIds.length }
-      setRevActiva(prev => ({ ...prev, ...updated }))
-      await supabase.from('revision_activa').update(updated).eq('id', revActiva.id)
+      setRevActiva(prev => ({ ...prev, causas_revisadas: newIds, total_revisadas: newIds.length }))
     }
 
     // 2. Guardar detalle en revisiones (para historial y nota)
@@ -733,11 +711,9 @@ export default function RevisionCausas() {
   const desmarcarRevision = useCallback(async (causaId) => {
     const cid = String(causaId)
 
-    // 1. Quitar de revision_activa
+    // 1. Quitar de localStorage
     const newIds = (revActiva?.causas_revisadas ?? []).filter(id => String(id) !== cid)
-    const updated = { causas_revisadas: newIds, total_revisadas: newIds.length }
-    setRevActiva(prev => ({ ...prev, ...updated }))
-    await supabase.from('revision_activa').update(updated).eq('id', revActiva.id)
+    setRevActiva(prev => ({ ...prev, causas_revisadas: newIds, total_revisadas: newIds.length }))
 
     // 2. Actualizar revisiones
     setRevRows(prev => prev.map(r =>
@@ -768,18 +744,8 @@ export default function RevisionCausas() {
     }
   }, [])
 
-  async function handleReset() {
-    // Archivar revisión actual
-    if (revActiva?.id) {
-      await supabase.from('revision_activa').update({ activa: false }).eq('id', revActiva.id)
-    }
-    // Crear nueva revisión vacía
-    const { data: newRA } = await supabase
-      .from('revision_activa')
-      .insert({ causas_revisadas: [], total_revisadas: 0, activa: true })
-      .select()
-      .single()
-    setRevActiva(newRA)
+  function handleReset() {
+    setRevActiva(makeNewRevActiva())
     setShowReset(false)
   }
 
