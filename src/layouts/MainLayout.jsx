@@ -17,6 +17,7 @@ import { useUser }       from '../context/UserContext'
 import { supabase }      from '../lib/supabase'
 import QuickAdd          from '../components/QuickAdd'
 import SlashCommands     from '../components/SlashCommands'
+import SaveStatusBadge   from '../components/SaveStatusBadge'
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 const TODAY_LAYOUT = new Date().toISOString().slice(0, 10)
@@ -733,6 +734,9 @@ export default function MainLayout() {
         <div className="flex-shrink-0" style={{ borderTop: '1px solid rgba(255,255,255,0.06)', padding: sbCollapsed ? '8px 4px' : '8px 6px' }}>
           <NavItem to="/configuracion" icon={Settings} label="Configuración" collapsed={sbCollapsed} />
         </div>
+
+        {/* Save status */}
+        <SaveStatusBadge collapsed={sbCollapsed} />
 
         {/* User */}
         <div className="flex-shrink-0" style={{ borderTop: '1px solid rgba(255,255,255,0.08)', padding: sbCollapsed ? '8px 4px' : '8px 6px' }}>

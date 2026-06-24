@@ -72,6 +72,15 @@ export default function InlineField({
     return () => clearInterval(agoRef.current)
   }, [savedAt])
 
+  // Auto-save every 30s for textarea when draft has unsaved changes
+  useEffect(() => {
+    if (type !== 'textarea' || !editing) return
+    const iv = setInterval(() => {
+      if (draft !== (value ?? '')) commit()
+    }, 30000)
+    return () => clearInterval(iv)
+  }, [type, editing, draft, value, commit])
+
   // Cleanup timers on unmount
   useEffect(() => () => {
     clearTimeout(timerRef.current)
@@ -84,14 +93,23 @@ export default function InlineField({
     if (v === (value ?? '')) { setEditing(false); return }
     setSaving(true)
     setErrorMsg(null)
-    try {
-      await onSave?.(v)
-      setEditing(false)
-      setSavedAt(Date.now())
-    } catch (e) {
-      // Save failed — stay in edit mode and show the error
-      setErrorMsg(e?.message || 'Error al guardar')
+    window.dispatchEvent(new CustomEvent('save:start'))
+    let lastErr = null
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        if (attempt > 0) await new Promise(r => setTimeout(r, attempt * 1000))
+        await onSave?.(v)
+        setEditing(false)
+        setSavedAt(Date.now())
+        window.dispatchEvent(new CustomEvent('save:end', { detail: { ok: true } }))
+        setSaving(false)
+        return
+      } catch (e) {
+        lastErr = e
+      }
     }
+    setErrorMsg(lastErr?.message || 'Error al guardar')
+    window.dispatchEvent(new CustomEvent('save:end', { detail: { ok: false } }))
     setSaving(false)
   }, [draft, value, onSave])
 
