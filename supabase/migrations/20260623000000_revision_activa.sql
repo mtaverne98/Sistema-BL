@@ -6,3 +6,6 @@ CREATE TABLE IF NOT EXISTS revision_activa (
   activa           boolean     NOT NULL DEFAULT true,
   created_at       timestamptz NOT NULL DEFAULT now()
 );
+
+ALTER TABLE revision_activa ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "allow_all" ON revision_activa FOR ALL USING (true);

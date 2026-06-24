@@ -606,11 +606,12 @@ export default function RevisionCausas() {
       if (raData) {
         setRevActiva(raData)
       } else {
-        const { data: newRA } = await supabase
+        const { data: newRA, error: insertErr } = await supabase
           .from('revision_activa')
           .insert({ causas_revisadas: [], total_revisadas: 0, activa: true })
           .select()
           .single()
+        if (insertErr) console.error('Error creando revision_activa:', insertErr)
         setRevActiva(newRA)
       }
 
