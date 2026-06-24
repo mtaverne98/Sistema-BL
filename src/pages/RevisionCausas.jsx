@@ -592,6 +592,16 @@ export default function RevisionCausas() {
     if (next) localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
   }
 
+  useEffect(() => {
+    const handleStorage = (e) => {
+      if (e.key === STORAGE_KEY && e.newValue) {
+        try { setRevActivaState(JSON.parse(e.newValue)) } catch {}
+      }
+    }
+    window.addEventListener('storage', handleStorage)
+    return () => window.removeEventListener('storage', handleStorage)
+  }, [])
+
   const periodStart   = revActiva?.fecha_inicio?.slice(0, 10) ?? TODAY
   const periodEnd     = addDays(periodStart, 14)
   const pKey          = periodKey(periodStart)
