@@ -50,9 +50,15 @@ function daysSince(isoDate) {
 // El period_start se guarda en la tabla revision_periodos (una fila activa a la vez).
 // Ningún estado local efímero — persiste entre recargas, browsers y sesiones.
 
-// ── semana_key para el período actual ─────────────────────────────────────────
-function periodKey(start) {
-  return `RC-${start}`
+// ── semana_key ISO para el período actual ─────────────────────────────────────
+function isoWeekKey(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00')
+  const thursday = new Date(d)
+  thursday.setDate(d.getDate() + (4 - (d.getDay() || 7)))
+  const year = thursday.getFullYear()
+  const jan4 = new Date(year, 0, 4)
+  const week = Math.ceil(((thursday - jan4) / 86400000 + (jan4.getDay() || 7) - 3) / 7)
+  return `${year}-W${String(week).padStart(2, '0')}`
 }
 
 // ── Constantes ─────────────────────────────────────────────────────────────────
@@ -312,13 +318,13 @@ function CausaRow({ causa, revData, pKey, onMarcar, onDesmarcar, onCrearTarea })
     if (revisada) {
       onDesmarcar(causa.id)
     } else {
-      onMarcar(causa.id, { nota: '', proxima_accion: 'Esperar resolución', responsable: 'MT', fecha: TODAY })
+      onMarcar(causa.id, { nota: '', proxima_accion: 'Esperar resolución', responsable: 'MT', fecha: TODAY, causa_rit: causa.rit, cliente_nombre: causa.cliente_nombre })
     }
   }
 
   async function handleGuardar() {
     setSaving(true)
-    await onMarcar(causa.id, { ...draft, fecha: TODAY })
+    await onMarcar(causa.id, { ...draft, fecha: TODAY, causa_rit: causa.rit, cliente_nombre: causa.cliente_nombre })
     setSaving(false)
     setExpanded(false)
   }
@@ -604,7 +610,7 @@ export default function RevisionCausas() {
 
   const periodStart   = revActiva?.fecha_inicio?.slice(0, 10) ?? TODAY
   const periodEnd     = addDays(periodStart, 14)
-  const pKey          = periodKey(periodStart)
+  const pKey          = isoWeekKey(TODAY)
   const periodExpired = TODAY > periodEnd
 
   // ── Carga inicial ──────────────────────────────────────────────────────────
