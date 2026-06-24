@@ -7,5 +7,8 @@ CREATE TABLE IF NOT EXISTS revision_activa (
   created_at       timestamptz NOT NULL DEFAULT now()
 );
 
-ALTER TABLE revision_activa ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "allow_all" ON revision_activa FOR ALL USING (true);
+ALTER TABLE revision_activa DISABLE ROW LEVEL SECURITY;
+
+CREATE UNIQUE INDEX IF NOT EXISTS revision_activa_one_active
+  ON revision_activa (activa)
+  WHERE activa = true;
