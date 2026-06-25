@@ -72,15 +72,6 @@ export default function InlineField({
     return () => clearInterval(agoRef.current)
   }, [savedAt])
 
-  // Auto-save every 30s for textarea when draft has unsaved changes
-  useEffect(() => {
-    if (type !== 'textarea' || !editing) return
-    const iv = setInterval(() => {
-      if (draft !== (value ?? '')) commit()
-    }, 30000)
-    return () => clearInterval(iv)
-  }, [type, editing, draft, value, commit])
-
   // Cleanup timers on unmount
   useEffect(() => () => {
     clearTimeout(timerRef.current)
@@ -112,6 +103,15 @@ export default function InlineField({
     window.dispatchEvent(new CustomEvent('save:end', { detail: { ok: false } }))
     setSaving(false)
   }, [draft, value, onSave])
+
+  // Auto-save every 30s for textarea when draft has unsaved changes
+  useEffect(() => {
+    if (type !== 'textarea' || !editing) return
+    const iv = setInterval(() => {
+      if (draft !== (value ?? '')) commit()
+    }, 30000)
+    return () => clearInterval(iv)
+  }, [type, editing, draft, value, commit])
 
   function handleKeyDown(e) {
     if (e.key === 'Escape') {
