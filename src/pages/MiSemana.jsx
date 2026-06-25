@@ -65,7 +65,7 @@ export default function MiSemana() {
   useEffect(() => {
     supabase
       .from('causas')
-      .select('id, materia, rit, cliente_nombre, estado')
+      .select('id, materia, rit, ruc, cliente_nombre, estado')
       .in('estado', ['Abierta', 'Revisar'])
       .order('cliente_nombre', { ascending: true })
       .then(({ data }) => setCausas(data || []))
@@ -262,6 +262,9 @@ export default function MiSemana() {
                           <span className="text-[10px] text-gray-400 truncate max-w-[260px]">{causa.materia}</span>
                         )}
                       </div>
+                      {causa.ruc && (
+                        <p className="text-[10px] text-gray-400 font-mono mt-0.5 select-all">RUC {causa.ruc}</p>
+                      )}
                     </td>
 
                     {/* SIAU */}
