@@ -71,10 +71,27 @@ export default function MiSemana() {
       .then(({ data }) => setCausas(data || []))
   }, [])
 
+  // Persist rows to localStorage on every change
+  useEffect(() => {
+    if (Object.keys(rows).length === 0) return
+    localStorage.setItem(`mi_semana_${key}`, JSON.stringify(rows))
+  }, [rows, key])
+
   // Load week data when anchor or causas change
   useEffect(() => {
     if (causas.length === 0) return
     setLoading(true)
+
+    // Use localStorage cache if available (preserves unsaved changes after navigation)
+    const cached = localStorage.getItem(`mi_semana_${key}`)
+    if (cached) {
+      try {
+        setRows(JSON.parse(cached))
+        setLoading(false)
+        return
+      } catch {}
+    }
+
     supabase
       .from('revisiones')
       .select('id, causa_id, siau_revisado, pjud_revisado, por_hacer')
