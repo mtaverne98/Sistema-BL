@@ -447,7 +447,7 @@ function FormNuevaEntrada({ causa, causasInfo, onSave, onClose, globalMode = fal
               className={inp + ' resize-none'} />
           </F>
           <F label={<>Respuesta del tribunal <span className="text-gray-400 font-normal ml-1">(dejar vacío si no hay aún)</span></>}>
-            <textarea value={form.respuesta} onChange={e => setForm(f => ({ ...f, respuesta: e.target.value }))} rows={2}
+            <textarea defaultValue={form.respuesta} onBlur={e => setForm(f => ({ ...f, respuesta: e.target.value }))} rows={2}
               placeholder="Resolución o respuesta del tribunal..."
               className={inp + ' resize-none'} />
           </F>
@@ -496,7 +496,7 @@ function FormNuevaEntrada({ causa, causasInfo, onSave, onClose, globalMode = fal
             </F>
           )}
           <F label="Notas internas">
-            <textarea value={form.notas} onChange={e => setForm(f => ({ ...f, notas: e.target.value }))} rows={2}
+            <textarea defaultValue={form.notas} onBlur={e => setForm(f => ({ ...f, notas: e.target.value }))} rows={2}
               placeholder="Observaciones internas..." className={inp + ' resize-none'} />
           </F>
         </div>

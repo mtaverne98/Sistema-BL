@@ -269,7 +269,7 @@ function FormNuevaSolicitud({ causa, causasInfo, globalMode, onSave, onClose }) 
 
           <div>
             <L c="Respuesta" />
-            <textarea value={form.respuesta} onChange={e => f('respuesta', e.target.value)}
+            <textarea defaultValue={form.respuesta} onBlur={e => f('respuesta', e.target.value)}
               rows={2} placeholder="Respuesta recibida…"
               className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 resize-none focus:outline-none focus:border-blue-300" />
           </div>
@@ -290,7 +290,7 @@ function FormNuevaSolicitud({ causa, causasInfo, globalMode, onSave, onClose }) 
 
           <div>
             <L c="Notas internas" />
-            <textarea value={form.notas} onChange={e => f('notas', e.target.value)}
+            <textarea defaultValue={form.notas} onBlur={e => f('notas', e.target.value)}
               rows={2} placeholder="Notas internas…"
               className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 resize-none focus:outline-none focus:border-blue-300" />
           </div>
