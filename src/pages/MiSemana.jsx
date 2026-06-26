@@ -263,7 +263,7 @@ export default function MiSemana() {
                         )}
                       </div>
                       {causa.ruc && (
-                        <p className="text-[10px] text-gray-400 font-mono mt-0.5 select-all">RUC {causa.ruc}</p>
+                        <p className="text-[10px] text-gray-400 font-mono mt-0.5 select-all">{causa.ruc}</p>
                       )}
                     </td>
 
