@@ -1402,18 +1402,26 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
               />
             </span>
           )}
-          {/* RIT | RUC — extremo derecho, mono gris sin fondos de color */}
-          {(causa.rit || causa.ruc) && (
-            <div className="ml-auto flex items-center gap-1.5 flex-shrink-0">
-              {causa.rit && (
-                <CopyValue value={causa.rit} prefix="RIT" className="text-[11px] text-gray-400" />
-              )}
-              {causa.rit && causa.ruc && <span className="text-gray-200 text-[11px]">|</span>}
-              {causa.ruc && (
-                <CopyValue value={causa.ruc} prefix="RUC" className="text-[11px] text-gray-400" />
-              )}
-            </div>
-          )}
+          {/* RIT | RUC — extremo derecho, editables inline */}
+          <div className="ml-auto flex items-center gap-1.5 flex-shrink-0">
+            <span className="text-[10px] text-gray-300 font-bold uppercase tracking-wider">RIT</span>
+            <InlineField
+              value={causa.rit || ''}
+              onSave={v => onUpdate?.({ rit: v.trim() || null })}
+              placeholder="Agregar RIT…"
+              textClassName="text-[11px] text-gray-500 font-mono"
+              inputClassName="text-[11px] font-mono w-28"
+            />
+            <span className="text-gray-200 text-[11px]">|</span>
+            <span className="text-[10px] text-gray-300 font-bold uppercase tracking-wider">RUC</span>
+            <InlineField
+              value={causa.ruc || ''}
+              onSave={v => onUpdate?.({ ruc: v.trim() || null })}
+              placeholder="Agregar RUC…"
+              textClassName="text-[11px] text-gray-500 font-mono"
+              inputClassName="text-[11px] font-mono w-28"
+            />
+          </div>
         </div>
 
         {/* Chips informativos — próxima audiencia y plazo crítico */}
