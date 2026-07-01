@@ -442,12 +442,12 @@ function FormNuevaEntrada({ causa, causasInfo, onSave, onClose, globalMode = fal
             </F>
           </div>
           <F label="Solicitud / Movimiento *">
-            <textarea defaultValue={form.solicitud} onBlur={e => setForm(f => ({ ...f, solicitud: e.target.value }))} rows={3}
+            <textarea value={form.solicitud} onChange={e => setForm(f => ({ ...f, solicitud: e.target.value }))} rows={3}
               placeholder="Descripción del movimiento o solicitud..."
               className={inp + ' resize-none'} />
           </F>
           <F label={<>Respuesta del tribunal <span className="text-gray-400 font-normal ml-1">(dejar vacío si no hay aún)</span></>}>
-            <textarea defaultValue={form.respuesta} onBlur={e => setForm(f => ({ ...f, respuesta: e.target.value }))} rows={2}
+            <textarea value={form.respuesta} onChange={e => setForm(f => ({ ...f, respuesta: e.target.value }))} rows={2}
               placeholder="Resolución o respuesta del tribunal..."
               className={inp + ' resize-none'} />
           </F>
