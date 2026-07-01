@@ -119,14 +119,17 @@ function SiauLabel({ c }) {
 // ── Form: nueva solicitud (modal) ─────────────────────────────────────────────
 function FormNuevaSolicitud({ causa, causasInfo, globalMode, onSave, onClose }) {
   const [form, setForm] = useState({
-    fecha: TODAY, folio: '', solicitud: '', respuesta: '',
-    fecha_respuesta: '', documento_nombre: '', tiene_documento: false,
-    notas: '', estado: 'Pendiente', tipo_solicitud: '',
+    fecha: TODAY, folio: '', fecha_respuesta: '', documento_nombre: '',
+    tiene_documento: false, estado: 'Pendiente', tipo_solicitud: '',
   })
-  const [saving, setSaving]         = useState(false)
-  const [selCliente, setSelCliente] = useState('')
-  const [selRit, setSelRit]         = useState('')
-  const [saveError, setSaveError]   = useState(null)
+  const [saving, setSaving]               = useState(false)
+  const [selCliente, setSelCliente]       = useState('')
+  const [selRit, setSelRit]               = useState('')
+  const [saveError, setSaveError]         = useState(null)
+  const [solicitudFilled, setSolicitudFilled] = useState(false)
+  const solicitudRef  = useRef(null)
+  const respuestaRef  = useRef(null)
+  const notasRef      = useRef(null)
 
   const clientes = useMemo(() =>
     [...new Set((causasInfo || []).map(c => c.cliente_nombre).filter(Boolean))].sort(),
@@ -141,22 +144,24 @@ function FormNuevaSolicitud({ causa, causasInfo, globalMode, onSave, onClose }) 
   const f = (k, v) => setForm(p => ({ ...p, [k]: v }))
 
   async function handleSave() {
-    if (!form.solicitud.trim() || !causaFinal) {
-      console.warn('SIAU save blocked — solicitud:', form.solicitud, '| causaFinal:', causaFinal)
+    const solicitudVal = (solicitudRef.current?.value ?? '').trim()
+    if (!solicitudVal || !causaFinal) {
+      console.warn('SIAU save blocked — solicitud:', solicitudVal, '| causaFinal:', causaFinal)
       return
     }
     setSaving(true)
     setSaveError(null)
-    // Payload estrictamente mapeado a las columnas reales de Supabase
+    const respuestaVal      = (respuestaRef.current?.value  ?? '').trim()
+    const notasVal          = (notasRef.current?.value      ?? '').trim()
     const payload = {
       fecha:            form.fecha                    || null,
       folio:            form.folio.trim()             || null,
-      solicitud:        form.solicitud.trim(),
-      respuesta:        form.respuesta.trim()         || null,
+      solicitud:        solicitudVal,
+      respuesta:        respuestaVal                  || null,
       fecha_respuesta:  form.fecha_respuesta          || null,
       documento_nombre: form.documento_nombre.trim()  || null,
       tiene_documento:  !!form.documento_nombre.trim(),
-      notas:            form.notas.trim()             || null,
+      notas:            notasVal                      || null,
       estado:           form.estado,
       tipo_solicitud:   form.tipo_solicitud           || null,
       causa_rit:        causaFinal.rit || causaFinal.causa_rit || '',
@@ -167,7 +172,6 @@ function FormNuevaSolicitud({ causa, causasInfo, globalMode, onSave, onClose }) 
     const { data, error } = await supabase.from('siau').insert([payload]).select().single()
     if (error) {
       console.error('SIAU insert error:', error)
-      // Mensaje amigable para errores comunes
       let msg = error.message
       if (error.code === '23505' && error.message.includes('folio')) {
         msg = `El folio "${payload.folio}" ya existe en la base de datos. Verifica el número o deja el campo vacío.`
@@ -266,15 +270,16 @@ function FormNuevaSolicitud({ causa, causasInfo, globalMode, onSave, onClose }) 
 
           <div>
             <L c="Solicitud *" />
-            <textarea value={form.solicitud} onChange={e => f('solicitud', e.target.value)}
-              rows={3} placeholder="Descripción de la solicitud…"
-              className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 resize-none focus:outline-none focus:border-blue-300" />
+            <textarea ref={solicitudRef} defaultValue="" rows={3}
+              placeholder="Descripción de la solicitud…"
+              className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 resize-none focus:outline-none focus:border-blue-300"
+              onChange={e => { const filled = !!e.target.value.trim(); if (filled !== solicitudFilled) setSolicitudFilled(filled) }} />
           </div>
 
           <div>
             <L c="Respuesta" />
-            <textarea defaultValue={form.respuesta} onBlur={e => f('respuesta', e.target.value)}
-              rows={2} placeholder="Respuesta recibida…"
+            <textarea ref={respuestaRef} defaultValue="" rows={2}
+              placeholder="Respuesta recibida…"
               className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 resize-none focus:outline-none focus:border-blue-300" />
           </div>
 
@@ -294,8 +299,8 @@ function FormNuevaSolicitud({ causa, causasInfo, globalMode, onSave, onClose }) 
 
           <div>
             <L c="Notas internas" />
-            <textarea defaultValue={form.notas} onBlur={e => f('notas', e.target.value)}
-              rows={2} placeholder="Notas internas…"
+            <textarea ref={notasRef} defaultValue="" rows={2}
+              placeholder="Notas internas…"
               className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 resize-none focus:outline-none focus:border-blue-300" />
           </div>
         </div>
@@ -309,7 +314,7 @@ function FormNuevaSolicitud({ causa, causasInfo, globalMode, onSave, onClose }) 
         <div className="px-6 py-3.5 border-t border-gray-100 flex gap-2 bg-gray-50/30 flex-shrink-0">
           <button onClick={onClose} className="flex-1 text-xs text-gray-400 py-2.5 rounded-xl hover:bg-gray-100 font-medium">Cancelar</button>
           <button onClick={handleSave}
-            disabled={!form.solicitud.trim() || (globalMode && !causaFinal) || saving}
+            disabled={!solicitudFilled || (globalMode && !causaFinal) || saving}
             className="flex-1 text-xs bg-[#2570BA] text-white py-2.5 rounded-xl hover:bg-[#2570BA]/90 font-semibold disabled:opacity-40 shadow-sm">
             {saving ? 'Guardando…' : 'Guardar'}
           </button>

@@ -348,10 +348,19 @@ function FormNuevaEntrada({ causa, causasInfo, onSave, onClose, globalMode = fal
   const [selectedCausaRit, setSelectedCausaRit] = useState(globalMode ? '' : (causa?.rit || causa?.causa_rit || ''))
   const [form, setForm] = useState({
     fecha: TODAY, folio: '', presenta: 'Nosotros', tipo_solicitud: 'Solicitud',
-    solicitud: '', respuesta: '', fecha_respuesta: '', fecha_notificacion: '',
-    accion_requerida: '', consecuencia_procesal: '',
-    estado: 'Pendiente', tiene_documento: false, documento_desc: '', notas: '', responsable: 'MT',
+    fecha_respuesta: '', fecha_notificacion: '',
+    tiene_documento: false, documento_desc: '', responsable: 'MT',
   })
+  // Lightweight booleans for conditional rendering / button enable — no full text in state
+  const [solicitudFilled,  setSolicitudFilled]  = useState(false)
+  const [respuestaFilled,  setRespuestaFilled]  = useState(false)
+  // Refs to read uncontrolled field values at submit time
+  const solicitudRef      = useRef(null)
+  const respuestaRef      = useRef(null)
+  const estadoRef         = useRef(null)
+  const accionRef         = useRef(null)
+  const consecuenciaRef   = useRef(null)
+  const notasRef          = useRef(null)
 
   const allClienteNames = useMemo(() =>
     [...new Set((causasInfo || []).map(c => c.cliente_nombre).filter(Boolean))].sort(),
@@ -363,22 +372,28 @@ function FormNuevaEntrada({ causa, causasInfo, onSave, onClose, globalMode = fal
     ? (causasInfo?.find(c => c.rit === selectedCausaRit) || null)
     : causa
 
-  const valid = form.fecha && form.folio.trim() && form.solicitud.trim() &&
+  const valid = form.fecha && form.folio.trim() && solicitudFilled &&
     (globalMode ? (selectedClienteNombre && selectedCausaRit) : true)
 
   const handleSubmit = () => {
     if (!valid) return
+    const solicitudVal      = (solicitudRef.current?.value      ?? '').trim()
+    const respuestaVal      = (respuestaRef.current?.value      ?? '').trim()
+    const accionVal         = (accionRef.current?.value         ?? '').trim()
+    const consecuenciaVal   = (consecuenciaRef.current?.value   ?? '').trim()
+    const estadoVal         = (estadoRef.current?.value         ?? 'Pendiente').trim()
+    const notasVal          = (notasRef.current?.value          ?? '').trim()
     onSave({
       fecha: form.fecha, folio: form.folio.trim(), presenta: form.presenta,
-      tipo_solicitud: form.tipo_solicitud, solicitud: form.solicitud.trim(),
-      respuesta: form.respuesta.trim(), fecha_respuesta: form.fecha_respuesta || null,
+      tipo_solicitud: form.tipo_solicitud, solicitud: solicitudVal,
+      respuesta: respuestaVal, fecha_respuesta: form.fecha_respuesta || null,
       fecha_notificacion: form.fecha_notificacion || null,
-      accion_requerida: form.accion_requerida.trim() || null,
-      consecuencia_procesal: form.consecuencia_procesal.trim() || null,
-      estado: form.respuesta.trim() ? 'Respondido' : form.estado,
+      accion_requerida: accionVal || null,
+      consecuencia_procesal: consecuenciaVal || null,
+      estado: respuestaVal ? 'Respondido' : estadoVal,
       tiene_documento: form.tiene_documento,
       documento_desc: form.tiene_documento ? (form.documento_desc.trim() || 'Documento adjunto') : null,
-      notas: form.notas.trim(), responsable: form.responsable,
+      notas: notasVal, responsable: form.responsable,
       causa_rit: globalMode ? selectedCausaRit : (causa?.rit || causa?.causa_rit || ''),
       cliente_nombre: globalMode ? selectedClienteNombre : (causa?.cliente_nombre || ''),
       causa_id: resolvedCausa?.id || null,
@@ -439,21 +454,23 @@ function FormNuevaEntrada({ causa, causasInfo, onSave, onClose, globalMode = fal
               </select>
             </FormField>
             <FormField label="Estado">
-              <input type="text" value={form.estado} onChange={e => setForm(f => ({ ...f, estado: e.target.value }))}
+              <input ref={estadoRef} type="text" defaultValue="Pendiente"
                 placeholder="Ej: Pendiente, Respondido…" className={INP + ' bg-white'} />
             </FormField>
           </div>
           <FormField label="Solicitud / Movimiento *">
-            <textarea value={form.solicitud} onChange={e => setForm(f => ({ ...f, solicitud: e.target.value }))} rows={3}
+            <textarea ref={solicitudRef} defaultValue="" rows={3}
               placeholder="Descripción del movimiento o solicitud..."
-              className={INP + ' resize-none'} />
+              className={INP + ' resize-none'}
+              onChange={e => { const f = !!e.target.value.trim(); if (f !== solicitudFilled) setSolicitudFilled(f) }} />
           </FormField>
           <FormField label={<>Respuesta del tribunal <span className="text-gray-400 font-normal ml-1">(dejar vacío si no hay aún)</span></>}>
-            <textarea value={form.respuesta} onChange={e => setForm(f => ({ ...f, respuesta: e.target.value }))} rows={2}
+            <textarea ref={respuestaRef} defaultValue="" rows={2}
               placeholder="Resolución o respuesta del tribunal..."
-              className={INP + ' resize-none'} />
+              className={INP + ' resize-none'}
+              onChange={e => { const f = !!e.target.value.trim(); if (f !== respuestaFilled) setRespuestaFilled(f) }} />
           </FormField>
-          {form.respuesta && (
+          {respuestaFilled && (
             <div className="grid grid-cols-2 gap-3">
               <FormField label="Fecha respuesta">
                 <input type="date" value={form.fecha_respuesta} onChange={e => setForm(f => ({ ...f, fecha_respuesta: e.target.value }))} className={INP} />
@@ -464,11 +481,11 @@ function FormNuevaEntrada({ causa, causasInfo, onSave, onClose, globalMode = fal
             </div>
           )}
           <FormField label="Acción requerida">
-            <input type="text" defaultValue={form.accion_requerida} onBlur={e => setForm(f => ({ ...f, accion_requerida: e.target.value }))}
+            <input ref={accionRef} type="text" defaultValue=""
               placeholder="¿Qué acción debe tomarse?" className={INP} />
           </FormField>
           <FormField label="Consecuencia procesal">
-            <input type="text" defaultValue={form.consecuencia_procesal} onBlur={e => setForm(f => ({ ...f, consecuencia_procesal: e.target.value }))}
+            <input ref={consecuenciaRef} type="text" defaultValue=""
               placeholder="Audiencia fijada, plazo que corre..." className={INP} />
           </FormField>
           <div className="grid grid-cols-2 gap-3">
@@ -498,7 +515,7 @@ function FormNuevaEntrada({ causa, causasInfo, onSave, onClose, globalMode = fal
             </FormField>
           )}
           <FormField label="Notas internas">
-            <textarea defaultValue={form.notas} onBlur={e => setForm(f => ({ ...f, notas: e.target.value }))} rows={2}
+            <textarea ref={notasRef} defaultValue="" rows={2}
               placeholder="Observaciones internas..." className={INP + ' resize-none'} />
           </FormField>
         </div>
