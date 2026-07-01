@@ -262,7 +262,7 @@ function FormNuevaSolicitud({ causa, causasInfo, globalMode, onSave, onClose }) 
 
           <div>
             <L c="Solicitud *" />
-            <textarea value={form.solicitud} onChange={e => f('solicitud', e.target.value)}
+            <textarea defaultValue={form.solicitud} onBlur={e => f('solicitud', e.target.value)}
               rows={3} placeholder="Descripción de la solicitud…"
               className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 resize-none focus:outline-none focus:border-blue-300" />
           </div>

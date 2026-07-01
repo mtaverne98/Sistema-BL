@@ -442,7 +442,7 @@ function FormNuevaEntrada({ causa, causasInfo, onSave, onClose, globalMode = fal
             </F>
           </div>
           <F label="Solicitud / Movimiento *">
-            <textarea value={form.solicitud} onChange={e => setForm(f => ({ ...f, solicitud: e.target.value }))} rows={3}
+            <textarea defaultValue={form.solicitud} onBlur={e => setForm(f => ({ ...f, solicitud: e.target.value }))} rows={3}
               placeholder="Descripción del movimiento o solicitud..."
               className={inp + ' resize-none'} />
           </F>
@@ -462,11 +462,11 @@ function FormNuevaEntrada({ causa, causasInfo, onSave, onClose, globalMode = fal
             </div>
           )}
           <F label="Acción requerida">
-            <input type="text" value={form.accion_requerida} onChange={e => setForm(f => ({ ...f, accion_requerida: e.target.value }))}
+            <input type="text" defaultValue={form.accion_requerida} onBlur={e => setForm(f => ({ ...f, accion_requerida: e.target.value }))}
               placeholder="¿Qué acción debe tomarse?" className={inp} />
           </F>
           <F label="Consecuencia procesal">
-            <input type="text" value={form.consecuencia_procesal} onChange={e => setForm(f => ({ ...f, consecuencia_procesal: e.target.value }))}
+            <input type="text" defaultValue={form.consecuencia_procesal} onBlur={e => setForm(f => ({ ...f, consecuencia_procesal: e.target.value }))}
               placeholder="Audiencia fijada, plazo que corre..." className={inp} />
           </F>
           <div className="grid grid-cols-2 gap-3">

@@ -741,7 +741,7 @@ function FormCausa({ inicial, onClose, onGuardar, guardando, clientes = [], onCr
         {/* ── Observaciones ── */}
         <div>
           <label className="block text-[11px] font-medium text-gray-500 mb-1">Observaciones</label>
-          <textarea value={form.observaciones} onChange={e => set('observaciones', e.target.value)}
+          <textarea defaultValue={form.observaciones} onBlur={e => set('observaciones', e.target.value)}
             rows={3} placeholder="Notas internas…"
             className="w-full px-3 py-2 text-xs border border-gray-200 rounded-lg outline-none focus:border-[#2570ba] focus:ring-1 focus:ring-[#2570ba]/20 transition-all placeholder:text-gray-300 resize-none" />
         </div>
@@ -2734,7 +2734,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                               className="text-[11px] border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:border-blue-300 w-full"/>
                           </td>
                           <td className="px-3 py-3">
-                            <textarea value={newSegRow.por_hacer || ''} onChange={e => setNewSegRow(p => ({ ...p, por_hacer: e.target.value }))}
+                            <textarea defaultValue={newSegRow.por_hacer || ''} onBlur={e => setNewSegRow(p => ({ ...p, por_hacer: e.target.value }))}
                               rows={2} autoFocus placeholder="¿Qué hay que hacer?"
                               className="w-full text-[12px] border border-gray-200 rounded-lg px-2.5 py-1.5 resize-none focus:outline-none focus:border-blue-300 bg-white placeholder:text-gray-300"/>
                           </td>
