@@ -112,6 +112,10 @@ function EstadoBadge({ estado }) {
   )
 }
 
+function SiauLabel({ c }) {
+  return <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">{c}</p>
+}
+
 // ── Form: nueva solicitud (modal) ─────────────────────────────────────────────
 function FormNuevaSolicitud({ causa, causasInfo, globalMode, onSave, onClose }) {
   const [form, setForm] = useState({
@@ -191,7 +195,7 @@ function FormNuevaSolicitud({ causa, causasInfo, globalMode, onSave, onClose }) 
     return () => window.removeEventListener('global:save', fn)
   }, [])
 
-  const L = ({ c }) => <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">{c}</p>
+  const L = SiauLabel
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20">

@@ -212,6 +212,16 @@ function matchCausa(r, causaData, clienteNombre) {
   return !r.causa_rit && !r.causa_ruc
 }
 
+const INP = "w-full text-[12px] border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:border-blue-400"
+function FormField({ label, children }) {
+  return (
+    <div>
+      <label className="block text-[11px] font-medium text-gray-500 mb-1.5">{label}</label>
+      {children}
+    </div>
+  )
+}
+
 // ── GenerarTareaForm ──────────────────────────────────────────────────────────
 function GenerarTareaForm({ causaRit, clienteNombre, mov, addTarea, onClose }) {
   const [form, setForm] = useState({
@@ -376,14 +386,6 @@ function FormNuevaEntrada({ causa, causasInfo, onSave, onClose, globalMode = fal
     })
   }
 
-  const F = ({ label, children }) => (
-    <div>
-      <label className="block text-[11px] font-medium text-gray-500 mb-1.5">{label}</label>
-      {children}
-    </div>
-  )
-  const inp = "w-full text-[12px] border border-gray-200 rounded-lg px-2.5 py-2 focus:outline-none focus:border-blue-400"
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/20 backdrop-blur-[2px]" onClick={onClose} />
@@ -403,79 +405,79 @@ function FormNuevaEntrada({ causa, causasInfo, onSave, onClose, globalMode = fal
         <div className="px-5 py-4 space-y-3.5 max-h-[70vh] overflow-y-auto">
           {globalMode && (
             <div className="grid grid-cols-2 gap-3">
-              <F label="Cliente *">
-                <select value={selectedClienteNombre} onChange={e => { setSelectedClienteNombre(e.target.value); setSelectedCausaRit('') }} className={inp + ' bg-white'}>
+              <FormField label="Cliente *">
+                <select value={selectedClienteNombre} onChange={e => { setSelectedClienteNombre(e.target.value); setSelectedCausaRit('') }} className={INP + ' bg-white'}>
                   <option value="">Seleccionar cliente...</option>
                   {allClienteNames.map(n => <option key={n} value={n}>{n}</option>)}
                 </select>
-              </F>
-              <F label="Causa *">
-                <select value={selectedCausaRit} onChange={e => setSelectedCausaRit(e.target.value)} className={inp + ' bg-white'} disabled={!selectedClienteNombre}>
+              </FormField>
+              <FormField label="Causa *">
+                <select value={selectedCausaRit} onChange={e => setSelectedCausaRit(e.target.value)} className={INP + ' bg-white'} disabled={!selectedClienteNombre}>
                   <option value="">Seleccionar causa...</option>
                   {causasForCliente.map(c => <option key={c.id} value={c.rit}>{c.rit}{c.materia ? ` — ${c.materia}` : ''}</option>)}
                 </select>
-              </F>
+              </FormField>
             </div>
           )}
           <div className="grid grid-cols-3 gap-3">
-            <F label="Fecha *">
-              <input type="date" value={form.fecha} onChange={e => setForm(f => ({ ...f, fecha: e.target.value }))} className={inp} />
-            </F>
-            <F label="Folio / Referencia *">
-              <input type="text" value={form.folio} onChange={e => setForm(f => ({ ...f, folio: e.target.value }))} placeholder="T-20261789-A" className={inp + ' font-mono'} />
-            </F>
-            <F label="Tipo de solicitud">
-              <select value={form.tipo_solicitud} onChange={e => setForm(f => ({ ...f, tipo_solicitud: e.target.value }))} className={inp + ' bg-white'}>
+            <FormField label="Fecha *">
+              <input type="date" value={form.fecha} onChange={e => setForm(f => ({ ...f, fecha: e.target.value }))} className={INP} />
+            </FormField>
+            <FormField label="Folio / Referencia *">
+              <input type="text" value={form.folio} onChange={e => setForm(f => ({ ...f, folio: e.target.value }))} placeholder="T-20261789-A" className={INP + ' font-mono'} />
+            </FormField>
+            <FormField label="Tipo de solicitud">
+              <select value={form.tipo_solicitud} onChange={e => setForm(f => ({ ...f, tipo_solicitud: e.target.value }))} className={INP + ' bg-white'}>
                 {TIPOS_SOLICITUD.map(t => <option key={t} value={t}>{t}</option>)}
               </select>
-            </F>
+            </FormField>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <F label="¿Quién presenta?">
-              <select value={form.presenta} onChange={e => setForm(f => ({ ...f, presenta: e.target.value }))} className={inp + ' bg-white'}>
+            <FormField label="¿Quién presenta?">
+              <select value={form.presenta} onChange={e => setForm(f => ({ ...f, presenta: e.target.value }))} className={INP + ' bg-white'}>
                 {Object.keys(PRESENTA_CONFIG).map(p => <option key={p} value={p}>{p}</option>)}
               </select>
-            </F>
-            <F label="Estado">
+            </FormField>
+            <FormField label="Estado">
               <input type="text" value={form.estado} onChange={e => setForm(f => ({ ...f, estado: e.target.value }))}
-                placeholder="Ej: Pendiente, Respondido…" className={inp + ' bg-white'} />
-            </F>
+                placeholder="Ej: Pendiente, Respondido…" className={INP + ' bg-white'} />
+            </FormField>
           </div>
-          <F label="Solicitud / Movimiento *">
+          <FormField label="Solicitud / Movimiento *">
             <textarea value={form.solicitud} onChange={e => setForm(f => ({ ...f, solicitud: e.target.value }))} rows={3}
               placeholder="Descripción del movimiento o solicitud..."
-              className={inp + ' resize-none'} />
-          </F>
-          <F label={<>Respuesta del tribunal <span className="text-gray-400 font-normal ml-1">(dejar vacío si no hay aún)</span></>}>
+              className={INP + ' resize-none'} />
+          </FormField>
+          <FormField label={<>Respuesta del tribunal <span className="text-gray-400 font-normal ml-1">(dejar vacío si no hay aún)</span></>}>
             <textarea value={form.respuesta} onChange={e => setForm(f => ({ ...f, respuesta: e.target.value }))} rows={2}
               placeholder="Resolución o respuesta del tribunal..."
-              className={inp + ' resize-none'} />
-          </F>
+              className={INP + ' resize-none'} />
+          </FormField>
           {form.respuesta && (
             <div className="grid grid-cols-2 gap-3">
-              <F label="Fecha respuesta">
-                <input type="date" value={form.fecha_respuesta} onChange={e => setForm(f => ({ ...f, fecha_respuesta: e.target.value }))} className={inp} />
-              </F>
-              <F label="Fecha notificación">
-                <input type="date" value={form.fecha_notificacion} onChange={e => setForm(f => ({ ...f, fecha_notificacion: e.target.value }))} className={inp} />
-              </F>
+              <FormField label="Fecha respuesta">
+                <input type="date" value={form.fecha_respuesta} onChange={e => setForm(f => ({ ...f, fecha_respuesta: e.target.value }))} className={INP} />
+              </FormField>
+              <FormField label="Fecha notificación">
+                <input type="date" value={form.fecha_notificacion} onChange={e => setForm(f => ({ ...f, fecha_notificacion: e.target.value }))} className={INP} />
+              </FormField>
             </div>
           )}
-          <F label="Acción requerida">
+          <FormField label="Acción requerida">
             <input type="text" defaultValue={form.accion_requerida} onBlur={e => setForm(f => ({ ...f, accion_requerida: e.target.value }))}
-              placeholder="¿Qué acción debe tomarse?" className={inp} />
-          </F>
-          <F label="Consecuencia procesal">
+              placeholder="¿Qué acción debe tomarse?" className={INP} />
+          </FormField>
+          <FormField label="Consecuencia procesal">
             <input type="text" defaultValue={form.consecuencia_procesal} onBlur={e => setForm(f => ({ ...f, consecuencia_procesal: e.target.value }))}
-              placeholder="Audiencia fijada, plazo que corre..." className={inp} />
-          </F>
+              placeholder="Audiencia fijada, plazo que corre..." className={INP} />
+          </FormField>
           <div className="grid grid-cols-2 gap-3">
-            <F label="Responsable">
-              <select value={form.responsable} onChange={e => setForm(f => ({ ...f, responsable: e.target.value }))} className={inp + ' bg-white'}>
+            <FormField label="Responsable">
+              <select value={form.responsable} onChange={e => setForm(f => ({ ...f, responsable: e.target.value }))} className={INP + ' bg-white'}>
                 {Object.keys(RESPONSABLE_INFO).map(r => <option key={r} value={r}>{r} – {RESPONSABLE_INFO[r].nombre}</option>)}
               </select>
-            </F>
-            <F label="¿Tiene documento adjunto?">
+            </FormField>
+            <FormField label="¿Tiene documento adjunto?">
               <div className="flex gap-3 mt-0.5">
                 {[true, false].map(v => (
                   <label key={String(v)} className="flex items-center gap-2 cursor-pointer">
@@ -487,18 +489,18 @@ function FormNuevaEntrada({ causa, causasInfo, onSave, onClose, globalMode = fal
                   </label>
                 ))}
               </div>
-            </F>
+            </FormField>
           </div>
           {form.tiene_documento && (
-            <F label="Descripción del documento">
+            <FormField label="Descripción del documento">
               <input type="text" value={form.documento_desc} onChange={e => setForm(f => ({ ...f, documento_desc: e.target.value }))}
-                placeholder="Descripción del documento..." className={inp} />
-            </F>
+                placeholder="Descripción del documento..." className={INP} />
+            </FormField>
           )}
-          <F label="Notas internas">
+          <FormField label="Notas internas">
             <textarea defaultValue={form.notas} onBlur={e => setForm(f => ({ ...f, notas: e.target.value }))} rows={2}
-              placeholder="Observaciones internas..." className={inp + ' resize-none'} />
-          </F>
+              placeholder="Observaciones internas..." className={INP + ' resize-none'} />
+          </FormField>
         </div>
         <div className="px-5 py-4 border-t border-gray-100 flex items-center justify-end gap-2.5">
           <button onClick={onClose} className="text-[13px] px-4 py-2 rounded-lg text-gray-600 border border-gray-200 hover:bg-gray-50">Cancelar</button>
