@@ -21,6 +21,31 @@ function json(body: unknown, status = 200) {
 }
 
 // ── Token helpers ─────────────────────────────────────────────────────────────
+async function refreshAccessToken(supabase: ReturnType<typeof createClient>, refreshToken: string) {
+  console.log('Refreshing access token...')
+  const res = await fetch('https://oauth2.googleapis.com/token', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      refresh_token: refreshToken,
+      client_id:     GOOGLE_CLIENT_ID,
+      client_secret: GOOGLE_CLIENT_SECRET,
+      grant_type:    'refresh_token',
+    }),
+  })
+  const refreshed = await res.json()
+  console.log('Token refresh response:', JSON.stringify({ error: refreshed.error, has_access_token: !!refreshed.access_token }))
+  if (refreshed.error) throw new Error(refreshed.error_description || refreshed.error)
+
+  const expiresAt = new Date(Date.now() + ((refreshed.expires_in ?? 3600) - 60) * 1000).toISOString()
+  await supabase.from('google_tokens').update({
+    access_token: refreshed.access_token,
+    expires_at:   expiresAt,
+  }).eq('id', TOKEN_ROW_ID)
+
+  return refreshed.access_token as string
+}
+
 async function getValidToken(supabase: ReturnType<typeof createClient>) {
   const { data, error } = await supabase
     .from('google_tokens')
@@ -29,34 +54,16 @@ async function getValidToken(supabase: ReturnType<typeof createClient>) {
     .single()
 
   if (error || !data) throw new Error('No hay tokens de Google Calendar guardados')
+  console.log('Token row found, expires_at:', data.expires_at, 'has_refresh:', !!data.refresh_token)
 
-  // Refresh if expired
-  if (new Date(data.expires_at) <= new Date()) {
+  const expired = new Date(data.expires_at) <= new Date()
+  if (expired) {
     if (!data.refresh_token) throw new Error('Token expirado y sin refresh_token — reconecta Google Calendar')
-
-    const res = await fetch('https://oauth2.googleapis.com/token', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        refresh_token: data.refresh_token,
-        client_id:     GOOGLE_CLIENT_ID,
-        client_secret: GOOGLE_CLIENT_SECRET,
-        grant_type:    'refresh_token',
-      }),
-    })
-    const refreshed = await res.json()
-    if (refreshed.error) throw new Error(refreshed.error_description || refreshed.error)
-
-    const expiresAt = new Date(Date.now() + ((refreshed.expires_in ?? 3600) - 60) * 1000).toISOString()
-    await supabase.from('google_tokens').update({
-      access_token: refreshed.access_token,
-      expires_at:   expiresAt,
-    }).eq('id', TOKEN_ROW_ID)
-
-    return refreshed.access_token as string
+    return refreshAccessToken(supabase, data.refresh_token)
   }
 
-  return data.access_token as string
+  // Return stored token but keep refresh_token available for 401 handling
+  return { accessToken: data.access_token as string, refreshToken: data.refresh_token as string }
 }
 
 // ── Build GCal event from audiencia ──────────────────────────────────────────
@@ -69,10 +76,10 @@ function toGCalEvent(a: Record<string, string>) {
   const endM   = String(endMin % 60).padStart(2, '0')
 
   const desc = [
-    a.causa_rit    ? `RIT: ${a.causa_rit}`       : '',
-    a.tribunal     ? `Tribunal: ${a.tribunal}`   : '',
-    a.sala         ? `Sala: ${a.sala}`           : '',
-    a.notas        ? `\nNotas: ${a.notas}`       : '',
+    a.causa_rit    ? `RIT: ${a.causa_rit}`     : '',
+    a.tribunal     ? `Tribunal: ${a.tribunal}` : '',
+    a.sala         ? `Sala: ${a.sala}`         : '',
+    a.notas        ? `\nNotas: ${a.notas}`     : '',
   ].filter(Boolean).join('\n')
 
   return {
@@ -90,8 +97,10 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS })
 
   try {
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
-    const token    = await getValidToken(supabase)
+    const supabase   = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+    const tokenData  = await getValidToken(supabase)
+    let accessToken  = typeof tokenData === 'string' ? tokenData : tokenData.accessToken
+    const refreshToken = typeof tokenData === 'string' ? null : tokenData.refreshToken
 
     // Read request body for optional calendar_id override
     let calendarId = 'primary'
@@ -102,8 +111,9 @@ serve(async (req) => {
 
     const calEnc = encodeURIComponent(calendarId)
     const today  = new Date().toISOString().slice(0, 10)
+    console.log('Syncing to calendarId:', calendarId, '| today:', today)
 
-    // Fetch audiencias (future + no state Suspendida)
+    // Fetch audiencias (future, not suspended)
     const { data: audiencias, error: audErr } = await supabase
       .from('audiencias')
       .select('id, tipo, fecha, hora, tribunal, sala, estado, notas, cliente_nombre, causa_rit, google_event_id')
@@ -111,43 +121,92 @@ serve(async (req) => {
       .gte('fecha', today)
 
     if (audErr) throw new Error('Error leyendo audiencias: ' + audErr.message)
+    console.log('Audiencias to sync:', audiencias?.length ?? 0)
 
     let created = 0, updated = 0, errors = 0
 
     for (const a of (audiencias ?? [])) {
       if (!a.fecha) continue
-      const body = JSON.stringify(toGCalEvent(a))
-      const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
+      const eventBody = JSON.stringify(toGCalEvent(a))
+
+      const doRequest = async (token: string, method: string, url: string) => {
+        const res = await fetch(url, {
+          method,
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: eventBody,
+        })
+        const data = await res.json()
+        console.log(`${method} ${url} → status implied by error:`, data.error?.code ?? 'ok')
+        return { status: res.status, data }
+      }
 
       try {
         if (a.google_event_id) {
-          // Update existing event
-          const res = await fetch(`${GCAL_BASE}/${calEnc}/events/${a.google_event_id}`, {
-            method: 'PUT', headers, body,
-          })
-          const data = await res.json()
-          if (data.error) throw new Error(data.error.message)
-          updated++
-        } else {
-          // Create new event
-          const res = await fetch(`${GCAL_BASE}/${calEnc}/events`, {
-            method: 'POST', headers, body,
-          })
-          const data = await res.json()
-          if (data.error) throw new Error(data.error.message)
-          await supabase.from('audiencias')
-            .update({ google_event_id: data.id })
-            .eq('id', a.id)
-          created++
+          // Try to update existing event
+          let { status, data } = await doRequest(
+            accessToken,
+            'PUT',
+            `${GCAL_BASE}/${calEnc}/events/${a.google_event_id}`
+          )
+
+          // 401: token rejected — force refresh and retry once
+          if (status === 401 && refreshToken) {
+            console.log('Got 401, refreshing token and retrying...')
+            accessToken = await refreshAccessToken(supabase, refreshToken)
+            ;({ status, data } = await doRequest(
+              accessToken,
+              'PUT',
+              `${GCAL_BASE}/${calEnc}/events/${a.google_event_id}`
+            ))
+          }
+
+          // 404: event no longer exists in Google Calendar — clear id and create fresh
+          if (status === 404) {
+            console.log(`Event ${a.google_event_id} not found in GCal, will create new`)
+            await supabase.from('audiencias').update({ google_event_id: null }).eq('id', a.id)
+            a.google_event_id = null
+          } else {
+            if (data.error) throw new Error(data.error.message)
+            updated++
+            continue
+          }
         }
+
+        // Create new event
+        let { status, data } = await doRequest(
+          accessToken,
+          'POST',
+          `${GCAL_BASE}/${calEnc}/events`
+        )
+
+        // 401: force refresh and retry
+        if (status === 401 && refreshToken) {
+          console.log('Got 401 on create, refreshing token and retrying...')
+          accessToken = await refreshAccessToken(supabase, refreshToken)
+          ;({ status, data } = await doRequest(
+            accessToken,
+            'POST',
+            `${GCAL_BASE}/${calEnc}/events`
+          ))
+        }
+
+        if (data.error) throw new Error(data.error.message)
+        console.log('Created event id:', data.id, 'for audiencia:', a.id)
+        await supabase.from('audiencias')
+          .update({ google_event_id: data.id })
+          .eq('id', a.id)
+        created++
+
       } catch (e) {
-        console.error(`Error syncing audiencia ${a.id}:`, e)
+        console.error(`Error syncing audiencia ${a.id}:`, (e as Error).message)
         errors++
       }
     }
 
+    console.log('Sync done — created:', created, 'updated:', updated, 'errors:', errors)
     return json({ ok: true, created, updated, errors, total: (audiencias ?? []).length })
   } catch (e) {
+    console.error('Fatal error:', (e as Error).message)
     return json({ ok: false, error: (e as Error).message }, 500)
   }
 })
