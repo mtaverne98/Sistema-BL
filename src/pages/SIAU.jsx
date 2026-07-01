@@ -329,6 +329,8 @@ export function SolicitudesTable({ grupo, registrosAll, onUpdate, onAdd, onDelet
   const [showForm,        setShowForm]        = useState(false)
   const [showCargaMasiva, setShowCargaMasiva] = useState(false)
   const [deleteTarget,    setDeleteTarget]    = useState(null)
+  const solicitudEditRef = useRef(null)
+  const respuestaEditRef = useRef(null)
 
   const { widths: siauW, getResizerProps: siauResizer } = useResizableColumns('cols-siau', [90, 75, 155, 250, 250, 90, 110, 150, 130, 45])
   const siauMinWidth = siauW.reduce((s, w) => s + w, 0)
@@ -352,7 +354,12 @@ export function SolicitudesTable({ grupo, registrosAll, onUpdate, onAdd, onDelet
   const cancelEdit  = (e) => { e.stopPropagation(); setEditingId(null) }
   const saveEdit    = async (e) => {
     e.stopPropagation()
-    await onUpdate(editingId, editDraft)
+    const draft = {
+      ...editDraft,
+      solicitud: solicitudEditRef.current?.value ?? editDraft.solicitud,
+      respuesta: respuestaEditRef.current?.value ?? editDraft.respuesta,
+    }
+    await onUpdate(editingId, draft)
     setEditingId(null)
   }
   const ed = (k, v) => setEditDraft(p => ({ ...p, [k]: v }))
@@ -484,12 +491,12 @@ export function SolicitudesTable({ grupo, registrosAll, onUpdate, onAdd, onDelet
                             <span className="text-[11px] text-gray-400">—</span>
                           </td>
                           <td className="px-3 py-2">
-                            <textarea value={editDraft.solicitud||''} onChange={e=>ed('solicitud',e.target.value)}
+                            <textarea ref={solicitudEditRef} defaultValue={editDraft.solicitud||''}
                               onClick={e=>e.stopPropagation()} rows={2}
                               className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 w-full resize-none focus:outline-none focus:border-blue-300 bg-white min-w-[160px]"/>
                           </td>
                           <td className="px-3 py-2">
-                            <textarea value={editDraft.respuesta||''} onChange={e=>ed('respuesta',e.target.value)}
+                            <textarea ref={respuestaEditRef} defaultValue={editDraft.respuesta||''}
                               onClick={e=>e.stopPropagation()} rows={2}
                               className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 w-full resize-none focus:outline-none focus:border-blue-300 bg-white min-w-[160px]"/>
                           </td>
