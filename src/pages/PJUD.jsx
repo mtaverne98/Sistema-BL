@@ -207,8 +207,9 @@ function CausaIdentChip({ causa_rit, causa_ruc, size = 'md' }) {
 /** Filtra registros de una causa considerando RIT → RUC → sin identificador */
 function matchCausa(r, causaData, clienteNombre) {
   if (r.cliente_nombre !== clienteNombre) return false
-  if (causaData.causa_rit) return r.causa_rit === causaData.causa_rit
-  if (causaData.causa_ruc) return r.causa_ruc === causaData.causa_ruc
+  if (causaData.causa_rit)       return r.causa_rit === causaData.causa_rit
+  if (causaData.causa_ruc)       return r.causa_ruc === causaData.causa_ruc
+  if (causaData.causaInfo?.id)   return r.causa_id  === causaData.causaInfo.id
   return !r.causa_rit && !r.causa_ruc
 }
 

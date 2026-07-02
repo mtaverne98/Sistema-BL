@@ -934,7 +934,8 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
       cliente_id: movData.cliente_id || causa?.cliente_id || null,
     }
     const { data, error } = await supabase.from('pjud').insert([payload]).select().single()
-    if (!error && data) setPjudRows(prev => [data, ...prev])
+    if (error) { console.error('Error guardando PJUD:', error); showToast('⚠ Error al guardar entrada PJUD'); return }
+    if (data) setPjudRows(prev => [data, ...prev])
   }, [causa?.id, causa?.cliente_id])
   const handleDeletePjud = useCallback((id) => {
     setPjudRows(prev => prev.filter(r => r.id !== id))
@@ -1110,24 +1111,28 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
         }]).select().single()
         if (data) setTareas(prev => [...prev, data])
       } else if (quickType === 'siau') {
-        const { data } = await supabase.from('siau').insert([{
+        const { data, error } = await supabase.from('siau').insert([{
           solicitud:      quickText.trim(),
           fecha:          TODAY_C,
           estado:         'Pendiente',
-          causa_rit:      causa.rit  || null,
           causa_id:       causa.id,
+          causa_rit:      causa.rit  || null,
+          causa_ruc:      causa.ruc  || null,
           cliente_nombre: causa.cliente_nombre || null,
         }]).select().single()
+        if (error) { console.error('Error guardando SIAU rápido:', error); showToast('⚠ Error al guardar'); return }
         if (data) setSiauRows(prev => [data, ...prev])
       } else if (quickType === 'pjud') {
-        const { data } = await supabase.from('pjud').insert([{
+        const { data, error } = await supabase.from('pjud').insert([{
           solicitud:      quickText.trim(),
           fecha:          TODAY_C,
           estado:         'Pendiente',
-          causa_rit:      causa.rit  || null,
           causa_id:       causa.id,
+          causa_rit:      causa.rit  || null,
+          causa_ruc:      causa.ruc  || null,
           cliente_nombre: causa.cliente_nombre || null,
         }]).select().single()
+        if (error) { console.error('Error guardando PJUD rápido:', error); showToast('⚠ Error al guardar'); return }
         if (data) setPjudRows(prev => [data, ...prev])
       }
       setQuickText('')

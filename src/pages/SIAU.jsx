@@ -85,8 +85,9 @@ function SiauCausaIdentChip({ causa_rit, causa_ruc, size }) {
 /** Filtra registros de una causa considerando RIT → RUC → sin identificador */
 function matchCausa(r, grupo, clienteNombre) {
   if (r.cliente_nombre !== clienteNombre) return false
-  if (grupo.causa_rit)  return r.causa_rit  === grupo.causa_rit
-  if (grupo.causa_ruc)  return r.causa_ruc  === grupo.causa_ruc
+  if (grupo.causa_rit)         return r.causa_rit  === grupo.causa_rit
+  if (grupo.causa_ruc)         return r.causa_ruc  === grupo.causa_ruc
+  if (grupo.causaInfo?.id)     return r.causa_id   === grupo.causaInfo.id
   return !r.causa_rit && !r.causa_ruc
 }
 
@@ -164,7 +165,8 @@ function FormNuevaSolicitud({ causa, causasInfo, globalMode, onSave, onClose }) 
       notas:            notasVal                      || null,
       estado:           form.estado,
       tipo_solicitud:   form.tipo_solicitud           || null,
-      causa_rit:        causaFinal.rit || causaFinal.causa_rit || '',
+      causa_id:         causaFinal.id                 || null,
+      causa_rit:        causaFinal.rit || causaFinal.causa_rit || null,
       causa_ruc:        causaFinal.ruc || causaFinal.causa_ruc || null,
       cliente_nombre:   causaFinal.cliente_nombre    || '',
     }
