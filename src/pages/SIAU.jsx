@@ -720,6 +720,7 @@ export default function SIAU() {
   const [expandedSet,    setExpanded]       = useState(new Set())
   const [search,         setSearch]         = useState(_ps.search ?? '')
   const [showForm,       setShowForm]       = useState(false)
+  const [updateError,    setUpdateError]    = useState(null)
 
   // Navigation
   const [view,           setView]            = useState(_ps.view ?? 'clientes')
@@ -761,10 +762,18 @@ export default function SIAU() {
   }, [showForm])
 
   const handleUpdate = useCallback(async (id, cambios) => {
-    setRegistros(prev => prev.map(r => r.id === id ? { ...r, ...cambios } : r))
+    const prev = registros.find(r => r.id === id)
+    setRegistros(p => p.map(r => r.id === id ? { ...r, ...cambios } : r))
     const dbCambios = Object.fromEntries(Object.entries(cambios).filter(([k]) => DB_FIELDS.has(k)))
-    if (Object.keys(dbCambios).length) await supabase.from('siau').update(dbCambios).eq('id', id)
-  }, [])
+    if (!Object.keys(dbCambios).length) return
+    const { error } = await supabase.from('siau').update(dbCambios).eq('id', id)
+    if (error) {
+      console.error('Error actualizando SIAU:', error.message, error)
+      if (prev) setRegistros(p => p.map(r => r.id === id ? prev : r))
+      setUpdateError(`No se pudo guardar: ${error.message}`)
+      setTimeout(() => setUpdateError(null), 5000)
+    }
+  }, [registros])
 
   const handleAdd = useCallback((newReg) => setRegistros(prev => [newReg, ...prev]), [])
   const handleDeleteReg = useCallback((id) => setRegistros(prev => prev.filter(r => r.id !== id)), [])
@@ -929,6 +938,11 @@ export default function SIAU() {
   // ── Client list view ──
   return (
     <div className="flex flex-col h-full bg-[#fafafa]">
+      {updateError && (
+        <div className="fixed top-4 right-4 z-50 px-4 py-2.5 bg-red-600 text-white text-[12px] font-medium rounded-xl shadow-lg">
+          ⚠ {updateError}
+        </div>
+      )}
       {/* Header */}
       <div className="bg-white border-b border-gray-100 px-6 py-5 flex-shrink-0">
         <div className="flex items-center justify-between mb-4">

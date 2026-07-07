@@ -51,6 +51,33 @@ function detectClient(text, clientes) {
   const lower = text.toLowerCase()
   return clientes.find(c => c.nombre && c.nombre.length > 2 && lower.includes(c.nombre.toLowerCase())) || null
 }
+function detectCausa(text, causas) {
+  if (!text || !causas.length) return null
+  const lower = text.toLowerCase()
+  const ritPattern = /\b([A-Z]-\d+-\d{4})\b/gi
+  let m
+  while ((m = ritPattern.exec(text)) !== null) {
+    const hit = causas.find(c => c.rit && c.rit.toUpperCase() === m[1].toUpperCase())
+    if (hit) return hit
+  }
+  const rucPattern = /\b(\d{15,20})\b/g
+  while ((m = rucPattern.exec(text)) !== null) {
+    const hit = causas.find(c => c.ruc && c.ruc === m[1])
+    if (hit) return hit
+  }
+  return causas.find(c => {
+    if (!c.cliente_nombre || c.cliente_nombre.length < 3) return false
+    const cn = c.cliente_nombre.toLowerCase()
+    if (lower.includes(cn)) return true
+    // Also match if text contains 2 consecutive words of the client name
+    // e.g. "Cristian Soto" matches "CRISTIAN SOTO CONTRERAS"
+    const words = cn.split(/\s+/).filter(w => w.length > 1)
+    for (let i = 0; i < words.length - 1; i++) {
+      if (lower.includes(words[i] + ' ' + words[i + 1])) return true
+    }
+    return false
+  }) || null
+}
 
 function getMonthWeeks(yearMonth) {
   const [year, month] = yearMonth.split('-').map(Number)
@@ -161,7 +188,7 @@ function InlineAdd({ onAdd, placeholder = 'Agregar...', autoFocus = false }) {
 }
 
 // ── ConversionMenu ────────────────────────────────────────────────────────────
-function ConversionMenu({ cliente, onConvert, onClose }) {
+function ConversionMenu({ detectedCausa, onConvert, onClose }) {
   useEffect(() => {
     const timer = setTimeout(onClose, 6000)
     const fn = e => { if (e.key === 'Escape') onClose() }
@@ -171,9 +198,10 @@ function ConversionMenu({ cliente, onConvert, onClose }) {
 
   return (
     <div className="flex items-center gap-1 p-1.5 bg-white border border-gray-200 rounded-xl shadow-xl z-50 flex-wrap">
-      {cliente && (
+      {detectedCausa && (
         <span className="text-[10px] text-gray-400 px-1.5 flex-shrink-0">
-          <span className="text-[#2570BA] font-semibold">{cliente.nombre}</span> ·
+          <span className="text-[#2570BA] font-semibold">{detectedCausa.cliente_nombre}</span>
+          {detectedCausa.rit && <span className="font-mono ml-1">· {detectedCausa.rit}</span>} ·
         </span>
       )}
       <button onClick={() => onConvert('tarea')}
@@ -199,25 +227,119 @@ function ConversionMenu({ cliente, onConvert, onClose }) {
   )
 }
 
+// ── CauseConfirmPanel ──────────────────────────────────────────────────────────
+function CauseConfirmPanel({ state, causas, onConfirm, onSwitchSearch, onClose }) {
+  const [query, setQuery] = useState('')
+  const searchRef = useRef(null)
+  const { detectedCausa, searching } = state
+
+  useEffect(() => {
+    if (searching) setTimeout(() => searchRef.current?.focus(), 30)
+  }, [searching])
+
+  const results = useMemo(() => {
+    if (!query.trim()) return []
+    const lq = query.toLowerCase()
+    return causas.filter(c =>
+      (c.rit && c.rit.toLowerCase().includes(lq)) ||
+      (c.ruc && c.ruc.toLowerCase().includes(lq)) ||
+      (c.cliente_nombre && c.cliente_nombre.toLowerCase().includes(lq)) ||
+      (c.materia && c.materia.toLowerCase().includes(lq))
+    ).slice(0, 5)
+  }, [query, causas])
+
+  if (!searching && detectedCausa) {
+    return (
+      <div className="mt-2 p-2.5 bg-[#EEF5FF] rounded-xl border border-[#C5DBFB]">
+        <div className="text-[10px] text-[#2570BA]/70 font-semibold uppercase tracking-wider mb-1">Detectado automáticamente</div>
+        <div className="text-[12px] text-[#1a2e4a] font-semibold leading-snug">
+          {detectedCausa.cliente_nombre}
+          {detectedCausa.rit
+            ? <span className="ml-1.5 font-mono font-normal text-[11px] text-[#2570BA]">{detectedCausa.rit}</span>
+            : detectedCausa.ruc
+              ? <span className="ml-1.5 font-mono font-normal text-[11px] text-[#2570BA]">RUC {detectedCausa.ruc.slice(0, 8)}…</span>
+              : null}
+          {detectedCausa.materia && (
+            <span className="ml-1.5 text-[11px] font-normal text-gray-400">· {detectedCausa.materia}</span>
+          )}
+        </div>
+        <div className="flex items-center gap-2 mt-2">
+          <button onClick={() => onConfirm(detectedCausa)}
+            className="px-2.5 py-1 bg-[#2570BA] text-white rounded-lg text-[11px] font-semibold hover:bg-[#1e5fa0] transition-colors">
+            Confirmar y guardar
+          </button>
+          <button onClick={onSwitchSearch}
+            className="px-2.5 py-1 bg-white text-[#2570BA] border border-[#C5DBFB] rounded-lg text-[11px] hover:bg-blue-50 transition-colors">
+            Cambiar
+          </button>
+          <button onClick={() => onConfirm(null)}
+            className="ml-auto text-[11px] text-gray-300 hover:text-gray-500 transition-colors">
+            Sin causa
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="mt-2 p-2.5 bg-gray-50 rounded-xl border border-gray-100">
+      <div className="flex items-center gap-1.5 mb-1.5">
+        <Search size={11} className="text-gray-400 flex-shrink-0" />
+        <input
+          ref={searchRef}
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          placeholder="Buscar causa por nombre, RIT o RUC..."
+          className="flex-1 text-[12px] bg-transparent border-none outline-none text-gray-700 placeholder-gray-300"
+        />
+        <button onClick={onClose} className="text-gray-200 hover:text-gray-400 transition-colors flex-shrink-0">
+          <X size={10} />
+        </button>
+      </div>
+      {results.length > 0 && (
+        <div className="space-y-0.5 mb-1">
+          {results.map(c => (
+            <button key={c.id} onClick={() => onConfirm(c)}
+              className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-white border border-transparent hover:border-gray-200 transition-colors text-left">
+              <span className="text-[12px] font-medium text-gray-700 flex-1 truncate">{c.cliente_nombre}</span>
+              {c.rit
+                ? <span className="text-[10px] font-mono text-[#2570BA] flex-shrink-0">{c.rit}</span>
+                : c.ruc
+                  ? <span className="text-[10px] font-mono text-gray-400 flex-shrink-0">RUC</span>
+                  : null}
+            </button>
+          ))}
+        </div>
+      )}
+      {query.trim() && results.length === 0 && (
+        <p className="text-[11px] text-gray-300 italic px-2 mb-1">Sin resultados</p>
+      )}
+      <button onClick={() => onConfirm(null)}
+        className="text-[11px] text-gray-300 hover:text-gray-500 transition-colors px-2">
+        Guardar sin causa
+      </button>
+    </div>
+  )
+}
+
 // ── BrainDump (line-based) ─────────────────────────────────────────────────────
 function BrainDump({ lines, onChange, clientes, causas, onSaveConversion }) {
   const inputRefs = useRef({})
-  const [convMenu, setConvMenu] = useState(null)   // { lineId, text, cliente }
-  const [causeConfirm, setCauseConfirm] = useState(null) // { convType, causa, lineId, text }
+  const [convMenu, setConvMenu] = useState(null)       // { lineId, text, detectedCausa }
+  const [causeConfirm, setCauseConfirm] = useState(null) // { convType, lineId, text, detectedCausa, searching }
+  const [savedMsg, setSavedMsg] = useState(null)
 
   function handleKeyDown(e, lineId) {
     if (e.key === 'Enter') {
       e.preventDefault()
       const line = lines.find(l => l.id === lineId)
       if (!line) return
-      // Insert new line after current
       const newLine = { id: uid(), text: '', type: 'nota', done: false, tag: null }
       const idx = lines.findIndex(l => l.id === lineId)
       onChange([...lines.slice(0, idx + 1), newLine, ...lines.slice(idx + 1)])
-      // Show conversion menu if text is substantial
       if (line.text.trim().length > 2) {
-        const cliente = detectClient(line.text, clientes)
-        setConvMenu({ lineId, text: line.text, cliente })
+        const detectedCausa = detectCausa(line.text, causas)
+        setConvMenu({ lineId, text: line.text, detectedCausa })
       }
       setTimeout(() => inputRefs.current[newLine.id]?.focus(), 20)
     }
@@ -240,26 +362,24 @@ function BrainDump({ lines, onChange, clientes, causas, onSaveConversion }) {
 
   function handleConvert(convType) {
     if (!convMenu) return
-    const { lineId, text, cliente } = convMenu
+    const { lineId, text, detectedCausa } = convMenu
     setConvMenu(null)
-    if (convType === 'nota') return
-    // If client detected, look for active causas to link
-    if (cliente) {
-      const clienteCausas = causas.filter(c =>
-        c.cliente_nombre && c.cliente_nombre.toLowerCase() === cliente.nombre.toLowerCase()
-      )
-      if (clienteCausas.length > 0) {
-        setCauseConfirm({ convType, causa: clienteCausas[0], lineId, text, cliente })
-        return
-      }
+    if (convType === 'nota') {
+      onSaveConversion(lineId, text, convType, null)
+      return
     }
-    onSaveConversion(lineId, text, convType, null)
+    setCauseConfirm({ convType, lineId, text, detectedCausa, searching: !detectedCausa })
   }
 
-  function confirmCause(yes) {
-    const { convType, causa, lineId, text } = causeConfirm
+  function confirmCause(causa) {
+    const { convType, lineId, text } = causeConfirm
     setCauseConfirm(null)
-    onSaveConversion(lineId, text, convType, yes ? causa : null)
+    onSaveConversion(lineId, text, convType, causa)
+    if (causa) {
+      const label = causa.cliente_nombre + (causa.rit ? ' · ' + causa.rit : causa.ruc ? ' · RUC' : '')
+      setSavedMsg('✓ Guardado en ' + label)
+      setTimeout(() => setSavedMsg(null), 3000)
+    }
   }
 
   const TAG_STYLES = {
@@ -308,33 +428,29 @@ function BrainDump({ lines, onChange, clientes, causas, onSaveConversion }) {
         </div>
       ))}
 
-      {/* Conversion menu — shown inline after Enter */}
       {convMenu && (
         <div className="mt-1.5 mb-1">
           <ConversionMenu
-            cliente={convMenu.cliente}
+            detectedCausa={convMenu.detectedCausa}
             onConvert={handleConvert}
             onClose={() => setConvMenu(null)}
           />
         </div>
       )}
 
-      {/* Causa confirmation */}
       {causeConfirm && (
-        <div className="mt-2 p-2.5 bg-[#EEF5FF] rounded-xl border border-[#C5DBFB] text-[12px] text-[#2570BA]">
-          ¿Para la causa{' '}
-          <span className="font-bold">{causeConfirm.causa.rit}</span>{' '}
-          de <span className="font-bold">{causeConfirm.causa.cliente_nombre}</span>?
-          <div className="flex gap-2 mt-1.5">
-            <button onClick={() => confirmCause(true)}
-              className="px-2.5 py-1 bg-[#2570BA] text-white rounded-lg text-[11px] font-semibold hover:bg-[#1e5fa0] transition-colors">
-              Sí
-            </button>
-            <button onClick={() => confirmCause(false)}
-              className="px-2.5 py-1 bg-white text-[#2570BA] border border-[#C5DBFB] rounded-lg text-[11px] hover:bg-blue-50 transition-colors">
-              No, sin causa
-            </button>
-          </div>
+        <CauseConfirmPanel
+          state={causeConfirm}
+          causas={causas}
+          onConfirm={confirmCause}
+          onSwitchSearch={() => setCauseConfirm(p => ({ ...p, searching: true }))}
+          onClose={() => setCauseConfirm(null)}
+        />
+      )}
+
+      {savedMsg && (
+        <div className="mt-2 flex items-center gap-1.5 px-2.5 py-1.5 bg-green-50 border border-green-100 rounded-lg text-[11px] text-green-700 font-medium">
+          {savedMsg}
         </div>
       )}
     </div>
@@ -751,9 +867,8 @@ export default function Apuntes() {
         causa_id:       causaId,
         causa_rit:      causaRit,
         cliente_nombre: clienteNombre,
-        fecha_revision: TODAY,
-        por_hacer:      text,
-        que_se_hizo:    'Pendiente',
+        fecha:          TODAY,
+        proxima_accion: text,
       }])
     } else if (convType === 'siau') {
       await supabase.from('siau').insert([{
@@ -779,9 +894,8 @@ export default function Apuntes() {
       causa_id:       causa.id       || null,
       causa_rit:      causa.rit      || null,
       cliente_nombre: causa.cliente  || null,
-      fecha_revision: TODAY,
-      por_hacer:      text,
-      que_se_hizo:    'Pendiente',
+      fecha:          TODAY,
+      proxima_accion: text,
     }])
   }, [])
 

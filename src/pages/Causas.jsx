@@ -905,9 +905,25 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
   }
 
   // ── SIAU/PJUD inline handlers (embedded table) ────────────────────────────
-  const handleUpdateSiau = useCallback((id, cambios) => {
+  const SIAU_DB_FIELDS = useMemo(() => new Set([
+    'estado','notas','fecha','folio','causa_rit','causa_ruc','cliente_nombre',
+    'solicitud','respuesta','documento_nombre','tiene_documento','fecha_respuesta','tipo_solicitud',
+  ]), [])
+  const PJUD_DB_FIELDS_LOCAL = useMemo(() => new Set([
+    'estado','notas','solicitud','respuesta','fecha_respuesta','fecha_notificacion',
+    'accion_requerida','consecuencia_procesal','presenta','responsable',
+    'tiene_documento','documento_desc','fecha','folio','causa_rit','causa_ruc','cliente_nombre',
+    'causa_id','cliente_id','tipo_solicitud',
+  ]), [])
+
+  const handleUpdateSiau = useCallback(async (id, cambios) => {
     setSiauRows(prev => prev.map(r => r.id === id ? { ...r, ...cambios } : r))
-  }, [])
+    const dbCambios = Object.fromEntries(Object.entries(cambios).filter(([k]) => SIAU_DB_FIELDS.has(k)))
+    if (!Object.keys(dbCambios).length) return
+    const { error } = await supabase.from('siau').update(dbCambios).eq('id', id)
+    if (error) console.error('Error actualizando SIAU:', error.message, error)
+  }, [SIAU_DB_FIELDS])
+
   const handleAddSiau = useCallback((row) => {
     setSiauRows(prev => [row, ...prev])
   }, [])
@@ -915,9 +931,13 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
     setSiauRows(prev => prev.filter(r => r.id !== id))
   }, [])
 
-  const handleUpdatePjud = useCallback((id, cambios) => {
+  const handleUpdatePjud = useCallback(async (id, cambios) => {
     setPjudRows(prev => prev.map(r => r.id === id ? { ...r, ...cambios } : r))
-  }, [])
+    const dbCambios = Object.fromEntries(Object.entries(cambios).filter(([k]) => PJUD_DB_FIELDS_LOCAL.has(k)))
+    if (!Object.keys(dbCambios).length) return
+    const { error } = await supabase.from('pjud').update(dbCambios).eq('id', id)
+    if (error) console.error('Error actualizando PJUD:', error.message, error)
+  }, [PJUD_DB_FIELDS_LOCAL])
   const handleAddPjud = useCallback(async (causaRit, causaRuc, clienteNombre, movData) => {
     const payload = {
       fecha: movData.fecha, folio: movData.folio, presenta: movData.presenta || 'Nosotros',
