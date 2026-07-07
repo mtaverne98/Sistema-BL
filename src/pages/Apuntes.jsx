@@ -112,11 +112,9 @@ function getMonthWeeks(yearMonth) {
 function isCurrentWeek(ws, we) { return TODAY >= ws && TODAY <= we }
 function isPastWeek(we)        { return we < TODAY }
 
-// ── localStorage ───────────────────────────────────────────────────────────────
+// ── workspace state (dumpLines + agendaMonth only — hoItems/semana live in Supabase) ──
 const WS_DEFAULT = {
-  hoItems:    [],
   dumpLines:  [{ id: 'init', text: '', type: 'nota', done: false, tag: null }],
-  semana:     {},
   agendaMonth: TODAY.slice(0, 7),
 }
 
@@ -125,17 +123,16 @@ function loadWS() {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (raw) {
       const p = JSON.parse(raw)
-      // Always start on current month
-      return { ...WS_DEFAULT, ...p, agendaMonth: TODAY.slice(0, 7) }
+      return { dumpLines: p.dumpLines || WS_DEFAULT.dumpLines, agendaMonth: TODAY.slice(0, 7) }
     }
-    // Migrar desde v1
+    // Migrar dumpLines desde v1
     const old = localStorage.getItem('bl_workspace_v1')
     if (old) {
       const p = JSON.parse(old)
       const dumpLines = (p.dump || '').split('\n').filter(Boolean)
         .map(text => ({ id: uid(), text, type: isActionLine(text) ? 'checkbox' : 'nota', done: false, tag: null }))
       if (!dumpLines.length) dumpLines.push({ id: uid(), text: '', type: 'nota', done: false, tag: null })
-      return { ...WS_DEFAULT, hoItems: p.hoItems || [], dumpLines, semana: p.semana || {} }
+      return { dumpLines, agendaMonth: TODAY.slice(0, 7) }
     }
     return { ...WS_DEFAULT }
   } catch { return { ...WS_DEFAULT } }
@@ -793,33 +790,91 @@ function CmdKModal({ open, onClose, navigate }) {
 // ── main ──────────────────────────────────────────────────────────────────────
 export default function Apuntes() {
   const navigate    = useNavigate()
-  const [audiencias, setAudiencias] = useState([])
-  const [tareas,     setTareas]     = useState([])
-  const [clientes,   setClientes]   = useState([])
-  const [causas,     setCausas]     = useState([])
-  const [ws, setWs]                 = useState(loadWS)
-  const [cmdOpen, setCmdOpen]       = useState(false)
+  const [audiencias,    setAudiencias]    = useState([])
+  const [tareas,        setTareas]        = useState([])
+  const [clientes,      setClientes]      = useState([])
+  const [causas,        setCausas]        = useState([])
+  const [ws,            setWs]            = useState(loadWS)
+  const [cmdOpen,       setCmdOpen]       = useState(false)
+  // ── Supabase-backed agenda state ──────────────────────────────────────────
+  const [hoItems,       setHoItems]       = useState([])
+  const [semana,        setSemana]        = useState({})
+  const [agendaError,   setAgendaError]   = useState(null)
 
+  // ── Load reference data ────────────────────────────────────────────────────
   useEffect(() => {
     supabase.from('audiencias')
       .select('id, tipo, fecha, hora, causa_rit, estado, cliente_nombre')
       .then(({ data }) => setAudiencias(data || []))
-
     supabase.from('tareas')
       .select('id, titulo, fecha_vencimiento, estado, causa_rit, cliente_nombre, categoria')
       .then(({ data }) => setTareas(data || []))
-
     supabase.from('clientes')
       .select('id, nombre')
       .then(({ data }) => setClientes(data || []))
-
     supabase.from('causas')
       .select('id, rit, ruc, cliente_nombre, materia, estado')
       .then(({ data }) => setCausas(data || []))
-
   }, [])
 
+  // ── Load agenda from Supabase, migrate localStorage data if Supabase is empty ──
+  useEffect(() => {
+    async function loadAgenda() {
+      const { data, error } = await supabase
+        .from('agenda_notas')
+        .select('id, fecha, texto, tipo, completada')
+        .order('created_at', { ascending: true })
+
+      if (error) {
+        setAgendaError('No se pudo cargar la agenda: ' + error.message)
+        return
+      }
+
+      // Migrate hoItems/semana from localStorage if Supabase has no rows yet
+      if (!data.length) {
+        try {
+          const raw = localStorage.getItem(STORAGE_KEY)
+          if (raw) {
+            const p = JSON.parse(raw)
+            const oldHo  = p.hoItems || []
+            const oldSem = p.semana  || {}
+            if (oldHo.length || Object.keys(oldSem).length) {
+              const rows = [
+                ...oldHo.map(i => ({ texto: i.text, tipo: 'hoy', completada: i.done || false })),
+                ...Object.entries(oldSem).flatMap(([fecha, items]) =>
+                  (items || []).map(i => ({ fecha, texto: i.text, tipo: 'dia', completada: i.done || false }))
+                ),
+              ]
+              const { data: migrated } = await supabase
+                .from('agenda_notas')
+                .insert(rows)
+                .select('id, fecha, texto, tipo, completada')
+              applyRows(migrated || [])
+              return
+            }
+          }
+        } catch {}
+      }
+
+      applyRows(data)
+    }
+
+    function applyRows(rows) {
+      setHoItems(rows.filter(r => r.tipo === 'hoy').map(r => ({ id: r.id, text: r.texto, done: r.completada })))
+      const sm = {}
+      for (const r of rows.filter(r => r.tipo === 'dia')) {
+        if (!sm[r.fecha]) sm[r.fecha] = []
+        sm[r.fecha].push({ id: r.id, text: r.texto, done: r.completada })
+      }
+      setSemana(sm)
+    }
+
+    loadAgenda()
+  }, [])
+
+  // ── Persist dumpLines + agendaMonth to localStorage ────────────────────────
   useEffect(() => { localStorage.setItem(STORAGE_KEY, JSON.stringify(ws)) }, [ws])
+
   useEffect(() => {
     const fn = e => { if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); setCmdOpen(v => !v) } }
     window.addEventListener('keydown', fn)
@@ -828,21 +883,91 @@ export default function Apuntes() {
 
   // ── mutations ──────────────────────────────────────────────────────────────
   const setField = useCallback((f, v) => setWs(p => ({ ...p, [f]: v })), [])
-  const toggleHo = useCallback(id => setWs(p => ({ ...p, hoItems: p.hoItems.map(i => i.id === id ? { ...i, done: !i.done } : i) })), [])
-  const deleteHo = useCallback(id => setWs(p => ({ ...p, hoItems: p.hoItems.filter(i => i.id !== id) })), [])
-  const addHo    = useCallback(text => setWs(p => ({ ...p, hoItems: [...p.hoItems, { id: uid(), text, done: false }] })), [])
 
-  const toggleS = useCallback((date, id) => setWs(p => ({ ...p, semana: { ...p.semana, [date]: (p.semana[date] || []).map(i => i.id === id ? { ...i, done: !i.done } : i) } })), [])
-  const deleteS = useCallback((date, id) => setWs(p => ({ ...p, semana: { ...p.semana, [date]: (p.semana[date] || []).filter(i => i.id !== id) } })), [])
-  const addS    = useCallback((date, text) => setWs(p => ({ ...p, semana: { ...p.semana, [date]: [...(p.semana[date] || []), { id: uid(), text, done: false }] } })), [])
-  const moveS   = useCallback((date, id) => {
+  const toggleHo = useCallback(async (id) => {
+    const item = hoItems.find(i => i.id === id)
+    if (!item) return
+    const newDone = !item.done
+    setHoItems(prev => prev.map(i => i.id === id ? { ...i, done: newDone } : i))
+    const { error } = await supabase.from('agenda_notas').update({ completada: newDone }).eq('id', id)
+    if (error) setHoItems(prev => prev.map(i => i.id === id ? { ...i, done: item.done } : i))
+  }, [hoItems])
+
+  const deleteHo = useCallback(async (id) => {
+    setHoItems(prev => prev.filter(i => i.id !== id))
+    const { error } = await supabase.from('agenda_notas').delete().eq('id', id)
+    if (error) console.error('Error borrando agenda_nota:', error.message)
+  }, [])
+
+  const addHo = useCallback(async (text) => {
+    const tempId = 'tmp-' + uid()
+    setHoItems(prev => [...prev, { id: tempId, text, done: false }])
+    const { data, error } = await supabase
+      .from('agenda_notas')
+      .insert([{ texto: text, tipo: 'hoy', completada: false }])
+      .select('id, texto, completada')
+      .single()
+    if (error) {
+      console.error('Error agregando nota hoy:', error.message)
+      setHoItems(prev => prev.filter(i => i.id !== tempId))
+    } else {
+      setHoItems(prev => prev.map(i => i.id === tempId ? { id: data.id, text: data.texto, done: data.completada } : i))
+    }
+  }, [])
+
+  const toggleS = useCallback(async (date, id) => {
+    const item = (semana[date] || []).find(i => i.id === id)
+    if (!item) return
+    const newDone = !item.done
+    setSemana(prev => ({ ...prev, [date]: (prev[date] || []).map(i => i.id === id ? { ...i, done: newDone } : i) }))
+    const { error } = await supabase.from('agenda_notas').update({ completada: newDone }).eq('id', id)
+    if (error) setSemana(prev => ({ ...prev, [date]: (prev[date] || []).map(i => i.id === id ? { ...i, done: item.done } : i) }))
+  }, [semana])
+
+  const deleteS = useCallback(async (date, id) => {
+    setSemana(prev => ({ ...prev, [date]: (prev[date] || []).filter(i => i.id !== id) }))
+    const { error } = await supabase.from('agenda_notas').delete().eq('id', id)
+    if (error) console.error('Error borrando agenda_nota:', error.message)
+  }, [])
+
+  const addS = useCallback(async (date, text) => {
+    const tempId = 'tmp-' + uid()
+    setSemana(prev => ({ ...prev, [date]: [...(prev[date] || []), { id: tempId, text, done: false }] }))
+    const { data, error } = await supabase
+      .from('agenda_notas')
+      .insert([{ fecha: date, texto: text, tipo: 'dia', completada: false }])
+      .select('id, fecha, texto, completada')
+      .single()
+    if (error) {
+      console.error('Error agregando nota día:', error.message)
+      setSemana(prev => ({ ...prev, [date]: (prev[date] || []).filter(i => i.id !== tempId) }))
+    } else {
+      setSemana(prev => ({
+        ...prev,
+        [date]: (prev[date] || []).map(i => i.id === tempId ? { id: data.id, text: data.texto, done: data.completada } : i),
+      }))
+    }
+  }, [])
+
+  const moveS = useCallback(async (date, id) => {
     const next = new Date(date + 'T00:00:00'); next.setDate(next.getDate() + 7)
     const nIso = next.toISOString().slice(0, 10)
-    setWs(p => {
-      const item = (p.semana[date] || []).find(i => i.id === id); if (!item) return p
-      return { ...p, semana: { ...p.semana, [date]: (p.semana[date] || []).filter(i => i.id !== id), [nIso]: [...(p.semana[nIso] || []), { ...item }] } }
-    })
-  }, [])
+    const item = (semana[date] || []).find(i => i.id === id)
+    if (!item) return
+    setSemana(prev => ({
+      ...prev,
+      [date]: (prev[date] || []).filter(i => i.id !== id),
+      [nIso]: [...(prev[nIso] || []), { ...item }],
+    }))
+    const { error } = await supabase.from('agenda_notas').update({ fecha: nIso }).eq('id', id)
+    if (error) {
+      setSemana(prev => ({
+        ...prev,
+        [date]: [...(prev[date] || []), item],
+        [nIso]: (prev[nIso] || []).filter(i => i.id !== id),
+      }))
+    }
+  }, [semana])
 
   const goPrev = useCallback(() => setWs(p => ({ ...p, agendaMonth: shiftMonth(p.agendaMonth, -1) })), [])
   const goNext = useCallback(() => setWs(p => ({ ...p, agendaMonth: shiftMonth(p.agendaMonth, +1) })), [])
@@ -915,6 +1040,12 @@ export default function Apuntes() {
   return (
     <div className="flex flex-col h-full bg-[#f7f8fa] overflow-hidden">
 
+      {agendaError && (
+        <div className="flex-shrink-0 px-8 py-2 bg-red-50 border-b border-red-100 text-[12px] text-red-600">
+          ⚠ {agendaError}
+        </div>
+      )}
+
       {/* ── Top bar ── */}
       <div className="flex-shrink-0 flex items-center justify-between px-8 py-4 bg-white border-b border-gray-100">
         <div>
@@ -955,7 +1086,7 @@ export default function Apuntes() {
                 <WeekRow
                   key={week.weekStart}
                   week={week}
-                  semana={ws.semana}
+                  semana={semana}
                   audiencias={audiencias}
                   tareas={tareas}
                   isCurrent={isCurrentWeek(week.weekStart, week.weekEnd)}
@@ -964,7 +1095,7 @@ export default function Apuntes() {
                   onDelete={deleteS}
                   onAdd={addS}
                   onMove={moveS}
-                  hoItems={ws.hoItems}
+                  hoItems={hoItems}
                   onToggleHo={toggleHo}
                   onDeleteHo={deleteHo}
                   onAddHo={addHo}
