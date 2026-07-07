@@ -917,11 +917,19 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
   ]), [])
 
   const handleUpdateSiau = useCallback(async (id, cambios) => {
-    setSiauRows(prev => prev.map(r => r.id === id ? { ...r, ...cambios } : r))
+    let prev = null
+    setSiauRows(p => { prev = p.find(r => r.id === id); return p.map(r => r.id === id ? { ...r, ...cambios } : r) })
     const dbCambios = Object.fromEntries(Object.entries(cambios).filter(([k]) => SIAU_DB_FIELDS.has(k)))
     if (!Object.keys(dbCambios).length) return
-    const { error } = await supabase.from('siau').update(dbCambios).eq('id', id)
-    if (error) console.error('Error actualizando SIAU:', error.message, error)
+    const { data, error } = await supabase.from('siau').update(dbCambios).eq('id', id).select().single()
+    if (error) {
+      console.error('Error actualizando SIAU:', error.message, error)
+      if (prev) setSiauRows(p => p.map(r => r.id === id ? prev : r))
+      showToast('⚠ No se pudo guardar en SIAU. Intentá de nuevo.')
+    } else {
+      if (data) setSiauRows(p => p.map(r => r.id === id ? data : r))
+      showToast('✓ Guardado')
+    }
   }, [SIAU_DB_FIELDS])
 
   const handleAddSiau = useCallback((row) => {
@@ -932,11 +940,19 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
   }, [])
 
   const handleUpdatePjud = useCallback(async (id, cambios) => {
-    setPjudRows(prev => prev.map(r => r.id === id ? { ...r, ...cambios } : r))
+    let prev = null
+    setPjudRows(p => { prev = p.find(r => r.id === id); return p.map(r => r.id === id ? { ...r, ...cambios } : r) })
     const dbCambios = Object.fromEntries(Object.entries(cambios).filter(([k]) => PJUD_DB_FIELDS_LOCAL.has(k)))
     if (!Object.keys(dbCambios).length) return
-    const { error } = await supabase.from('pjud').update(dbCambios).eq('id', id)
-    if (error) console.error('Error actualizando PJUD:', error.message, error)
+    const { data, error } = await supabase.from('pjud').update(dbCambios).eq('id', id).select().single()
+    if (error) {
+      console.error('Error actualizando PJUD:', error.message, error)
+      if (prev) setPjudRows(p => p.map(r => r.id === id ? prev : r))
+      showToast('⚠ No se pudo guardar en PJUD. Intentá de nuevo.')
+    } else {
+      if (data) setPjudRows(p => p.map(r => r.id === id ? data : r))
+      showToast('✓ Guardado')
+    }
   }, [PJUD_DB_FIELDS_LOCAL])
   const handleAddPjud = useCallback(async (causaRit, causaRuc, clienteNombre, movData) => {
     const payload = {
@@ -1214,8 +1230,16 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
 
   // Seguimiento — update row
   async function handleUpdateSegRow(id, changes) {
-    const { data } = await supabase.from('revisiones').update(changes).eq('id', id).select().single()
-    if (data) setSegRows(prev => prev.map(r => r.id === id ? data : r))
+    const { data, error } = await supabase.from('revisiones').update(changes).eq('id', id).select().single()
+    if (error) {
+      console.error('Error actualizando seguimiento:', error.message, error)
+      showToast('⚠ No se pudo guardar. Intentá de nuevo.')
+      return
+    }
+    if (data) {
+      setSegRows(prev => prev.map(r => r.id === id ? data : r))
+      showToast('✓ Guardado')
+    }
   }
 
   // Seguimiento — delete row
@@ -1249,10 +1273,11 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
 
   // Toggle urgente flag directly
   async function handleToggleUrgente(rev) {
-    const { data } = await supabase.from('revisiones')
+    const { data, error } = await supabase.from('revisiones')
       .update({ urgente: !rev.urgente })
       .eq('id', rev.id)
       .select().single()
+    if (error) { console.error('Error toggling urgente:', error.message, error); showToast('⚠ No se pudo guardar'); return }
     if (data) setRevisiones(prev => prev.map(r => r.id === data.id ? data : r))
   }
 

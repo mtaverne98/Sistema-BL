@@ -1147,11 +1147,12 @@ export default function PJUD() {
     catch { return {} }
   })
 
-  const [rows,       setRows]       = useState([])
-  const [causasInfo, setCausasInfo] = useState([])
-  const [cargando,   setCargando]   = useState(true)
+  const [rows,        setRows]        = useState([])
+  const [causasInfo,  setCausasInfo]  = useState([])
+  const [cargando,    setCargando]    = useState(true)
   const [clienteHasActiveCausasMap, setClienteHasActiveCausasMap] = useState({})
-  const [error,      setError]      = useState(null)
+  const [error,       setError]       = useState(null)
+  const [updateError, setUpdateError] = useState(null)
 
   // Navigation: 'clientes' | 'tabla'
   const [view,        setView]       = useState(_ps.view ?? 'clientes')
@@ -1268,11 +1269,19 @@ export default function PJUD() {
 
   // Handlers
   const handleUpdate = useCallback(async (movId, cambios) => {
-    setRows(prev => prev.map(r => r.id === movId ? { ...r, ...cambios } : r))
+    let prev = null
+    setRows(p => { prev = p.find(r => r.id === movId); return p.map(r => r.id === movId ? { ...r, ...cambios } : r) })
     const dbCambios = Object.fromEntries(Object.entries(cambios).filter(([k]) => PJUD_DB_FIELDS.has(k)))
     if (Object.keys(dbCambios).length === 0) return
-    const { error: err } = await supabase.from('pjud').update(dbCambios).eq('id', movId)
-    if (err) console.error('Error actualizando PJUD:', err.message)
+    const { data, error: err } = await supabase.from('pjud').update(dbCambios).eq('id', movId).select().single()
+    if (err) {
+      console.error('Error actualizando PJUD:', err.message, err)
+      if (prev) setRows(p => p.map(r => r.id === movId ? prev : r))
+      setUpdateError(`No se pudo guardar: ${err.message}`)
+      setTimeout(() => setUpdateError(null), 5000)
+    } else {
+      if (data) setRows(p => p.map(r => r.id === movId ? data : r))
+    }
   }, [])
 
   const handleAddMovimiento = useCallback(async (causaRit, causaRuc, clienteNombre, movData) => {
@@ -1389,6 +1398,12 @@ export default function PJUD() {
   // ── Client list view ──
   return (
     <div className="flex flex-col h-full bg-[#fafafa]">
+
+      {updateError && (
+        <div className="fixed top-4 right-4 z-50 px-4 py-2.5 bg-red-600 text-white text-[12px] font-medium rounded-xl shadow-lg">
+          ⚠ {updateError}
+        </div>
+      )}
 
       {/* Header */}
       <div className="bg-white border-b border-gray-100 px-6 py-5 flex-shrink-0">
