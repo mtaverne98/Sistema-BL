@@ -18,10 +18,8 @@ const ESTADO_OPTIONS = [
   'Sin respuesta', 'Descartado',
 ]
 const ACCION_OPTIONS = [
-  'Llamar cliente', 'Enviar presupuesto', 'Agendar reunión',
-  'Solicitar antecedentes', 'Revisar documentos', 'Seguimiento telefónico',
-  'Seguimiento por correo', 'Esperando respuesta', 'Preparar propuesta',
-  'Derivar internamente', 'Cerrar prospecto', 'Sin acción pendiente',
+  'Llamar', 'Agendar reunión', 'Enviar presupuesto',
+  'Enviar contrato', 'Seguimiento', 'Esperando respuesta', 'Sin acción',
 ]
 const ORIGEN_OPTIONS  = ['Referido', 'Google Ads', 'MT', 'AB', 'CL', 'Otro']
 const MATERIA_OPTIONS = ['Penal', 'Civil', 'Laboral', 'Familia', 'Policía Local', 'Administrativo', 'Otro']
@@ -41,18 +39,13 @@ const ESTADO_STYLES = {
   'Descartado':             { badge: 'bg-gray-100 text-gray-400',    dot: 'bg-gray-300'     },
 }
 const ACCION_STYLES = {
-  'Llamar cliente':         { dot: 'bg-red-400',     label: 'text-red-600'    },
-  'Enviar presupuesto':     { dot: 'bg-indigo-400',  label: 'text-indigo-600' },
-  'Agendar reunión':        { dot: 'bg-purple-400',  label: 'text-purple-600' },
-  'Solicitar antecedentes': { dot: 'bg-orange-400',  label: 'text-orange-600' },
-  'Revisar documentos':     { dot: 'bg-amber-400',   label: 'text-amber-600'  },
-  'Seguimiento telefónico': { dot: 'bg-blue-400',    label: 'text-blue-600'   },
-  'Seguimiento por correo': { dot: 'bg-sky-400',     label: 'text-sky-600'    },
-  'Esperando respuesta':    { dot: 'bg-slate-300',   label: 'text-slate-500'  },
-  'Preparar propuesta':     { dot: 'bg-violet-400',  label: 'text-violet-600' },
-  'Derivar internamente':   { dot: 'bg-teal-400',    label: 'text-teal-600'   },
-  'Cerrar prospecto':       { dot: 'bg-gray-300',    label: 'text-gray-500'   },
-  'Sin acción pendiente':   { dot: 'bg-gray-200',    label: 'text-gray-400'   },
+  'Llamar':              { dot: 'bg-red-400',    label: 'text-red-600'    },
+  'Agendar reunión':     { dot: 'bg-purple-400', label: 'text-purple-600' },
+  'Enviar presupuesto':  { dot: 'bg-indigo-400', label: 'text-indigo-600' },
+  'Enviar contrato':     { dot: 'bg-emerald-400',label: 'text-emerald-600'},
+  'Seguimiento':         { dot: 'bg-blue-400',   label: 'text-blue-600'   },
+  'Esperando respuesta': { dot: 'bg-slate-300',  label: 'text-slate-500'  },
+  'Sin acción':          { dot: 'bg-gray-200',   label: 'text-gray-400'   },
 }
 const MATERIA_STYLES = {
   'Laboral':       'bg-violet-50 text-violet-600',
@@ -89,7 +82,7 @@ function mapProspectoRow(row) {
     origen:              row.origen              || '',
     materia:             row.materia             || '',
     estado:              row.estado              || 'Nuevo contacto',
-    proxima_accion:      row.proxima_accion      || 'Llamar cliente',
+    proxima_accion:      row.proxima_accion      || 'Llamar',
     presupuesto_enviado: !!row.presupuesto_enviado,
     descripcion:         row.descripcion         || '',
     antecedentes:        row.antecedentes        || '',
@@ -117,7 +110,7 @@ const _PROSPECTOS_SEED = [
     id: 'pr02', nombre: 'Sebastián Fuentes Herrera',
     telefono: '+56 9 7123 4567', email: 'sfuentes.h@hotmail.com',
     fecha_contacto: '14 may 2025', origen: 'Google Ads', materia: 'Laboral',
-    estado: 'Contactado', proxima_accion: 'Llamar cliente',
+    estado: 'Contactado', proxima_accion: 'Llamar',
     presupuesto_enviado: false,
     descripcion: 'Despido sin pago de indemnizaciones. Seis años en empresa de retail. Despido sin previo aviso y sin pago de finiquito.',
     antecedentes: 'Tiene contrato de trabajo y liquidaciones de sueldo. Empresa se niega a pagar. Plazo de prescripción laboral corriendo.',
@@ -130,7 +123,7 @@ const _PROSPECTOS_SEED = [
     id: 'pr03', nombre: 'Patricia Lagos Vidal',
     telefono: '+56 9 6543 2109', email: 'plagosvidal@outlook.com',
     fecha_contacto: '10 may 2025', origen: 'MT', materia: 'Penal',
-    estado: 'Esperando antecedentes', proxima_accion: 'Solicitar antecedentes',
+    estado: 'Esperando antecedentes', proxima_accion: 'Esperando respuesta',
     presupuesto_enviado: false,
     descripcion: 'Víctima de estafa en compraventa de vehículo. Vendedor desapareció tras recibir el pago de $4.800.000.',
     antecedentes: 'Tiene comprobantes de transferencia y conversaciones de WhatsApp. Pendiente: contrato de promesa y denuncia en PDI.',
@@ -144,7 +137,7 @@ const _PROSPECTOS_SEED = [
     id: 'pr04', nombre: 'Rodrigo Carmona Muñoz',
     telefono: '+56 9 5678 9012', email: 'rcarmona.m@gmail.com',
     fecha_contacto: '05 may 2025', origen: 'Referido', materia: 'Civil',
-    estado: 'Seguimiento', proxima_accion: 'Seguimiento telefónico',
+    estado: 'Seguimiento', proxima_accion: 'Seguimiento',
     presupuesto_enviado: true,
     descripcion: 'Cobro de deuda por servicios profesionales a empresa constructora. Facturas impagas por $18.500.000.',
     antecedentes: 'Cinco facturas emitidas y recibidas por la empresa. Empresa reconoce la deuda pero alega problemas de flujo de caja.',
@@ -172,7 +165,7 @@ const _PROSPECTOS_SEED = [
     id: 'pr06', nombre: 'Héctor Morales Jiménez',
     telefono: '+56 9 3456 7890', email: 'hmorales.j@empresa.cl',
     fecha_contacto: '28 abr 2025', origen: 'Google Ads', materia: 'Laboral',
-    estado: 'Cliente aceptado', proxima_accion: 'Cerrar prospecto',
+    estado: 'Cliente aceptado', proxima_accion: 'Sin acción',
     presupuesto_enviado: true,
     descripcion: 'Accidente del trabajo con lesiones en mano derecha. Empresa no reportó a la Mutual de manera oportuna.',
     antecedentes: 'Informe médico, testigos, contrato de trabajo. Incapacidad laboral temporal certificada.',
@@ -200,7 +193,7 @@ const _PROSPECTOS_SEED = [
     id: 'pr08', nombre: 'Diego Fuentes Castro',
     telefono: '+56 9 1234 5678', email: 'dfuentes.c@yahoo.com',
     fecha_contacto: '01 may 2025', origen: 'Otro', materia: 'Policía Local',
-    estado: 'Descartado', proxima_accion: 'Sin acción pendiente',
+    estado: 'Descartado', proxima_accion: 'Sin acción',
     presupuesto_enviado: false,
     descripcion: 'Consulta por multa de tránsito. Monto no justifica representación profesional.',
     antecedentes: 'Multa de $45.000 en Juzgado de Policía Local.',
@@ -213,7 +206,7 @@ const _PROSPECTOS_SEED = [
     id: 'pr09', nombre: 'Lorena Navarro Pérez',
     telefono: '+56 9 9876 5432', email: 'lnavarro.p@gmail.com',
     fecha_contacto: '12 may 2025', origen: 'Referido', materia: 'Civil',
-    estado: 'En evaluación', proxima_accion: 'Preparar propuesta',
+    estado: 'En evaluación', proxima_accion: 'Enviar presupuesto',
     presupuesto_enviado: false,
     descripcion: 'Terminación de arrendamiento por no pago. Arrendatario con 4 meses de atraso en renta.',
     antecedentes: 'Contrato de arrendamiento, comprobantes hasta hace 4 meses, comunicaciones de cobro sin resultado.',
@@ -227,7 +220,7 @@ const _PROSPECTOS_SEED = [
     id: 'pr10', nombre: 'Marco Vidal Álvarez',
     telefono: '+56 9 8765 4321', email: 'mvidal.a@gmail.com',
     fecha_contacto: '08 may 2025', origen: 'MT', materia: 'Penal',
-    estado: 'Sin respuesta', proxima_accion: 'Seguimiento por correo',
+    estado: 'Sin respuesta', proxima_accion: 'Seguimiento',
     presupuesto_enviado: true,
     descripcion: 'Querellante por estafa informática. Víctima de phishing bancario por $9.200.000.',
     antecedentes: 'Cartolas bancarias, movimientos sospechosos, denuncia en PDI. Banco se negó a restituir fondos.',
@@ -453,7 +446,7 @@ function PanelDetalle({ prospecto, onClose, onConvertir, onUpdate }) {
               {prospecto.estado}
             </div>
             <button
-              onClick={() => onUpdate(prospecto.id, { estado: 'Nuevo contacto', proxima_accion: 'Llamar cliente' })}
+              onClick={() => onUpdate(prospecto.id, { estado: 'Nuevo contacto', proxima_accion: 'Llamar' })}
               className="px-3 py-2 text-[11px] font-medium text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors whitespace-nowrap"
             >
               Reactivar
@@ -658,7 +651,7 @@ function FormNuevoProspecto({ onClose, onGuardar }) {
     nombre: '', telefono: '', email: '',
     fecha_contacto: todayISO,
     origen: '', materia: '', estado: 'Nuevo contacto',
-    proxima_accion: 'Llamar cliente',
+    proxima_accion: 'Llamar',
     descripcion: '', antecedentes: '',
   })
   const [guardando, setGuardando] = useState(false)

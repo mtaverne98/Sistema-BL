@@ -1,1147 +1,682 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import {
-  Plus, Trash2, ChevronRight, ChevronDown, ChevronLeft,
-  Gavel, ArrowRight, Command, Search, Calendar,
-  Circle, CheckCircle2, AlignLeft, Star, Send,
-  Sun, BookOpen, Database, CheckSquare, X, Shield,
+  ChevronLeft, ChevronRight, ChevronDown, ChevronUp,
+  Gavel, CheckSquare, Clock, Plus, Check, X,
+  Circle, CheckCircle2, ArrowRight, AlertTriangle,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
-import { useNavigate } from 'react-router-dom'
 
-// ── constants ──────────────────────────────────────────────────────────────────
+// ── Constantes ────────────────────────────────────────────────────────────────
 const TODAY = new Date().toISOString().slice(0, 10)
-const STORAGE_KEY = 'bl_workspace_v2'
 
 const ACTION_VERBS = new Set([
   'llamar','enviar','revisar','preparar','solicitar',
   'mandar','subir','hacer','contactar','confirmar',
 ])
 
-// ── helpers ────────────────────────────────────────────────────────────────────
-function uid() { return Math.random().toString(36).slice(2, 9) }
-function capitalizeFirst(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : '' }
-function formatDateLong(iso) {
-  return new Date(iso + 'T00:00:00')
-    .toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
-}
-function monthLabel(ym) {
-  const [y, m] = ym.split('-').map(Number)
-  return new Date(y, m - 1, 1).toLocaleDateString('es-CL', { month: 'long', year: 'numeric' }).toUpperCase()
-}
-function shiftMonth(ym, delta) {
-  const [y, m] = ym.split('-').map(Number)
-  return new Date(y, m - 1 + delta, 1).toISOString().slice(0, 7)
-}
-function daysSince(isoDate) {
-  if (!isoDate) return 0
-  const d = new Date(isoDate + 'T00:00:00')
-  const t = new Date(TODAY + 'T00:00:00')
-  return Math.floor((t - d) / 86400000)
-}
-const DOW = ['DOM','LUN','MAR','MIÉ','JUE','VIE','SÁB']
-function dowShort(iso) { return DOW[new Date(iso + 'T00:00:00').getDay()] }
-function dayNum(iso)   { return new Date(iso + 'T00:00:00').getDate() }
+const DIAS_CORTO = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb']
+const DIAS_LARGO = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado']
+const MESES     = ['enero','febrero','marzo','abril','mayo','junio','julio',
+                   'agosto','septiembre','octubre','noviembre','diciembre']
 
-function isActionLine(text) {
-  const word = text.trim().toLowerCase().split(/\s+/)[0]
-  return ACTION_VERBS.has(word)
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function uid() { return Math.random().toString(36).slice(2, 9) }
+
+function addDays(isoDate, n) {
+  const d = new Date(isoDate + 'T00:00:00')
+  d.setDate(d.getDate() + n)
+  return d.toISOString().slice(0, 10)
 }
-function detectClient(text, clientes) {
+
+function getMonday(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00')
+  const day = d.getDay()
+  const diff = day === 0 ? -6 : 1 - day
+  d.setDate(d.getDate() + diff)
+  return d.toISOString().slice(0, 10)
+}
+
+function getISOWeek(isoDate) {
+  const d = new Date(isoDate + 'T00:00:00')
+  const dt = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()))
+  dt.setUTCDate(dt.getUTCDate() + 4 - (dt.getUTCDay() || 7))
+  const yearStart = new Date(Date.UTC(dt.getUTCFullYear(), 0, 1))
+  return Math.ceil(((dt - yearStart) / 86400000 + 1) / 7)
+}
+
+function fmtWeekRange(monday) {
+  const friday = addDays(monday, 4)
+  const d1 = new Date(monday + 'T00:00:00')
+  const d2 = new Date(friday + 'T00:00:00')
+  const m1 = MESES[d1.getMonth()]
+  const m2 = MESES[d2.getMonth()]
+  const y  = d1.getFullYear()
+  return m1 === m2
+    ? `${d1.getDate()}–${d2.getDate()} ${m1} ${y}`
+    : `${d1.getDate()} ${m1} – ${d2.getDate()} ${m2} ${y}`
+}
+
+function dowShort(isoDate) {
+  return DIAS_CORTO[new Date(isoDate + 'T00:00:00').getDay()]
+}
+function dowLong(isoDate) {
+  return DIAS_LARGO[new Date(isoDate + 'T00:00:00').getDay()]
+}
+function dayNum(isoDate) {
+  return new Date(isoDate + 'T00:00:00').getDate()
+}
+
+function isActionText(text) {
+  return ACTION_VERBS.has(text.trim().toLowerCase().split(/\s+/)[0])
+}
+
+function detectClientName(text, clientes) {
   if (!text || !clientes.length) return null
   const lower = text.toLowerCase()
-  return clientes.find(c => c.nombre && c.nombre.length > 2 && lower.includes(c.nombre.toLowerCase())) || null
-}
-function detectCausa(text, causas) {
-  if (!text || !causas.length) return null
-  const lower = text.toLowerCase()
-  const ritPattern = /\b([A-Z]-\d+-\d{4})\b/gi
-  let m
-  while ((m = ritPattern.exec(text)) !== null) {
-    const hit = causas.find(c => c.rit && c.rit.toUpperCase() === m[1].toUpperCase())
-    if (hit) return hit
-  }
-  const rucPattern = /\b(\d{15,20})\b/g
-  while ((m = rucPattern.exec(text)) !== null) {
-    const hit = causas.find(c => c.ruc && c.ruc === m[1])
-    if (hit) return hit
-  }
-  return causas.find(c => {
-    if (!c.cliente_nombre || c.cliente_nombre.length < 3) return false
-    const cn = c.cliente_nombre.toLowerCase()
-    if (lower.includes(cn)) return true
-    // Also match if text contains 2 consecutive words of the client name
-    // e.g. "Cristian Soto" matches "CRISTIAN SOTO CONTRERAS"
-    const words = cn.split(/\s+/).filter(w => w.length > 1)
-    for (let i = 0; i < words.length - 1; i++) {
-      if (lower.includes(words[i] + ' ' + words[i + 1])) return true
-    }
-    return false
-  }) || null
+  return clientes.find(c => c.nombre && c.nombre.length > 2 &&
+    lower.includes(c.nombre.toLowerCase()))?.nombre || null
 }
 
-function getMonthWeeks(yearMonth) {
-  const [year, month] = yearMonth.split('-').map(Number)
-  const firstDay = new Date(year, month - 1, 1)
-  const lastDay  = new Date(year, month, 0)
-  const weeks = []
-  const c = new Date(firstDay)
-  const dow = c.getDay() === 0 ? 6 : c.getDay() - 1
-  c.setDate(c.getDate() - dow)
-  while (c.getTime() <= lastDay.getTime()) {
-    const wStart = c.toISOString().slice(0, 10)
-    const work   = []
-    for (let i = 0; i < 5; i++) {
-      const d = new Date(c); d.setDate(c.getDate() + i)
-      work.push(d.toISOString().slice(0, 10))
-    }
-    const wEnd = new Date(c); wEnd.setDate(c.getDate() + 6)
-    const wEndIso  = wEnd.toISOString().slice(0, 10)
-    const mDays    = work.filter(date => new Date(date + 'T00:00:00').getMonth() === month - 1)
-    if (mDays.length) {
-      const f = new Date(mDays[0] + 'T00:00:00')
-      const l = new Date(mDays[mDays.length - 1] + 'T00:00:00')
-      weeks.push({
-        weekStart: wStart, weekEnd: wEndIso, days: mDays,
-        label: `${f.getDate()} – ${l.getDate()} ${l.toLocaleDateString('es-CL', { month: 'long' }).toUpperCase()}`,
-      })
-    }
-    c.setDate(c.getDate() + 7)
-  }
-  return weeks
-}
-function isCurrentWeek(ws, we) { return TODAY >= ws && TODAY <= we }
-function isPastWeek(we)        { return we < TODAY }
-
-// ── workspace state (dumpLines + agendaMonth only — hoItems/semana live in Supabase) ──
-const WS_DEFAULT = {
-  dumpLines:  [{ id: 'init', text: '', type: 'nota', done: false, tag: null }],
-  agendaMonth: TODAY.slice(0, 7),
+function nowHHMM() {
+  return new Date().toTimeString().slice(0, 5)
 }
 
-function loadWS() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (raw) {
-      const p = JSON.parse(raw)
-      return { dumpLines: p.dumpLines || WS_DEFAULT.dumpLines, agendaMonth: TODAY.slice(0, 7) }
-    }
-    // Migrar dumpLines desde v1
-    const old = localStorage.getItem('bl_workspace_v1')
-    if (old) {
-      const p = JSON.parse(old)
-      const dumpLines = (p.dump || '').split('\n').filter(Boolean)
-        .map(text => ({ id: uid(), text, type: isActionLine(text) ? 'checkbox' : 'nota', done: false, tag: null }))
-      if (!dumpLines.length) dumpLines.push({ id: uid(), text: '', type: 'nota', done: false, tag: null })
-      return { dumpLines, agendaMonth: TODAY.slice(0, 7) }
-    }
-    return { ...WS_DEFAULT }
-  } catch { return { ...WS_DEFAULT } }
+function fmtHora(h) {
+  if (!h) return ''
+  return h.slice(0, 5)
 }
 
-// ── CheckItem ─────────────────────────────────────────────────────────────────
-function CheckItem({ item, onToggle, onDelete, onMove }) {
+// Resalta nombre de cliente en texto
+function HighlightedText({ text, clienteNombre }) {
+  if (!clienteNombre) return <span>{text}</span>
+  const idx = text.toLowerCase().indexOf(clienteNombre.toLowerCase())
+  if (idx === -1) return <span>{text}</span>
   return (
-    <div className="flex items-start gap-3 group py-1.5">
-      <button onClick={() => onToggle(item.id)}
-        className="mt-[1px] flex-shrink-0 text-gray-300 hover:text-[#1a2e4a] transition-colors">
-        {item.done ? <CheckCircle2 size={13} className="text-[#1a2e4a]" /> : <Circle size={13} />}
-      </button>
-      <span className={`text-[13px] flex-1 leading-snug min-w-0 ${item.done ? 'line-through text-gray-300' : 'text-gray-700'}`}>
-        {item.text}
-      </span>
-      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-        {onMove && (
-          <button onClick={() => onMove(item.id)} title="Siguiente semana"
-            className="text-gray-300 hover:text-blue-400 transition-colors">
-            <ArrowRight size={11} />
-          </button>
-        )}
-        <button onClick={() => onDelete(item.id)} className="text-gray-300 hover:text-red-400 transition-colors">
-          <Trash2 size={11} />
-        </button>
-      </div>
-    </div>
+    <span>
+      {text.slice(0, idx)}
+      <span className="text-[#2570BA] font-medium">{text.slice(idx, idx + clienteNombre.length)}</span>
+      {text.slice(idx + clienteNombre.length)}
+    </span>
   )
 }
 
-// ── InlineAdd (agenda items) ──────────────────────────────────────────────────
-function InlineAdd({ onAdd, placeholder = 'Agregar...', autoFocus = false }) {
-  const [val, setVal] = useState('')
-  const ref = useRef(null)
-  useEffect(() => { if (autoFocus) ref.current?.focus() }, [autoFocus])
-  function submit() {
-    const t = val.trim(); if (!t) return
-    onAdd(t); setVal('')
-  }
-  return (
-    <div className="flex items-center gap-1.5 mt-1 group">
-      <Plus size={11} className="text-gray-200 group-focus-within:text-gray-400 transition-colors flex-shrink-0" />
-      <input ref={ref} value={val} onChange={e => setVal(e.target.value)}
-        onKeyDown={e => { if (e.key === 'Enter') submit() }}
-        placeholder={placeholder}
-        className="flex-1 bg-transparent border-none outline-none text-[13px] text-gray-600 placeholder-gray-200 focus:placeholder-gray-300" />
-    </div>
-  )
-}
-
-// ── ConversionMenu ────────────────────────────────────────────────────────────
-function ConversionMenu({ detectedCausa, onConvert, onClose }) {
+// ── ConvMenu ──────────────────────────────────────────────────────────────────
+function ConvMenu({ nota, onConvert, onClose }) {
   useEffect(() => {
-    const timer = setTimeout(onClose, 6000)
+    const t = setTimeout(onClose, 6000)
     const fn = e => { if (e.key === 'Escape') onClose() }
     window.addEventListener('keydown', fn)
-    return () => { clearTimeout(timer); window.removeEventListener('keydown', fn) }
+    return () => { clearTimeout(t); window.removeEventListener('keydown', fn) }
   }, [onClose])
 
   return (
-    <div className="flex items-center gap-1 p-1.5 bg-white border border-gray-200 rounded-xl shadow-xl z-50 flex-wrap">
-      {detectedCausa && (
-        <span className="text-[10px] text-gray-400 px-1.5 flex-shrink-0">
-          <span className="text-[#2570BA] font-semibold">{detectedCausa.cliente_nombre}</span>
-          {detectedCausa.rit && <span className="font-mono ml-1">· {detectedCausa.rit}</span>} ·
-        </span>
-      )}
+    <div className="flex items-center gap-1 mt-1 ml-10">
       <button onClick={() => onConvert('tarea')}
-        className="flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-100 transition-colors">
-        <CheckSquare size={10} /> Tarea
+        className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium bg-[#1A2E4A] text-white rounded-md hover:opacity-80 transition-opacity">
+        <ArrowRight size={9} />Tarea
       </button>
       <button onClick={() => onConvert('seguimiento')}
-        className="flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors">
-        <BookOpen size={10} /> Seguimiento
+        className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium bg-[#2570BA]/10 text-[#2570BA] border border-[#2570BA]/20 rounded-md hover:bg-[#2570BA]/20 transition-colors">
+        <ArrowRight size={9} />Seguimiento
       </button>
-      <button onClick={() => onConvert('siau')}
-        className="flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-lg bg-violet-50 text-violet-600 hover:bg-violet-100 transition-colors">
-        <Database size={10} /> SIAU
-      </button>
-      <button onClick={() => onConvert('nota')}
-        className="text-[11px] text-gray-400 hover:text-gray-600 px-2 py-1 rounded-lg hover:bg-gray-50 transition-colors">
+      <button onClick={onClose}
+        className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium text-gray-400 border border-gray-200 rounded-md hover:text-gray-600 transition-colors">
         Solo nota
       </button>
-      <button onClick={onClose} className="ml-0.5 text-gray-200 hover:text-gray-400 transition-colors">
-        <X size={10} />
-      </button>
     </div>
   )
 }
 
-// ── CauseConfirmPanel ──────────────────────────────────────────────────────────
-function CauseConfirmPanel({ state, causas, onConfirm, onSwitchSearch, onClose }) {
-  const [query, setQuery] = useState('')
-  const searchRef = useRef(null)
-  const { detectedCausa, searching } = state
-
-  useEffect(() => {
-    if (searching) setTimeout(() => searchRef.current?.focus(), 30)
-  }, [searching])
-
-  const results = useMemo(() => {
-    if (!query.trim()) return []
-    const lq = query.toLowerCase()
-    return causas.filter(c =>
-      (c.rit && c.rit.toLowerCase().includes(lq)) ||
-      (c.ruc && c.ruc.toLowerCase().includes(lq)) ||
-      (c.cliente_nombre && c.cliente_nombre.toLowerCase().includes(lq)) ||
-      (c.materia && c.materia.toLowerCase().includes(lq))
-    ).slice(0, 5)
-  }, [query, causas])
-
-  if (!searching && detectedCausa) {
-    return (
-      <div className="mt-2 p-2.5 bg-[#EEF5FF] rounded-xl border border-[#C5DBFB]">
-        <div className="text-[10px] text-[#2570BA]/70 font-semibold uppercase tracking-wider mb-1">Detectado automáticamente</div>
-        <div className="text-[12px] text-[#1a2e4a] font-semibold leading-snug">
-          {detectedCausa.cliente_nombre}
-          {detectedCausa.rit
-            ? <span className="ml-1.5 font-mono font-normal text-[11px] text-[#2570BA]">{detectedCausa.rit}</span>
-            : detectedCausa.ruc
-              ? <span className="ml-1.5 font-mono font-normal text-[11px] text-[#2570BA]">RUC {detectedCausa.ruc.slice(0, 8)}…</span>
-              : null}
-          {detectedCausa.materia && (
-            <span className="ml-1.5 text-[11px] font-normal text-gray-400">· {detectedCausa.materia}</span>
-          )}
-        </div>
-        <div className="flex items-center gap-2 mt-2">
-          <button onClick={() => onConfirm(detectedCausa)}
-            className="px-2.5 py-1 bg-[#2570BA] text-white rounded-lg text-[11px] font-semibold hover:bg-[#1e5fa0] transition-colors">
-            Confirmar y guardar
-          </button>
-          <button onClick={onSwitchSearch}
-            className="px-2.5 py-1 bg-white text-[#2570BA] border border-[#C5DBFB] rounded-lg text-[11px] hover:bg-blue-50 transition-colors">
-            Cambiar
-          </button>
-          <button onClick={() => onConfirm(null)}
-            className="ml-auto text-[11px] text-gray-300 hover:text-gray-500 transition-colors">
-            Sin causa
-          </button>
-        </div>
-      </div>
-    )
-  }
+// ── NotaItem ──────────────────────────────────────────────────────────────────
+function NotaItem({ nota, clientes, onToggle, onDelete, onConvert, isPast }) {
+  const [showConv, setShowConv] = useState(false)
+  const [showDel, setShowDel] = useState(false)
+  const isAction = nota.tipo === 'checkbox'
 
   return (
-    <div className="mt-2 p-2.5 bg-gray-50 rounded-xl border border-gray-100">
-      <div className="flex items-center gap-1.5 mb-1.5">
-        <Search size={11} className="text-gray-400 flex-shrink-0" />
-        <input
-          ref={searchRef}
-          value={query}
-          onChange={e => setQuery(e.target.value)}
-          placeholder="Buscar causa por nombre, RIT o RUC..."
-          className="flex-1 text-[12px] bg-transparent border-none outline-none text-gray-700 placeholder-gray-300"
-        />
-        <button onClick={onClose} className="text-gray-200 hover:text-gray-400 transition-colors flex-shrink-0">
-          <X size={10} />
-        </button>
-      </div>
-      {results.length > 0 && (
-        <div className="space-y-0.5 mb-1">
-          {results.map(c => (
-            <button key={c.id} onClick={() => onConfirm(c)}
-              className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-white border border-transparent hover:border-gray-200 transition-colors text-left">
-              <span className="text-[12px] font-medium text-gray-700 flex-1 truncate">{c.cliente_nombre}</span>
-              {c.rit
-                ? <span className="text-[10px] font-mono text-[#2570BA] flex-shrink-0">{c.rit}</span>
-                : c.ruc
-                  ? <span className="text-[10px] font-mono text-gray-400 flex-shrink-0">RUC</span>
-                  : null}
-            </button>
-          ))}
-        </div>
-      )}
-      {query.trim() && results.length === 0 && (
-        <p className="text-[11px] text-gray-300 italic px-2 mb-1">Sin resultados</p>
-      )}
-      <button onClick={() => onConfirm(null)}
-        className="text-[11px] text-gray-300 hover:text-gray-500 transition-colors px-2">
-        Guardar sin causa
-      </button>
-    </div>
-  )
-}
-
-// ── BrainDump (line-based) ─────────────────────────────────────────────────────
-function BrainDump({ lines, onChange, clientes, causas, onSaveConversion }) {
-  const inputRefs = useRef({})
-  const [convMenu, setConvMenu] = useState(null)       // { lineId, text, detectedCausa }
-  const [causeConfirm, setCauseConfirm] = useState(null) // { convType, lineId, text, detectedCausa, searching }
-  const [savedMsg, setSavedMsg] = useState(null)
-
-  function handleKeyDown(e, lineId) {
-    if (e.key === 'Enter') {
-      e.preventDefault()
-      const line = lines.find(l => l.id === lineId)
-      if (!line) return
-      const newLine = { id: uid(), text: '', type: 'nota', done: false, tag: null }
-      const idx = lines.findIndex(l => l.id === lineId)
-      onChange([...lines.slice(0, idx + 1), newLine, ...lines.slice(idx + 1)])
-      if (line.text.trim().length > 2) {
-        const detectedCausa = detectCausa(line.text, causas)
-        setConvMenu({ lineId, text: line.text, detectedCausa })
-      }
-      setTimeout(() => inputRefs.current[newLine.id]?.focus(), 20)
-    }
-    if (e.key === 'Backspace') {
-      const line = lines.find(l => l.id === lineId)
-      if (line && line.text === '' && lines.length > 1) {
-        e.preventDefault()
-        const idx = lines.findIndex(l => l.id === lineId)
-        onChange(lines.filter(l => l.id !== lineId))
-        const prevLine = lines[Math.max(0, idx - 1)]
-        setTimeout(() => inputRefs.current[prevLine?.id]?.focus(), 20)
-      }
-    }
-  }
-
-  function updateLine(lineId, text) {
-    const type = isActionLine(text) ? 'checkbox' : 'nota'
-    onChange(lines.map(l => l.id === lineId ? { ...l, text, type } : l))
-  }
-
-  function handleConvert(convType) {
-    if (!convMenu) return
-    const { lineId, text, detectedCausa } = convMenu
-    setConvMenu(null)
-    if (convType === 'nota') {
-      onSaveConversion(lineId, text, convType, null)
-      return
-    }
-    setCauseConfirm({ convType, lineId, text, detectedCausa, searching: !detectedCausa })
-  }
-
-  function confirmCause(causa) {
-    const { convType, lineId, text } = causeConfirm
-    setCauseConfirm(null)
-    onSaveConversion(lineId, text, convType, causa)
-    if (causa) {
-      const label = causa.cliente_nombre + (causa.rit ? ' · ' + causa.rit : causa.ruc ? ' · RUC' : '')
-      setSavedMsg('✓ Guardado en ' + label)
-      setTimeout(() => setSavedMsg(null), 3000)
-    }
-  }
-
-  const TAG_STYLES = {
-    tarea:       'bg-rose-50 text-rose-600',
-    seguimiento: 'bg-blue-50 text-blue-600',
-    siau:        'bg-violet-50 text-violet-600',
-  }
-
-  return (
-    <div>
-      {lines.map((line, idx) => (
-        <div key={line.id} className="flex items-start gap-1.5 py-[2px] group">
-          {line.type === 'checkbox' ? (
-            <button onClick={() => onChange(lines.map(l => l.id === line.id ? { ...l, done: !l.done } : l))}
-              className="mt-[3px] flex-shrink-0 text-gray-300 hover:text-[#1a2e4a] transition-colors">
-              {line.done
-                ? <CheckCircle2 size={13} className="text-[#1a2e4a]" />
-                : <Circle size={13} />}
-            </button>
-          ) : (
-            <div className="w-[13px] mt-[3px] flex-shrink-0" />
-          )}
-          <div className="flex-1 min-w-0 flex items-baseline gap-1 flex-wrap">
-            {line.done ? (
-              <span className="text-[13px] line-through text-gray-300 leading-relaxed">{line.text}</span>
-            ) : (
-              <input
-                ref={el => { inputRefs.current[line.id] = el }}
-                value={line.text}
-                onChange={e => updateLine(line.id, e.target.value)}
-                onKeyDown={e => handleKeyDown(e, line.id)}
-                placeholder={idx === lines.length - 1 ? 'Escribe lo que sea...' : ''}
-                className="bg-transparent border-none outline-none text-[13px] text-gray-700 placeholder-gray-200 leading-relaxed w-full"
-              />
-            )}
-            {line.tag && (
-              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 ${TAG_STYLES[line.tag] || 'bg-gray-100 text-gray-500'}`}>
-                → {line.tag}
-              </span>
-            )}
-          </div>
-          <button onClick={() => onChange(lines.filter(l => l.id !== line.id))}
-            className="opacity-0 group-hover:opacity-100 mt-[3px] text-gray-200 hover:text-red-400 transition-all flex-shrink-0">
-            <X size={10} />
-          </button>
-        </div>
-      ))}
-
-      {convMenu && (
-        <div className="mt-1.5 mb-1">
-          <ConversionMenu
-            detectedCausa={convMenu.detectedCausa}
-            onConvert={handleConvert}
-            onClose={() => setConvMenu(null)}
-          />
-        </div>
-      )}
-
-      {causeConfirm && (
-        <CauseConfirmPanel
-          state={causeConfirm}
-          causas={causas}
-          onConfirm={confirmCause}
-          onSwitchSearch={() => setCauseConfirm(p => ({ ...p, searching: true }))}
-          onClose={() => setCauseConfirm(null)}
-        />
-      )}
-
-      {savedMsg && (
-        <div className="mt-2 flex items-center gap-1.5 px-2.5 py-1.5 bg-green-50 border border-green-100 rounded-lg text-[11px] text-green-700 font-medium">
-          {savedMsg}
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ── WeekRow ───────────────────────────────────────────────────────────────────
-function WeekRow({ week, semana, audiencias, tareas, isCurrent, isPast,
-  onToggle, onDelete, onAdd, onMove, hoItems, onToggleHo, onDeleteHo, onAddHo }) {
-
-  const [expanded, setExpanded] = useState(isCurrent)
-  const [picker, setPicker]     = useState(false)
-  const [selDay, setSelDay]     = useState(null)
-  const [addTxt, setAddTxt]     = useState('')
-  const addRef = useRef(null)
-
-  const displayDays = useMemo(() => {
-    if (isCurrent && !week.days.includes(TODAY) && TODAY >= week.weekStart && TODAY <= week.weekEnd)
-      return [...week.days, TODAY].sort()
-    return week.days
-  }, [week.days, week.weekStart, week.weekEnd, isCurrent])
-
-  const activeDays = useMemo(() => displayDays.filter(date => {
-    return audiencias.some(a => a.fecha === date)
-      || tareas.some(t => t.fecha_vencimiento === date && t.estado !== 'Completada')
-      || (semana[date] || []).length > 0
-      || (isCurrent && date === TODAY)
-  }), [displayDays, semana, audiencias, tareas, isCurrent])
-
-  const count = useMemo(() => {
-    let n = 0
-    week.days.forEach(d => {
-      n += audiencias.filter(a => a.fecha === d).length
-      n += tareas.filter(t => t.fecha_vencimiento === d && t.estado !== 'Completada').length
-      n += (semana[d] || []).length
-    })
-    if (isCurrent) n += hoItems.filter(i => !i.done).length
-    return n
-  }, [week.days, semana, audiencias, tareas, isCurrent, hoItems])
-
-  function openPicker() {
-    const def = displayDays.includes(TODAY) ? TODAY : displayDays[0]
-    setSelDay(def); setAddTxt(''); setPicker(true)
-    setTimeout(() => addRef.current?.focus(), 60)
-  }
-  function submitPicker() {
-    const t = addTxt.trim(); if (!t || !selDay) return
-    if (selDay === TODAY) onAddHo(t); else onAdd(selDay, t)
-    setAddTxt(''); setPicker(false)
-  }
-
-  return (
-    <div>
-      <button onClick={() => { if (!isCurrent) setExpanded(v => !v) }}
-        className={`w-full flex items-center gap-2 px-2 py-2 rounded-lg transition-colors text-left group ${isCurrent ? 'cursor-default' : 'hover:bg-gray-50'}`}>
-        <div className={`w-1 h-1 rounded-full flex-shrink-0 ${isCurrent ? 'bg-[#2570BA]' : isPast ? 'bg-gray-200' : 'bg-gray-300'}`} />
-        <span className={`text-[11px] font-semibold uppercase tracking-widest flex-1 ${
-          isCurrent ? 'text-[#1a2e4a]' : isPast ? 'text-gray-300' : 'text-gray-500'
-        }`}>
-          {week.label}
+    <div className="group"
+      onMouseEnter={() => setShowDel(true)}
+      onMouseLeave={() => setShowDel(false)}>
+      <div className="flex items-start gap-2 py-1 px-1 rounded-lg hover:bg-gray-50/70 transition-colors">
+        {/* Hora */}
+        <span className="text-[10px] text-gray-300 tabular-nums mt-0.5 w-9 flex-shrink-0">
+          {fmtHora(nota.hora)}
         </span>
-        {isCurrent && (
-          <span className="text-[8px] font-bold bg-[#2570BA] text-white px-1.5 py-0.5 rounded-full uppercase tracking-wide flex-shrink-0">
-            ACTUAL
-          </span>
+        {/* Checkbox / dot */}
+        {isAction ? (
+          <button onClick={() => !isPast && onToggle(nota)} disabled={isPast}
+            className={`mt-0.5 flex-shrink-0 transition-colors ${
+              nota.completada ? 'text-emerald-500' : 'text-gray-300 hover:text-gray-500'
+            } ${isPast ? 'cursor-default' : 'cursor-pointer'}`}>
+            {nota.completada
+              ? <CheckCircle2 size={13} />
+              : <Circle size={13} />}
+          </button>
+        ) : (
+          <span className="mt-1.5 w-1 h-1 rounded-full bg-gray-300 flex-shrink-0" />
         )}
-        {count > 0 && (
-          <span className={`text-[10px] flex-shrink-0 ${isPast ? 'text-gray-200' : 'text-gray-400'}`}>{count}</span>
-        )}
-        {!isCurrent && (expanded
-          ? <ChevronDown  size={11} className={`flex-shrink-0 ${isPast ? 'text-gray-200' : 'text-gray-400'}`} />
-          : <ChevronRight size={11} className={`flex-shrink-0 ${isPast ? 'text-gray-200' : 'text-gray-400'}`} />)}
-      </button>
-
-      {(isCurrent || expanded) && (
-        <div className="ml-3 pl-3 border-l border-gray-100 pb-1 mt-0.5 mb-1">
-          {!isCurrent && activeDays.length === 0 && (
-            <p className="py-1.5 text-[11px] text-gray-300 italic">Sin actividad registrada</p>
+        {/* Texto */}
+        <span className={`text-xs flex-1 leading-relaxed ${
+          nota.completada ? 'line-through text-gray-300' : 'text-gray-700'
+        }`}>
+          <HighlightedText text={nota.texto} clienteNombre={nota.cliente_nombre} />
+          {nota.tag && (
+            <span className={`ml-1.5 text-[9px] px-1 py-0.5 rounded font-medium ${
+              nota.tag === 'tarea' ? 'bg-[#1A2E4A]/10 text-[#1A2E4A]' :
+              nota.tag === 'seguimiento' ? 'bg-[#2570BA]/10 text-[#2570BA]' :
+              'bg-gray-100 text-gray-400'
+            }`}>
+              {nota.tag === 'tarea' ? '→ Tarea' : nota.tag === 'seguimiento' ? '→ Seguimiento' : 'nota'}
+            </span>
           )}
-
-          {(isCurrent ? displayDays : activeDays).flatMap((date, idx, arr) => {
-            const auds    = audiencias.filter(a => a.fecha === date)
-            const tars    = tareas.filter(t => t.fecha_vencimiento === date && t.estado !== 'Completada')
-            const custom  = semana[date] || []
-            const isToday = date === TODAY
-            const sep     = idx < arr.length - 1
-              ? [<hr key={`sep-${date}`} className="border-gray-100 my-2" />]
-              : []
-
-            if (isToday) {
-              return [
-                <div key={date} className="mb-3 mt-1">
-                  <div className="relative pl-3 py-3 pr-3 rounded-xl bg-gray-50/80"
-                    style={{ borderLeft: '2.5px solid #2570BA' }}>
-                    <div className="flex items-center gap-2 mb-2.5">
-                      <Sun size={12} className="text-[#2570BA]/60 flex-shrink-0" />
-                      <span className="text-[13px] font-bold text-[#1a2e4a] tracking-wide">
-                        {dowShort(date)} {dayNum(date)}
-                      </span>
-                      <span className="text-[8px] font-bold bg-[#2570BA] text-white px-1.5 py-0.5 rounded-full uppercase tracking-wide">
-                        HOY
-                      </span>
-                      {hoItems.filter(i => !i.done).length > 0 && (
-                        <span className="text-[10px] text-[#1a2e4a]/40 ml-auto">
-                          {hoItems.filter(i => !i.done).length} pendiente{hoItems.filter(i => !i.done).length !== 1 ? 's' : ''}
-                        </span>
-                      )}
-                    </div>
-
-                    {auds.map(a => (
-                      <div key={a.id} className="flex items-center gap-3 py-1.5">
-                        <Gavel size={11} className="text-[#1a2e4a]/40 flex-shrink-0" />
-                        <span className="text-[12.5px] text-gray-800 font-semibold flex-1 truncate">{a.causa_rit}</span>
-                        {a.hora && <span className="text-[11px] text-[#1a2e4a]/50 tabular-nums font-medium flex-shrink-0">{a.hora}</span>}
-                      </div>
-                    ))}
-                    {tars.map(t => (
-                      <div key={t.id} className="flex items-center gap-3 py-1.5">
-                        <span className="w-2.5 h-2.5 rounded-full border-2 border-amber-400 flex-shrink-0" />
-                        <span className="text-[12.5px] text-gray-600 flex-1 truncate">{t.titulo}</span>
-                      </div>
-                    ))}
-                    {(auds.length > 0 || tars.length > 0) && (
-                      <div className="border-t border-[#1a2e4a]/08 my-1.5" />
-                    )}
-                    {hoItems.map(item => (
-                      <CheckItem key={item.id} item={item} onToggle={onToggleHo} onDelete={onDeleteHo} />
-                    ))}
-                    {custom.map(item => (
-                      <CheckItem key={item.id} item={item}
-                        onToggle={id => onToggle(date, id)}
-                        onDelete={id => onDelete(date, id)}
-                        onMove={id => onMove(date, id)} />
-                    ))}
-                    <InlineAdd onAdd={onAddHo} placeholder="Agregar a HOY..." />
-                  </div>
-                </div>,
-                ...sep,
-              ]
-            }
-
-            return [
-              <div key={date} className="mb-3 mt-1">
-                <div className="flex items-center gap-1.5 mb-2.5">
-                  <span className={`text-[13px] font-semibold ${isPast ? 'text-gray-300' : 'text-gray-400'}`}>
-                    {dowShort(date)} {dayNum(date)}
-                  </span>
-                  <div className={`flex-1 h-px ${isPast ? 'bg-gray-50' : 'bg-gray-100'}`} />
-                </div>
-                {auds.map(a => (
-                  <div key={a.id} className="flex items-center gap-3 py-1.5 pl-0.5">
-                    <Gavel size={11} className="text-[#1a2e4a]/35 flex-shrink-0" />
-                    <span className={`text-[12.5px] font-medium flex-1 truncate ${isPast ? 'text-gray-400' : 'text-gray-700'}`}>{a.causa_rit}</span>
-                    {a.hora && <span className={`text-[11px] tabular-nums flex-shrink-0 ${isPast ? 'text-gray-300' : 'text-gray-400'}`}>{a.hora}</span>}
-                  </div>
-                ))}
-                {tars.map(t => (
-                  <div key={t.id} className="flex items-center gap-3 py-1.5 pl-0.5">
-                    <span className={`w-2.5 h-2.5 rounded-full border-2 flex-shrink-0 ${isPast ? 'border-gray-200' : 'border-amber-300'}`} />
-                    <span className={`text-[12.5px] flex-1 truncate ${isPast ? 'text-gray-400' : 'text-gray-600'}`}>{t.titulo}</span>
-                  </div>
-                ))}
-                {custom.map(item => (
-                  <div key={item.id} className="pl-0.5">
-                    <CheckItem item={item}
-                      onToggle={id => onToggle(date, id)}
-                      onDelete={id => onDelete(date, id)}
-                      onMove={id => onMove(date, id)} />
-                  </div>
-                ))}
-                {isCurrent && (
-                  <InlineAdd onAdd={text => onAdd(date, text)} placeholder="Agregar..." />
-                )}
-              </div>,
-              ...sep,
-            ]
-          })}
-
-          {picker ? (
-            <div className="mt-1 p-2.5 bg-gray-50 rounded-lg border border-gray-100">
-              <div className="flex items-center gap-1 mb-2 flex-wrap">
-                {displayDays.map(date => (
-                  <button key={date} onClick={() => setSelDay(date)}
-                    className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-md transition-all ${
-                      selDay === date ? 'bg-[#2570BA] text-white'
-                        : date === TODAY ? 'bg-[#1a2e4a]/10 text-[#1a2e4a]'
-                        : 'bg-white border border-gray-200 text-gray-500 hover:border-gray-300'
-                    }`}>
-                    {dowShort(date)} {dayNum(date)}
-                  </button>
-                ))}
-              </div>
-              <div className="flex items-center gap-2">
-                <input ref={addRef} value={addTxt} onChange={e => setAddTxt(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter') submitPicker(); if (e.key === 'Escape') setPicker(false) }}
-                  placeholder="Nota, tarea o recordatorio..."
-                  className="flex-1 text-[12px] text-gray-700 placeholder-gray-300 bg-transparent border-none outline-none" />
-                <button onClick={() => setPicker(false)} className="text-[10px] text-gray-300 hover:text-gray-500 flex-shrink-0">cancelar</button>
-              </div>
-            </div>
-          ) : (
-            <button onClick={openPicker}
-              className="flex items-center gap-1.5 mt-0.5 py-1 px-2 text-[12px] text-gray-300 hover:text-[#1a2e4a] transition-colors group">
-              <Plus size={12} /> agregar
+        </span>
+        {/* Acciones */}
+        <div className={`flex items-center gap-1 flex-shrink-0 transition-opacity ${showDel && !isPast ? 'opacity-100' : 'opacity-0'}`}>
+          {isAction && !nota.completada && !nota.tag && (
+            <button onClick={() => setShowConv(s => !s)}
+              className="text-[9px] text-[#2570BA]/60 hover:text-[#2570BA] px-1.5 py-0.5 border border-[#2570BA]/20 rounded">
+              convertir
             </button>
           )}
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ── RightSection ──────────────────────────────────────────────────────────────
-function RightSection({ title, icon: Icon, iconColor, badge, children, defaultOpen = true }) {
-  const [open, setOpen] = useState(defaultOpen)
-  return (
-    <div className="px-5 py-4 border-t border-gray-50">
-      <button onClick={() => setOpen(v => !v)}
-        className="w-full flex items-center gap-2 mb-2 text-left group">
-        <Icon size={12} className={`flex-shrink-0 ${iconColor}`} />
-        <span className="text-[10.5px] font-semibold text-gray-400 uppercase tracking-widest flex-1">{title}</span>
-        {badge > 0 && (
-          <span className="min-w-[16px] h-4 px-1 rounded-full bg-[#1a2e4a]/08 text-[#1a2e4a] text-[9px] font-bold flex items-center justify-center">
-            {badge}
-          </span>
-        )}
-        {open
-          ? <ChevronDown  size={11} className="text-gray-200 flex-shrink-0" />
-          : <ChevronRight size={11} className="text-gray-200 flex-shrink-0" />}
-      </button>
-      {open && <div>{children}</div>}
-    </div>
-  )
-}
-
-// ── CausasActivasItem (con inline nota) ───────────────────────────────────────
-function CausasActivasItem({ causa, onAddNota }) {
-  const [showInput, setShowInput] = useState(false)
-  const [notaText, setNotaText]   = useState('')
-  const [saving, setSaving]       = useState(false)
-  const inputRef = useRef(null)
-
-  function open() { setShowInput(true); setTimeout(() => inputRef.current?.focus(), 20) }
-  async function submit() {
-    const t = notaText.trim()
-    if (!t) { setShowInput(false); return }
-    setSaving(true)
-    await onAddNota(causa, t)
-    setNotaText(''); setShowInput(false); setSaving(false)
-  }
-
-  return (
-    <div className="py-[3px]">
-      <div className="flex items-center gap-2 group">
-        <ChevronRight size={11} className="text-gray-200 group-hover:text-gray-400 flex-shrink-0" />
-        <span className="text-[12px] font-medium text-gray-500 flex-shrink-0">{causa.rit}</span>
-        {causa.cliente && (
-          <span className="text-[12px] text-gray-400 truncate flex-1">{causa.cliente}</span>
-        )}
-        <button onClick={open}
-          className="opacity-0 group-hover:opacity-100 text-[10px] text-[#2570BA]/70 hover:text-[#2570BA] transition-all flex-shrink-0 whitespace-nowrap">
-          + nota
-        </button>
-      </div>
-      {showInput && (
-        <div className="ml-5 mt-1 flex items-center gap-1.5 bg-gray-50 rounded-lg px-2.5 py-1.5 border border-gray-100">
-          <input
-            ref={inputRef}
-            value={notaText}
-            onChange={e => setNotaText(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter') submit(); if (e.key === 'Escape') { setShowInput(false); setNotaText('') } }}
-            placeholder="Nota para esta causa..."
-            disabled={saving}
-            className="flex-1 text-[12px] bg-transparent border-none outline-none text-gray-700 placeholder-gray-300"
-          />
-          <button onClick={submit} disabled={saving || !notaText.trim()}
-            className="text-[#2570BA] hover:text-[#1a2e4a] disabled:opacity-30 transition-colors">
-            <Send size={11} />
-          </button>
-          <button onClick={() => { setShowInput(false); setNotaText('') }}
-            className="text-gray-300 hover:text-gray-500 transition-colors">
+          <button onClick={() => onDelete(nota)}
+            className="text-gray-300 hover:text-red-400 transition-colors">
             <X size={11} />
           </button>
         </div>
+      </div>
+      {showConv && (
+        <ConvMenu nota={nota}
+          onConvert={async (tipo) => {
+            setShowConv(false)
+            await onConvert(nota, tipo)
+          }}
+          onClose={() => setShowConv(false)} />
       )}
     </div>
   )
 }
 
-// ── CMD+K ─────────────────────────────────────────────────────────────────────
-const CMD_ACTIONS = [
-  { id: 'clientes',   label: 'Ir a Clientes',   path: '/clientes'   },
-  { id: 'causas',     label: 'Ir a Causas',      path: '/causas'     },
-  { id: 'audiencias', label: 'Ir a Audiencias',  path: '/audiencias' },
-  { id: 'plazos',     label: 'Ir a Plazos',      path: '/plazos'     },
-  { id: 'documentos', label: 'Ir a Documentos',  path: '/documentos' },
-  { id: 'tareas',     label: 'Ir a Tareas',      path: '/tareas'     },
-]
-function CmdKModal({ open, onClose, navigate }) {
-  const [q, setQ] = useState('')
-  const ref = useRef(null)
-  useEffect(() => { if (open) { setQ(''); setTimeout(() => ref.current?.focus(), 50) } }, [open])
-  useEffect(() => {
-    if (!open) return
-    const fn = e => { if (e.key === 'Escape') onClose() }
-    window.addEventListener('keydown', fn)
-    return () => window.removeEventListener('keydown', fn)
-  }, [open, onClose])
-  const filtered = useMemo(() => {
-    const lq = q.toLowerCase()
-    return q ? CMD_ACTIONS.filter(a => a.label.toLowerCase().includes(lq)) : CMD_ACTIONS
-  }, [q])
-  if (!open) return null
+// ── SystemItems ───────────────────────────────────────────────────────────────
+function SystemItems({ audiencias = [], tareas = [], plazos = [] }) {
+  if (!audiencias.length && !tareas.length && !plazos.length) return null
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[18vh]"
-      style={{ background: 'rgba(0,0,0,0.22)', backdropFilter: 'blur(2px)' }}
-      onClick={e => { if (e.target === e.currentTarget) onClose() }}>
-      <div className="w-[460px] bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden">
-        <div className="flex items-center gap-2.5 px-4 py-3 border-b border-gray-100">
-          <Search size={14} className="text-gray-400 flex-shrink-0" />
-          <input ref={ref} value={q} onChange={e => setQ(e.target.value)}
-            placeholder="Buscar o navegar..."
-            className="flex-1 text-[14px] text-gray-800 placeholder-gray-300 bg-transparent border-none outline-none" />
-          <kbd className="text-[10px] text-gray-300 bg-gray-50 border border-gray-200 rounded px-1.5 py-0.5">ESC</kbd>
-        </div>
-        <div className="py-1.5 max-h-64 overflow-y-auto">
-          {filtered.map(a => (
-            <button key={a.id} onClick={() => { navigate(a.path); onClose() }}
-              className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition-colors group text-left">
-              <span className="text-[13px] text-gray-700 group-hover:text-gray-900 flex-1">{a.label}</span>
-              <ChevronRight size={12} className="text-gray-300 group-hover:text-gray-400" />
-            </button>
-          ))}
-        </div>
+    <div className="mb-2">
+      <p className="text-[9px] font-semibold text-gray-300 uppercase tracking-widest mb-1.5 px-1">
+        Desde el sistema
+      </p>
+      <div className="space-y-0.5">
+        {audiencias.map(a => (
+          <div key={a.id} className="flex items-center gap-2 px-1 py-1 rounded-lg hover:bg-gray-50/70">
+            <Gavel size={11} className="text-purple-400 flex-shrink-0" />
+            <span className="text-[10px] font-medium text-gray-500 tabular-nums w-9 flex-shrink-0">
+              {fmtHora(a.hora)}
+            </span>
+            <span className="text-xs text-gray-700 flex-1 truncate">
+              {a.cliente_nombre || a.causa_rit || a.rit}
+            </span>
+            {(a.rit || a.causa_rit) && (
+              <span className="text-[9px] text-gray-400 flex-shrink-0">
+                {a.rit || a.causa_rit}
+              </span>
+            )}
+          </div>
+        ))}
+        {tareas.map(t => (
+          <div key={t.id} className="flex items-center gap-2 px-1 py-1 rounded-lg hover:bg-gray-50/70">
+            <CheckSquare size={11} className="text-blue-400 flex-shrink-0" />
+            <span className="text-[10px] text-gray-400 w-9 flex-shrink-0" />
+            <span className="text-xs text-gray-700 flex-1 truncate">{t.titulo}</span>
+            {t.cliente_nombre && (
+              <span className="text-[9px] text-gray-400 flex-shrink-0 truncate max-w-[80px]">
+                {t.cliente_nombre.split(' ')[0]}
+              </span>
+            )}
+          </div>
+        ))}
+        {plazos.map(p => (
+          <div key={p.id} className="flex items-center gap-2 px-1 py-1 rounded-lg hover:bg-gray-50/70">
+            <AlertTriangle size={11} className={`flex-shrink-0 ${p.urgente ? 'text-red-400' : 'text-amber-400'}`} />
+            <span className="text-[10px] text-gray-400 w-9 flex-shrink-0" />
+            <span className="text-xs text-gray-700 flex-1 truncate">{p.descripcion}</span>
+            {p.urgente && (
+              <span className="text-[9px] font-semibold text-red-500 flex-shrink-0">URGENTE</span>
+            )}
+          </div>
+        ))}
       </div>
+      <div className="mt-2 mb-2 border-t border-gray-100/80" />
     </div>
   )
 }
 
-// ── main ──────────────────────────────────────────────────────────────────────
-export default function Apuntes() {
-  const navigate    = useNavigate()
-  const [audiencias,    setAudiencias]    = useState([])
-  const [tareas,        setTareas]        = useState([])
-  const [clientes,      setClientes]      = useState([])
-  const [causas,        setCausas]        = useState([])
-  const [ws,            setWs]            = useState(loadWS)
-  const [cmdOpen,       setCmdOpen]       = useState(false)
-  // ── Supabase-backed agenda state ──────────────────────────────────────────
-  const [hoItems,       setHoItems]       = useState([])
-  const [semana,        setSemana]        = useState({})
-  const [agendaError,   setAgendaError]   = useState(null)
+// ── DiaRow ────────────────────────────────────────────────────────────────────
+function DiaRow({
+  date, isToday, isOpen, isPast, onToggle,
+  notas, audiencias, tareas, plazos,
+  clientes, onAddNota, onToggleNota, onDeleteNota, onConvertNota,
+}) {
+  const [inputVal, setInputVal]     = useState('')
+  const [isAdding, setIsAdding]     = useState(false)
+  const [newNotaId, setNewNotaId]   = useState(null)
+  const inputRef = useRef(null)
 
-  // ── Load reference data ────────────────────────────────────────────────────
-  useEffect(() => {
-    supabase.from('audiencias')
-      .select('id, tipo, fecha, hora, causa_rit, estado, cliente_nombre')
-      .then(({ data }) => setAudiencias(data || []))
-    supabase.from('tareas')
-      .select('id, titulo, fecha_vencimiento, estado, causa_rit, cliente_nombre, categoria')
-      .then(({ data }) => setTareas(data || []))
-    supabase.from('clientes')
-      .select('id, nombre')
-      .then(({ data }) => setClientes(data || []))
-    supabase.from('causas')
-      .select('id, rit, ruc, cliente_nombre, materia, estado')
-      .then(({ data }) => setCausas(data || []))
-  }, [])
+  const totalItems = (audiencias?.length || 0) + (tareas?.length || 0) +
+                     (plazos?.length || 0) + (notas?.length || 0)
 
-  // ── Load agenda from Supabase, migrate localStorage data if Supabase is empty ──
-  useEffect(() => {
-    async function loadAgenda() {
-      const { data, error } = await supabase
-        .from('agenda_notas')
-        .select('id, fecha, texto, tipo, completada')
-        .order('created_at', { ascending: true })
+  const pendientes = (notas || []).filter(n => !n.completada && n.tipo === 'checkbox').length +
+                     (tareas?.length || 0) + (plazos?.length || 0)
 
-      if (error) {
-        setAgendaError('No se pudo cargar la agenda: ' + error.message)
-        return
-      }
-
-      // Migrate hoItems/semana from localStorage if Supabase has no rows yet
-      if (!data.length) {
-        try {
-          const raw = localStorage.getItem(STORAGE_KEY)
-          if (raw) {
-            const p = JSON.parse(raw)
-            const oldHo  = p.hoItems || []
-            const oldSem = p.semana  || {}
-            if (oldHo.length || Object.keys(oldSem).length) {
-              const rows = [
-                ...oldHo.map(i => ({ texto: i.text, tipo: 'hoy', completada: i.done || false })),
-                ...Object.entries(oldSem).flatMap(([fecha, items]) =>
-                  (items || []).map(i => ({ fecha, texto: i.text, tipo: 'dia', completada: i.done || false }))
-                ),
-              ]
-              const { data: migrated } = await supabase
-                .from('agenda_notas')
-                .insert(rows)
-                .select('id, fecha, texto, tipo, completada')
-              applyRows(migrated || [])
-              return
-            }
-          }
-        } catch {}
-      }
-
-      applyRows(data)
-    }
-
-    function applyRows(rows) {
-      setHoItems(rows.filter(r => r.tipo === 'hoy').map(r => ({ id: r.id, text: r.texto, done: r.completada })))
-      const sm = {}
-      for (const r of rows.filter(r => r.tipo === 'dia')) {
-        if (!sm[r.fecha]) sm[r.fecha] = []
-        sm[r.fecha].push({ id: r.id, text: r.texto, done: r.completada })
-      }
-      setSemana(sm)
-    }
-
-    loadAgenda()
-  }, [])
-
-  // ── Persist dumpLines + agendaMonth to localStorage ────────────────────────
-  useEffect(() => { localStorage.setItem(STORAGE_KEY, JSON.stringify(ws)) }, [ws])
+  // Preview del día (colapsado)
+  const previewItems = useMemo(() => {
+    const items = []
+    if (audiencias?.length) items.push(`${audiencias.length} audiencia${audiencias.length > 1 ? 's' : ''}`)
+    if (tareas?.length) items.push(`${tareas.length} tarea${tareas.length > 1 ? 's' : ''}`)
+    if (plazos?.length) items.push(`${plazos.length} plazo${plazos.length > 1 ? 's' : ''}`)
+    const checkboxPend = (notas || []).filter(n => n.tipo === 'checkbox' && !n.completada)
+    if (checkboxPend.length) items.push(checkboxPend[0].texto.slice(0, 30))
+    else if (notas?.length) items.push(notas[0].texto.slice(0, 30))
+    return items.slice(0, 2)
+  }, [audiencias, tareas, plazos, notas])
 
   useEffect(() => {
-    const fn = e => { if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); setCmdOpen(v => !v) } }
-    window.addEventListener('keydown', fn)
-    return () => window.removeEventListener('keydown', fn)
-  }, [])
+    if (isAdding && inputRef.current) inputRef.current.focus()
+  }, [isAdding])
 
-  // ── mutations ──────────────────────────────────────────────────────────────
-  const setField = useCallback((f, v) => setWs(p => ({ ...p, [f]: v })), [])
-
-  const toggleHo = useCallback(async (id) => {
-    const item = hoItems.find(i => i.id === id)
-    if (!item) return
-    const newDone = !item.done
-    setHoItems(prev => prev.map(i => i.id === id ? { ...i, done: newDone } : i))
-    const { error } = await supabase.from('agenda_notas').update({ completada: newDone }).eq('id', id)
-    if (error) setHoItems(prev => prev.map(i => i.id === id ? { ...i, done: item.done } : i))
-  }, [hoItems])
-
-  const deleteHo = useCallback(async (id) => {
-    setHoItems(prev => prev.filter(i => i.id !== id))
-    const { error } = await supabase.from('agenda_notas').delete().eq('id', id)
-    if (error) console.error('Error borrando agenda_nota:', error.message)
-  }, [])
-
-  const addHo = useCallback(async (text) => {
-    const tempId = 'tmp-' + uid()
-    setHoItems(prev => [...prev, { id: tempId, text, done: false }])
-    const { data, error } = await supabase
-      .from('agenda_notas')
-      .insert([{ texto: text, tipo: 'hoy', completada: false }])
-      .select('id, texto, completada')
-      .single()
-    if (error) {
-      console.error('Error agregando nota hoy:', error.message)
-      setHoItems(prev => prev.filter(i => i.id !== tempId))
-    } else {
-      setHoItems(prev => prev.map(i => i.id === tempId ? { id: data.id, text: data.texto, done: data.completada } : i))
+  function handleKeyDown(e) {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      const text = inputVal.trim()
+      if (!text) { setIsAdding(false); return }
+      onAddNota(date, text).then(id => {
+        setNewNotaId(id)
+        setTimeout(() => setNewNotaId(null), 8000)
+      })
+      setInputVal('')
+      setIsAdding(false)
     }
-  }, [])
-
-  const toggleS = useCallback(async (date, id) => {
-    const item = (semana[date] || []).find(i => i.id === id)
-    if (!item) return
-    const newDone = !item.done
-    setSemana(prev => ({ ...prev, [date]: (prev[date] || []).map(i => i.id === id ? { ...i, done: newDone } : i) }))
-    const { error } = await supabase.from('agenda_notas').update({ completada: newDone }).eq('id', id)
-    if (error) setSemana(prev => ({ ...prev, [date]: (prev[date] || []).map(i => i.id === id ? { ...i, done: item.done } : i) }))
-  }, [semana])
-
-  const deleteS = useCallback(async (date, id) => {
-    setSemana(prev => ({ ...prev, [date]: (prev[date] || []).filter(i => i.id !== id) }))
-    const { error } = await supabase.from('agenda_notas').delete().eq('id', id)
-    if (error) console.error('Error borrando agenda_nota:', error.message)
-  }, [])
-
-  const addS = useCallback(async (date, text) => {
-    const tempId = 'tmp-' + uid()
-    setSemana(prev => ({ ...prev, [date]: [...(prev[date] || []), { id: tempId, text, done: false }] }))
-    const { data, error } = await supabase
-      .from('agenda_notas')
-      .insert([{ fecha: date, texto: text, tipo: 'dia', completada: false }])
-      .select('id, fecha, texto, completada')
-      .single()
-    if (error) {
-      console.error('Error agregando nota día:', error.message)
-      setSemana(prev => ({ ...prev, [date]: (prev[date] || []).filter(i => i.id !== tempId) }))
-    } else {
-      setSemana(prev => ({
-        ...prev,
-        [date]: (prev[date] || []).map(i => i.id === tempId ? { id: data.id, text: data.texto, done: data.completada } : i),
-      }))
+    if (e.key === 'Escape') {
+      setInputVal('')
+      setIsAdding(false)
     }
-  }, [])
-
-  const moveS = useCallback(async (date, id) => {
-    const next = new Date(date + 'T00:00:00'); next.setDate(next.getDate() + 7)
-    const nIso = next.toISOString().slice(0, 10)
-    const item = (semana[date] || []).find(i => i.id === id)
-    if (!item) return
-    setSemana(prev => ({
-      ...prev,
-      [date]: (prev[date] || []).filter(i => i.id !== id),
-      [nIso]: [...(prev[nIso] || []), { ...item }],
-    }))
-    const { error } = await supabase.from('agenda_notas').update({ fecha: nIso }).eq('id', id)
-    if (error) {
-      setSemana(prev => ({
-        ...prev,
-        [date]: [...(prev[date] || []), item],
-        [nIso]: (prev[nIso] || []).filter(i => i.id !== id),
-      }))
-    }
-  }, [semana])
-
-  const goPrev = useCallback(() => setWs(p => ({ ...p, agendaMonth: shiftMonth(p.agendaMonth, -1) })), [])
-  const goNext = useCallback(() => setWs(p => ({ ...p, agendaMonth: shiftMonth(p.agendaMonth, +1) })), [])
-
-  // ── BrainDump conversions ─────────────────────────────────────────────────
-  const handleSaveConversion = useCallback(async (lineId, text, convType, causa) => {
-    const causaRit      = causa?.rit            || null
-    const causaId       = causa?.id             || null
-    const clienteNombre = causa?.cliente_nombre || null
-
-    if (convType === 'tarea') {
-      await supabase.from('tareas').insert([{
-        titulo:         text,
-        estado:         'Pendiente',
-        prioridad:      isActionLine(text) ? 'Alta' : 'Media',
-        causa_rit:      causaRit,
-        causa_id:       causaId,
-        cliente_nombre: clienteNombre,
-      }])
-    } else if (convType === 'seguimiento') {
-      await supabase.from('revisiones').insert([{
-        causa_id:       causaId,
-        causa_rit:      causaRit,
-        cliente_nombre: clienteNombre,
-        fecha:          TODAY,
-        proxima_accion: text,
-      }])
-    } else if (convType === 'siau') {
-      await supabase.from('siau').insert([{
-        solicitud:      text,
-        fecha:          TODAY,
-        estado:         'Pendiente',
-        causa_rit:      causaRit,
-        causa_id:       causaId,
-        cliente_nombre: clienteNombre,
-      }])
-    }
-
-    // Mark line with tag
-    setWs(p => ({
-      ...p,
-      dumpLines: p.dumpLines.map(l => l.id === lineId ? { ...l, tag: convType } : l),
-    }))
-  }, [])
-
-  // ── Causas activas "+ nota" ───────────────────────────────────────────────
-  const handleAddNotaToCausa = useCallback(async (causa, text) => {
-    await supabase.from('revisiones').insert([{
-      causa_id:       causa.id       || null,
-      causa_rit:      causa.rit      || null,
-      cliente_nombre: causa.cliente  || null,
-      fecha:          TODAY,
-      proxima_accion: text,
-    }])
-  }, [])
-
-  const causasActivas = useMemo(() => {
-    const seen = new Set()
-    return tareas
-      .filter(t => { if (!t.causa_rit || seen.has(t.causa_rit)) return false; seen.add(t.causa_rit); return true })
-      .map(t => ({ rit: t.causa_rit, cliente: t.cliente_nombre || '', id: t.causa_id || null }))
-      .slice(0, 8)
-  }, [tareas])
-
-  const monthWeeks = useMemo(() => getMonthWeeks(ws.agendaMonth), [ws.agendaMonth])
-
-  const dumpLines = ws.dumpLines || [{ id: 'init', text: '', type: 'nota', done: false, tag: null }]
-  function setDumpLines(lines) { setField('dumpLines', lines) }
+  }
 
   return (
-    <div className="flex flex-col h-full bg-[#f7f8fa] overflow-hidden">
+    <div className={`border-b border-gray-100/80 last:border-0 ${
+      isToday ? 'bg-[#F4F8FD]' : 'bg-white'
+    }`} style={isToday ? { borderLeft: '2.5px solid #2570BA' } : {}}>
 
-      {agendaError && (
-        <div className="flex-shrink-0 px-8 py-2 bg-red-50 border-b border-red-100 text-[12px] text-red-600">
-          ⚠ {agendaError}
+      {/* Header del día */}
+      <button
+        onClick={onToggle}
+        className={`w-full flex items-center gap-3 px-5 py-3 text-left transition-colors ${
+          isToday ? 'hover:bg-[#EEF4FC]' : 'hover:bg-gray-50/60'
+        }`}>
+        {isOpen
+          ? <ChevronDown size={13} className="text-gray-300 flex-shrink-0" />
+          : <ChevronRight size={13} className="text-gray-300 flex-shrink-0" />}
+
+        {/* Nombre del día */}
+        <div className="flex items-center gap-2 min-w-[70px]">
+          <span className={`text-[13px] font-semibold ${isToday ? 'text-[#2570BA]' : 'text-gray-700'}`}>
+            {dowShort(date)} {dayNum(date)}
+          </span>
+          {isToday && (
+            <span className="text-[9px] font-bold text-[#2570BA] uppercase tracking-wider bg-[#2570BA]/10 px-1.5 py-0.5 rounded">
+              HOY
+            </span>
+          )}
         </div>
-      )}
 
-      {/* ── Top bar ── */}
-      <div className="flex-shrink-0 flex items-center justify-between px-8 py-4 bg-white border-b border-gray-100">
-        <div>
-          <h1 className="text-[17px] font-semibold text-gray-900 tracking-tight leading-none">Agenda diaria</h1>
-          <p className="text-[12px] text-gray-400 mt-0.5">{capitalizeFirst(formatDateLong(TODAY))}</p>
-        </div>
-        <button onClick={() => setCmdOpen(true)}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-gray-200 bg-gray-50 hover:bg-white hover:border-gray-300 transition-all text-gray-500">
-          <Command size={12} /><span className="text-[12px]">K</span>
-        </button>
-      </div>
+        {/* Preview (colapsado) */}
+        {!isOpen && previewItems.length > 0 && (
+          <span className="text-[11px] text-gray-400 truncate flex-1">
+            {previewItems.join(' · ')}
+          </span>
+        )}
+        {!isOpen && previewItems.length === 0 && (
+          <span className="text-[11px] text-gray-300 flex-1">Sin items</span>
+        )}
 
-      {/* ── Workspace surface ── */}
-      <div className="flex-1 overflow-y-auto px-8 py-5 min-h-0">
-        <div className="bg-white rounded-xl border border-gray-100 shadow-[0_1px_4px_rgba(0,0,0,0.05)] overflow-hidden"
-          style={{ display: 'grid', gridTemplateColumns: '1fr 1.35fr' }}>
+        {/* Contador */}
+        {totalItems > 0 && (
+          <span className={`ml-auto text-[10px] tabular-nums flex-shrink-0 font-medium ${
+            pendientes > 0 ? 'text-gray-400' : 'text-gray-300'
+          }`}>
+            {totalItems}
+          </span>
+        )}
+      </button>
 
-          {/* ══ LEFT: Agenda Diaria ══ */}
-          <div className="border-r border-gray-50">
-            <div className="flex items-center gap-2 px-5 py-3.5 border-b border-gray-50 sticky top-0 bg-white z-10">
-              <Calendar size={12} className="text-blue-400 flex-shrink-0" />
-              <span className="text-[10.5px] font-semibold text-gray-500 uppercase tracking-widest flex-1">Agenda Diaria</span>
-              <div className="flex items-center gap-0.5">
-                <button onClick={goPrev} className="p-1 rounded hover:bg-gray-50 text-gray-400 hover:text-gray-600 transition-colors">
-                  <ChevronLeft size={12} />
-                </button>
-                <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide px-1 whitespace-nowrap">
-                  {monthLabel(ws.agendaMonth)}
-                </span>
-                <button onClick={goNext} className="p-1 rounded hover:bg-gray-50 text-gray-400 hover:text-gray-600 transition-colors">
-                  <ChevronRight size={12} />
-                </button>
-              </div>
-            </div>
+      {/* Contenido expandido */}
+      {isOpen && (
+        <div className="px-5 pb-4 pt-0">
+          <SystemItems
+            audiencias={audiencias}
+            tareas={tareas}
+            plazos={plazos}
+          />
 
-            <div className="px-4 py-3 space-y-0.5">
-              {monthWeeks.map(week => (
-                <WeekRow
-                  key={week.weekStart}
-                  week={week}
-                  semana={semana}
-                  audiencias={audiencias}
-                  tareas={tareas}
-                  isCurrent={isCurrentWeek(week.weekStart, week.weekEnd)}
-                  isPast={isPastWeek(week.weekEnd)}
-                  onToggle={toggleS}
-                  onDelete={deleteS}
-                  onAdd={addS}
-                  onMove={moveS}
-                  hoItems={hoItems}
-                  onToggleHo={toggleHo}
-                  onDeleteHo={deleteHo}
-                  onAddHo={addHo}
-                />
+          {/* Apuntes */}
+          {(notas || []).length > 0 && (
+            <div className="mb-2">
+              {(notas?.length > 0 || (audiencias?.length || tareas?.length || plazos?.length) > 0) &&
+                (notas || []).length > 0 &&
+                (audiencias?.length || tareas?.length || plazos?.length) > 0 && (
+                <p className="text-[9px] font-semibold text-gray-300 uppercase tracking-widest mb-1.5 px-1">
+                  Apuntes
+                </p>
+              )}
+              {(notas || []).map(n => (
+                <div key={n.id}>
+                  <NotaItem
+                    nota={n}
+                    clientes={clientes}
+                    isPast={isPast}
+                    onToggle={onToggleNota}
+                    onDelete={onDeleteNota}
+                    onConvert={onConvertNota}
+                  />
+                  {n.id === newNotaId && isActionText(n.texto) && !n.tag && (
+                    <ConvMenu nota={n}
+                      onConvert={async (tipo) => { setNewNotaId(null); await onConvertNota(n, tipo) }}
+                      onClose={() => setNewNotaId(null)} />
+                  )}
+                </div>
               ))}
             </div>
-          </div>
+          )}
 
-          {/* ══ RIGHT: Brain dump + sections ══ */}
-          <div className="divide-y divide-gray-50">
-
-            {/* Brain Dump */}
-            <div className="px-5 py-4">
-              <div className="flex items-center gap-2 mb-3">
-                <AlignLeft size={12} className="text-purple-400 flex-shrink-0" />
-                <span className="text-[10.5px] font-semibold text-gray-400 uppercase tracking-widest flex-1">Brain Dump</span>
-                <span className="text-[10px] text-gray-300">Enter para convertir</span>
+          {/* Input para agregar */}
+          {!isPast && (
+            isAdding ? (
+              <div className="flex items-center gap-2 mt-1 px-1">
+                <span className="text-[10px] text-gray-300 w-9 flex-shrink-0">{nowHHMM()}</span>
+                <input
+                  ref={inputRef}
+                  value={inputVal}
+                  onChange={e => setInputVal(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder="Anotar… (Enter para guardar, Esc para cancelar)"
+                  className="flex-1 text-xs text-gray-700 placeholder:text-gray-300 bg-transparent outline-none border-b border-[#2570BA]/30 pb-0.5 focus:border-[#2570BA] transition-colors"
+                />
               </div>
-              <BrainDump
-                lines={dumpLines}
-                onChange={setDumpLines}
-                clientes={clientes}
-                causas={causas}
-                onSaveConversion={handleSaveConversion}
-              />
-            </div>
-
-
-            {/* Causas activas */}
-            {causasActivas.length > 0 && (
-              <RightSection title="Causas activas" icon={Star} iconColor="text-yellow-400" defaultOpen={false}>
-                {causasActivas.map(c => (
-                  <CausasActivasItem
-                    key={c.rit}
-                    causa={c}
-                    onAddNota={handleAddNotaToCausa}
-                  />
-                ))}
-              </RightSection>
-            )}
-
-          </div>
+            ) : (
+              <button
+                onClick={() => setIsAdding(true)}
+                className="flex items-center gap-1.5 mt-1 px-1 text-[11px] text-gray-300 hover:text-[#2570BA] transition-colors group">
+                <Plus size={11} className="group-hover:text-[#2570BA]" />
+                <span>anotar (hora automática)</span>
+              </button>
+            )
+          )}
         </div>
+      )}
+    </div>
+  )
+}
+
+// ── Componente principal ──────────────────────────────────────────────────────
+export default function Apuntes() {
+  const [weekMonday, setWeekMonday] = useState(() => {
+    try { return localStorage.getItem('agenda_week') || getMonday(TODAY) }
+    catch { return getMonday(TODAY) }
+  })
+
+  const [expandedDays, setExpandedDays] = useState(() => new Set([TODAY]))
+  const [notas,      setNotas]      = useState({})
+  const [audiencias, setAudiencias] = useState({})
+  const [tareas,     setTareas]     = useState({})
+  const [plazos,     setPlazos]     = useState({})
+  const [clientes,   setClientes]   = useState([])
+  const [loading,    setLoading]    = useState(false)
+
+  // Días de la semana (Lun–Vie)
+  const weekDays = useMemo(() =>
+    [0,1,2,3,4].map(i => addDays(weekMonday, i)),
+  [weekMonday])
+
+  const isCurrentWeek = weekMonday === getMonday(TODAY)
+  const weekNum  = getISOWeek(weekMonday)
+  const weekRange = fmtWeekRange(weekMonday)
+
+  // Subtítulo: solo si HOY está en la semana visible
+  const todayInWeek = weekDays.includes(TODAY)
+  const pendientesTotal = useMemo(() => {
+    if (!todayInWeek) return 0
+    return weekDays.reduce((sum, date) => {
+      const checkPend = (notas[date] || []).filter(n => !n.completada && n.tipo === 'checkbox').length
+      return sum + checkPend + (tareas[date]?.length || 0) + (plazos[date]?.length || 0)
+    }, 0)
+  }, [weekDays, notas, tareas, plazos, todayInWeek])
+
+  // Navegar semanas
+  function navWeek(delta) {
+    const next = addDays(weekMonday, delta * 7)
+    setWeekMonday(next)
+    try { localStorage.setItem('agenda_week', next) } catch {}
+    // Expandir HOY si está en la nueva semana
+    const newDays = [0,1,2,3,4].map(i => addDays(next, i))
+    if (newDays.includes(TODAY)) {
+      setExpandedDays(prev => new Set([...prev, TODAY]))
+    }
+  }
+
+  function toggleDay(date) {
+    setExpandedDays(prev => {
+      const next = new Set(prev)
+      next.has(date) ? next.delete(date) : next.add(date)
+      return next
+    })
+  }
+
+  // Fetch datos de la semana
+  useEffect(() => {
+    const start = weekMonday
+    const end   = addDays(weekMonday, 4)
+
+    async function fetchAll() {
+      setLoading(true)
+      const [
+        { data: notasData },
+        { data: audData },
+        { data: tareasData },
+        { data: plazosData },
+        { data: clientesData },
+      ] = await Promise.all([
+        supabase.from('agenda_notas').select('*')
+          .gte('fecha', start).lte('fecha', end).order('hora'),
+        supabase.from('audiencias').select('id, fecha, hora, rit, causa_rit, cliente_nombre, tipo')
+          .gte('fecha', start).lte('fecha', end).order('hora'),
+        supabase.from('tareas').select('id, titulo, fecha_vencimiento, cliente_nombre, estado, prioridad')
+          .eq('estado', 'Pendiente')
+          .gte('fecha_vencimiento', start).lte('fecha_vencimiento', end),
+        supabase.from('plazos').select('id, descripcion, fecha_limite, causa_rit, cliente_nombre, urgente')
+          .gte('fecha_limite', start).lte('fecha_limite', end),
+        supabase.from('clientes').select('id, nombre'),
+      ])
+
+      function groupBy(arr, key) {
+        return (arr || []).reduce((m, r) => {
+          const k = r[key]
+          if (!m[k]) m[k] = []
+          m[k].push(r)
+          return m
+        }, {})
+      }
+
+      setNotas(groupBy(notasData, 'fecha'))
+      setAudiencias(groupBy(audData, 'fecha'))
+      setTareas(groupBy(tareasData, 'fecha_vencimiento'))
+      setPlazos(groupBy(plazosData, 'fecha_limite'))
+      setClientes(clientesData || [])
+      setLoading(false)
+    }
+
+    fetchAll()
+  }, [weekMonday])
+
+  // Expandir HOY al montar
+  useEffect(() => {
+    setExpandedDays(prev => new Set([...prev, TODAY]))
+  }, [])
+
+  // Agregar nota
+  const handleAddNota = useCallback(async (date, text) => {
+    const hora  = nowHHMM()
+    const tipo  = isActionText(text) ? 'checkbox' : 'nota'
+    const clNombre = detectClientName(text, clientes)
+
+    const { data, error } = await supabase.from('agenda_notas')
+      .insert([{ fecha: date, hora, texto: text, tipo,
+                 cliente_nombre: clNombre || null, completada: false }])
+      .select().single()
+
+    if (error) {
+      console.error('[agenda_notas] insert error:', error.message, error.details)
+      return null
+    }
+    if (data) {
+      setNotas(prev => ({ ...prev, [date]: [...(prev[date] || []), data] }))
+      return data.id
+    }
+    return null
+  }, [clientes])
+
+  // Toggle completada
+  const handleToggleNota = useCallback(async (nota) => {
+    const { error } = await supabase.from('agenda_notas')
+      .update({ completada: !nota.completada }).eq('id', nota.id)
+    if (!error) {
+      setNotas(prev => ({
+        ...prev,
+        [nota.fecha]: (prev[nota.fecha] || []).map(n =>
+          n.id === nota.id ? { ...n, completada: !n.completada } : n)
+      }))
+    }
+  }, [])
+
+  // Eliminar nota
+  const handleDeleteNota = useCallback(async (nota) => {
+    const { error } = await supabase.from('agenda_notas').delete().eq('id', nota.id)
+    if (!error) {
+      setNotas(prev => ({
+        ...prev,
+        [nota.fecha]: (prev[nota.fecha] || []).filter(n => n.id !== nota.id)
+      }))
+    }
+  }, [])
+
+  // Convertir nota en tarea o seguimiento
+  const handleConvertNota = useCallback(async (nota, tipo) => {
+    if (tipo === 'tarea') {
+      await supabase.from('tareas').insert([{
+        titulo:         nota.texto,
+        cliente_nombre: nota.cliente_nombre || null,
+        estado:         'Pendiente',
+        prioridad:      'Media',
+        fecha_vencimiento: nota.fecha,
+      }])
+    } else if (tipo === 'seguimiento') {
+      await supabase.from('revisiones').insert([{
+        fecha:      nota.fecha,
+        por_hacer:  nota.texto,
+        semana_key: `SEG-${nota.fecha}`,
+      }])
+    }
+    // Marcar tag en la nota
+    const { error } = await supabase.from('agenda_notas')
+      .update({ tag: tipo }).eq('id', nota.id)
+    if (!error) {
+      setNotas(prev => ({
+        ...prev,
+        [nota.fecha]: (prev[nota.fecha] || []).map(n =>
+          n.id === nota.id ? { ...n, tag: tipo } : n)
+      }))
+    }
+  }, [])
+
+  // ── Render ──────────────────────────────────────────────────────────────────
+  return (
+    <div className="flex flex-col h-full min-h-screen bg-white">
+
+      {/* Header */}
+      <div className="px-7 pt-7 pb-5 border-b border-gray-100">
+        <div className="flex items-center gap-3">
+          <button onClick={() => navWeek(-1)}
+            className="p-1.5 rounded-lg border border-gray-200 text-gray-400 hover:text-gray-700 hover:border-gray-300 transition-colors">
+            <ChevronLeft size={14} />
+          </button>
+          <div className="flex-1">
+            <h1 className="text-lg font-semibold text-[#1C2533]">
+              Semana {weekNum} · {weekRange}
+            </h1>
+            {todayInWeek ? (
+              <p className="mt-0.5 text-xs text-gray-400">
+                <span className="capitalize">{dowLong(TODAY)}</span>
+                {' '}{dayNum(TODAY)} · <span className="font-semibold text-[#2570BA]">hoy</span>
+                {pendientesTotal > 0 && (
+                  <span className="ml-1 text-gray-400">
+                    · {pendientesTotal} pendiente{pendientesTotal !== 1 ? 's' : ''} esta semana
+                  </span>
+                )}
+              </p>
+            ) : (
+              <p className="mt-0.5 text-xs text-gray-400">
+                {weekMonday < getMonday(TODAY) ? 'Semana anterior — solo lectura' : 'Próxima semana'}
+              </p>
+            )}
+          </div>
+          <button onClick={() => navWeek(1)}
+            className="p-1.5 rounded-lg border border-gray-200 text-gray-400 hover:text-gray-700 hover:border-gray-300 transition-colors">
+            <ChevronRight size={14} />
+          </button>
+        </div>
+        {!isCurrentWeek && (
+          <button onClick={() => {
+            const m = getMonday(TODAY)
+            setWeekMonday(m)
+            try { localStorage.setItem('agenda_week', m) } catch {}
+          }}
+            className="mt-2 text-[11px] text-[#2570BA] hover:underline">
+            ← Volver a semana actual
+          </button>
+        )}
       </div>
 
-      <CmdKModal open={cmdOpen} onClose={() => setCmdOpen(false)} navigate={navigate} />
+      {/* Lista de días */}
+      <div className="flex-1 overflow-y-auto">
+        {loading ? (
+          <div className="flex items-center justify-center py-20 text-sm text-gray-300">
+            Cargando…
+          </div>
+        ) : (
+          <div className="divide-y-0">
+            {weekDays.map(date => {
+              const isToday  = date === TODAY
+              const isPast   = date < TODAY
+              return (
+                <DiaRow
+                  key={date}
+                  date={date}
+                  isToday={isToday}
+                  isPast={isPast && !isToday}
+                  isOpen={expandedDays.has(date)}
+                  onToggle={() => toggleDay(date)}
+                  notas={notas[date] || []}
+                  audiencias={audiencias[date] || []}
+                  tareas={tareas[date] || []}
+                  plazos={plazos[date] || []}
+                  clientes={clientes}
+                  onAddNota={handleAddNota}
+                  onToggleNota={handleToggleNota}
+                  onDeleteNota={handleDeleteNota}
+                  onConvertNota={handleConvertNota}
+                />
+              )
+            })}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
