@@ -199,8 +199,6 @@ function SeguimientoPicker({ nota, causas, onConfirm, onClose }) {
 function NotaItem({ nota, clientes, onToggle, onDelete, onConvert, isPast }) {
   const [showConv, setShowConv] = useState(false)
   const [showDel, setShowDel] = useState(false)
-  const isAction = nota.tipo === 'checkbox'
-
   return (
     <div className="group"
       onMouseEnter={() => setShowDel(true)}
@@ -210,19 +208,15 @@ function NotaItem({ nota, clientes, onToggle, onDelete, onConvert, isPast }) {
         <span className="text-[10px] text-gray-300 tabular-nums mt-0.5 w-9 flex-shrink-0">
           {fmtHora(nota.hora)}
         </span>
-        {/* Checkbox / dot */}
-        {isAction ? (
-          <button onClick={() => !isPast && onToggle(nota)} disabled={isPast}
-            className={`mt-0.5 flex-shrink-0 transition-colors ${
-              nota.completada ? 'text-emerald-500' : 'text-gray-300 hover:text-gray-500'
-            } ${isPast ? 'cursor-default' : 'cursor-pointer'}`}>
-            {nota.completada
-              ? <CheckCircle2 size={13} />
-              : <Circle size={13} />}
-          </button>
-        ) : (
-          <span className="mt-1.5 w-1 h-1 rounded-full bg-gray-300 flex-shrink-0" />
-        )}
+        {/* Checkbox — todos los apuntes */}
+        <button onClick={() => !isPast && onToggle(nota)} disabled={isPast}
+          className={`mt-0.5 flex-shrink-0 transition-colors ${
+            nota.completada ? 'text-emerald-500' : 'text-gray-300 hover:text-gray-500'
+          } ${isPast ? 'cursor-default' : 'cursor-pointer'}`}>
+          {nota.completada
+            ? <CheckCircle2 size={13} />
+            : <Circle size={13} />}
+        </button>
         {/* Texto */}
         <span className={`text-xs flex-1 leading-relaxed ${
           nota.completada ? 'line-through text-gray-300' : 'text-gray-700'
@@ -240,7 +234,7 @@ function NotaItem({ nota, clientes, onToggle, onDelete, onConvert, isPast }) {
         </span>
         {/* Acciones */}
         <div className={`flex items-center gap-1 flex-shrink-0 transition-opacity ${showDel && !isPast ? 'opacity-100' : 'opacity-0'}`}>
-          {isAction && !nota.completada && !nota.tag && (
+          {!nota.completada && !nota.tag && (
             <button onClick={() => setShowConv(s => !s)}
               className="text-[9px] text-[#2570BA]/60 hover:text-[#2570BA] px-1.5 py-0.5 border border-[#2570BA]/20 rounded">
               convertir
