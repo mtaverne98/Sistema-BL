@@ -1065,21 +1065,18 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
   // Load seguimiento rows — reset cache when causa changes
   useEffect(() => { setSegRows([]) }, [causa?.id])
 
-  // Load seguimiento rows — includes null semana_key, SEG- (historical), and NOTA- (Mi semana notes)
+  // Load seguimiento rows — excluye es_revision_semanal=true (filas SIAU/PJUD de Mi semana)
   useEffect(() => {
     if ((tab !== 'seguimiento' && tab !== 'revisiones' && tab !== 'resumen') || !causa?.id) return
     setLoadingSeg(true)
-    // Filter by causa_rit (primary) or causa_id (fallback) to catch all records
-    const query = causa.rit
-      ? supabase.from('revisiones').select('*')
-          .eq('causa_rit', causa.rit)
-          .or('semana_key.is.null,semana_key.like.SEG-%,semana_key.like.NOTA-%')
-          .order('fecha_revision', { ascending: false })
-      : supabase.from('revisiones').select('*')
-          .eq('causa_id', causa.id)
-          .or('semana_key.is.null,semana_key.like.SEG-%,semana_key.like.NOTA-%')
-          .order('fecha_revision', { ascending: false })
-    query.then(({ data }) => { setSegRows(data ?? []); setLoadingSeg(false) })
+    const base = causa.rit
+      ? supabase.from('revisiones').select('*').eq('causa_rit', causa.rit)
+      : supabase.from('revisiones').select('*').eq('causa_id', causa.id)
+    base
+      .or('semana_key.is.null,semana_key.like.SEG-%,semana_key.like.NOTA-%')
+      .or('es_revision_semanal.is.null,es_revision_semanal.eq.false')
+      .order('fecha_revision', { ascending: false })
+      .then(({ data }) => { setSegRows(data ?? []); setLoadingSeg(false) })
   }, [tab, causa?.id])
 
   // Load current week revision for the banner
@@ -2725,7 +2722,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
               {/* Sub-header */}
               <div className="px-6 py-3 border-b border-[#E2E5EA] border-t flex items-center justify-between flex-shrink-0 bg-[#F7F8FA]">
                 <p className="text-[11px] font-semibold text-[#4A5568] uppercase tracking-wider">
-                  Seguimiento diario · {segRows.length} entrada{segRows.length !== 1 ? 's' : ''}
+                  Seguimiento · {segRows.length} entrada{segRows.length !== 1 ? 's' : ''}
                 </p>
                 <div className="flex items-center gap-2">
                   <button onClick={() => setShowCargaMasivaSeg(true)}
@@ -2935,7 +2932,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                               ) : (
                                 <div
                                   onClick={() => startEdit(row.id, 'que_se_hizo', row.que_se_hizo || '')}
-                                  className="text-[12px] text-gray-500 leading-relaxed cursor-text rounded-lg px-2 py-1 -mx-2 -my-1 hover:bg-gray-100/70 transition-colors"
+                                  className="text-[12px] text-gray-500 leading-relaxed cursor-text rounded-lg px-2 py-1 -mx-2 -my-1 hover:bg-gray-100/70 transition-colors line-clamp-3 overflow-hidden"
                                 >
                                   {row.que_se_hizo
                                     ? row.que_se_hizo
