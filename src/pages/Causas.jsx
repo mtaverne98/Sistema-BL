@@ -1065,7 +1065,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
   // Load seguimiento rows — reset cache when causa changes
   useEffect(() => { setSegRows([]) }, [causa?.id])
 
-  // Load seguimiento rows — includes null semana_key (daily) and SEG- (bulk-imported historical)
+  // Load seguimiento rows — includes null semana_key, SEG- (historical), and NOTA- (Mi semana notes)
   useEffect(() => {
     if ((tab !== 'seguimiento' && tab !== 'revisiones' && tab !== 'resumen') || !causa?.id) return
     setLoadingSeg(true)
@@ -1073,11 +1073,11 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
     const query = causa.rit
       ? supabase.from('revisiones').select('*')
           .eq('causa_rit', causa.rit)
-          .or('semana_key.is.null,semana_key.like.SEG-%')
+          .or('semana_key.is.null,semana_key.like.SEG-%,semana_key.like.NOTA-%')
           .order('fecha_revision', { ascending: false })
       : supabase.from('revisiones').select('*')
           .eq('causa_id', causa.id)
-          .or('semana_key.is.null,semana_key.like.SEG-%')
+          .or('semana_key.is.null,semana_key.like.SEG-%,semana_key.like.NOTA-%')
           .order('fecha_revision', { ascending: false })
     query.then(({ data }) => { setSegRows(data ?? []); setLoadingSeg(false) })
   }, [tab, causa?.id])

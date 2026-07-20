@@ -77,52 +77,54 @@ export default function MiSemana() {
     localStorage.setItem(`mi_semana_${key}`, JSON.stringify(rows))
   }, [rows, key])
 
+  const notaKey = `NOTA-${key}` // semana_key para filas de nota (distintas de SIAU/PJUD)
+
   // Load week data when anchor or causas change
   useEffect(() => {
     if (causas.length === 0) return
     setLoading(true)
 
-    // Use localStorage cache if available (preserves unsaved changes after navigation)
-    const cached = localStorage.getItem(`mi_semana_${key}`)
-    if (cached) {
-      try {
-        setRows(JSON.parse(cached))
-        setLoading(false)
-        return
-      } catch {}
-    }
-
-    supabase
-      .from('revisiones')
-      .select('id, causa_id, siau_revisado, pjud_revisado, por_hacer')
-      .eq('semana_key', key)
-      .eq('es_revision_semanal', true)
-      .then(({ data }) => {
-        const initial = {}
-        for (const c of causas) {
-          const existing = (data || []).find(r => r.causa_id === c.id)
-          initial[c.id] = {
-            siau:       existing?.siau_revisado ?? false,
-            pjud:       existing?.pjud_revisado ?? false,
-            nota:       existing?.por_hacer ?? '',
-            existingId: existing?.id ?? null,
-          }
+    Promise.all([
+      // Fila SIAU/PJUD (es_revision_semanal = true)
+      supabase.from('revisiones')
+        .select('id, causa_id, siau_revisado, pjud_revisado')
+        .eq('semana_key', key)
+        .eq('es_revision_semanal', true),
+      // Fila nota (seguimiento normal, semana_key = 'NOTA-...')
+      supabase.from('revisiones')
+        .select('id, causa_id, por_hacer')
+        .eq('semana_key', notaKey),
+    ]).then(([{ data: siauData }, { data: notaData }]) => {
+      const initial = {}
+      for (const c of causas) {
+        const siauRow = (siauData || []).find(r => r.causa_id === c.id)
+        const notaRow = (notaData || []).find(r => r.causa_id === c.id)
+        initial[c.id] = {
+          siau:       siauRow?.siau_revisado ?? false,
+          pjud:       siauRow?.pjud_revisado ?? false,
+          nota:       notaRow?.por_hacer ?? '',
+          existingId: siauRow?.id ?? null,
+          notaId:     notaRow?.id ?? null,
         }
-        setRows(initial)
-        setLoading(false)
-      })
+      }
+      setRows(initial)
+      setLoading(false)
+    })
   }, [key, causas.length])
 
-  // Guarda una sola causa — se llama en onBlur de nota y onChange de checkboxes
-  async function saveCausa(causa, rowOverride) {
-    const r = rowOverride ?? rows[causa.id]
-    if (!r) return
-    const hasDirty = r.siau || r.pjud || r.nota.trim()
+  // Persiste localStorage para UI veloz (solo lectura, Supabase es la fuente de verdad)
+  useEffect(() => {
+    if (Object.keys(rows).length === 0) return
+    localStorage.setItem(`mi_semana_${key}`, JSON.stringify(rows))
+  }, [rows, key])
+
+  // Guarda SIAU/PJUD de una causa
+  async function saveSiauPjud(causa, r) {
+    const hasDirty = r.siau || r.pjud
     if (r.existingId) {
       await supabase.from('revisiones').update({
         siau_revisado: r.siau,
         pjud_revisado: r.pjud,
-        por_hacer:     r.nota.trim() || null,
       }).eq('id', r.existingId)
     } else if (hasDirty) {
       const { data } = await supabase.from('revisiones').insert({
@@ -132,16 +134,47 @@ export default function MiSemana() {
         semana_key:          key,
         fecha:               mondayIso,
         fecha_revision:      mondayIso,
-        por_hacer:           r.nota.trim() || null,
         siau_revisado:       r.siau,
         pjud_revisado:       r.pjud,
         es_revision_semanal: true,
         responsable:         'MT',
       }).select('id').single()
-      if (data?.id) {
+      if (data?.id)
         setRows(prev => ({ ...prev, [causa.id]: { ...prev[causa.id], existingId: data.id } }))
-      }
     }
+  }
+
+  // Guarda la nota de una causa como entrada de seguimiento normal
+  async function saveNota(causa, r) {
+    const texto = r.nota.trim()
+    if (r.notaId) {
+      // Actualizar o borrar si quedó vacía
+      if (texto) {
+        await supabase.from('revisiones').update({ por_hacer: texto }).eq('id', r.notaId)
+      } else {
+        await supabase.from('revisiones').delete().eq('id', r.notaId)
+        setRows(prev => ({ ...prev, [causa.id]: { ...prev[causa.id], notaId: null } }))
+      }
+    } else if (texto) {
+      const { data } = await supabase.from('revisiones').insert({
+        causa_id:       causa.id,
+        causa_rit:      causa.rit ?? null,
+        cliente_nombre: causa.cliente_nombre,
+        semana_key:     notaKey,
+        fecha_revision: mondayIso,
+        por_hacer:      texto,
+        que_se_hizo:    'Pendiente',
+        revisada:       false,
+      }).select('id').single()
+      if (data?.id)
+        setRows(prev => ({ ...prev, [causa.id]: { ...prev[causa.id], notaId: data.id } }))
+    }
+  }
+
+  async function saveCausa(causa, rowOverride) {
+    const r = rowOverride ?? rows[causa.id]
+    if (!r) return
+    await Promise.all([saveSiauPjud(causa, r), saveNota(causa, r)])
   }
 
   async function saveWeek(silent = false) {
