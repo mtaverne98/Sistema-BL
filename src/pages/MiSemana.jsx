@@ -77,7 +77,8 @@ export default function MiSemana() {
     localStorage.setItem(`mi_semana_${key}`, JSON.stringify(rows))
   }, [rows, key])
 
-  const notaKey = `NOTA-${key}` // semana_key para filas de nota (distintas de SIAU/PJUD)
+  const notaKey  = `NOTA-${key}` // semana_key para filas de nota (distintas de SIAU/PJUD)
+  const notaTimers = useRef({}) // debounce timers por causa_id
 
   // Load week data when anchor or causas change
   useEffect(() => {
@@ -146,9 +147,8 @@ export default function MiSemana() {
 
   // Guarda la nota de una causa como entrada de seguimiento normal
   async function saveNota(causa, r) {
-    const texto = r.nota.trim()
+    const texto = (r.nota ?? '').trim()
     if (r.notaId) {
-      // Actualizar o borrar si quedó vacía
       if (texto) {
         await supabase.from('revisiones').update({ por_hacer: texto }).eq('id', r.notaId)
       } else {
@@ -156,19 +156,33 @@ export default function MiSemana() {
         setRows(prev => ({ ...prev, [causa.id]: { ...prev[causa.id], notaId: null } }))
       }
     } else if (texto) {
-      const { data } = await supabase.from('revisiones').insert({
+      const { data, error } = await supabase.from('revisiones').insert({
         causa_id:       causa.id,
         causa_rit:      causa.rit ?? null,
         cliente_nombre: causa.cliente_nombre,
         semana_key:     notaKey,
         fecha_revision: mondayIso,
+        fecha:          mondayIso,
         por_hacer:      texto,
         que_se_hizo:    'Pendiente',
         revisada:       false,
       }).select('id').single()
+      if (error) console.error('[saveNota] insert error:', error.message, error.details)
       if (data?.id)
         setRows(prev => ({ ...prev, [causa.id]: { ...prev[causa.id], notaId: data.id } }))
     }
+  }
+
+  // Guarda la nota con debounce (800ms) — evita guardados en cada tecla
+  function scheduleNotaSave(causa, texto) {
+    clearTimeout(notaTimers.current[causa.id])
+    notaTimers.current[causa.id] = setTimeout(() => {
+      setRows(prev => {
+        const r = prev[causa.id]
+        if (r) saveNota(causa, { ...r, nota: texto })
+        return prev
+      })
+    }, 800)
   }
 
   async function saveCausa(causa, rowOverride) {
@@ -326,7 +340,7 @@ export default function MiSemana() {
                         onChange={e => {
                           const next = { ...r, siau: e.target.checked }
                           setRows(prev => ({ ...prev, [causa.id]: next }))
-                          saveCausa(causa, next)
+                          saveSiauPjud(causa, next)
                         }}
                         style={{ accentColor: '#1a2e4a', width: 16, height: 16, cursor: 'pointer' }}
                       />
@@ -340,7 +354,7 @@ export default function MiSemana() {
                         onChange={e => {
                           const next = { ...r, pjud: e.target.checked }
                           setRows(prev => ({ ...prev, [causa.id]: next }))
-                          saveCausa(causa, next)
+                          saveSiauPjud(causa, next)
                         }}
                         style={{ accentColor: '#1a2e4a', width: 16, height: 16, cursor: 'pointer' }}
                       />
@@ -351,8 +365,12 @@ export default function MiSemana() {
                       <input
                         type="text"
                         value={r.nota}
-                        onChange={e => setRows(prev => ({ ...prev, [causa.id]: { ...prev[causa.id], nota: e.target.value } }))}
-                        onBlur={() => saveCausa(causa)}
+                        onChange={e => {
+                          const texto = e.target.value
+                          setRows(prev => ({ ...prev, [causa.id]: { ...prev[causa.id], nota: texto } }))
+                          scheduleNotaSave(causa, texto)
+                        }}
+                        onBlur={e => saveNota(causa, { ...r, nota: e.target.value })}
                         placeholder="Nota de la semana…"
                         className="w-full text-[12px] text-gray-700 bg-transparent border-0 outline-none placeholder:text-gray-300 py-1 px-2 -mx-2 rounded-lg focus:bg-white focus:border focus:border-blue-200 transition-all"
                       />
