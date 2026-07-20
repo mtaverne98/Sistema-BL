@@ -113,41 +113,42 @@ export default function MiSemana() {
       })
   }, [key, causas.length])
 
-  async function saveWeek(silent = false) {
-    if (!silent) setSaving(true)
-
-    for (const causa of causas) {
-      const r = rows[causa.id]
-      if (!r) continue
-      const hasDirty = r.siau || r.pjud || r.nota.trim()
-
-      if (r.existingId) {
-        await supabase.from('revisiones').update({
-          siau_revisado: r.siau,
-          pjud_revisado: r.pjud,
-          por_hacer:     r.nota.trim() || null,
-        }).eq('id', r.existingId)
-      } else if (hasDirty) {
-        const { data } = await supabase.from('revisiones').insert({
-          causa_id:           causa.id,
-          causa_rit:          causa.rit ?? null,
-          cliente_nombre:     causa.cliente_nombre,
-          semana_key:         key,
-          fecha:              mondayIso,
-          fecha_revision:     mondayIso,
-          por_hacer:          r.nota.trim() || null,
-          siau_revisado:      r.siau,
-          pjud_revisado:      r.pjud,
-          es_revision_semanal: true,
-          responsable:        'MT',
-        }).select('id').single()
-
-        if (data?.id) {
-          setRows(prev => ({ ...prev, [causa.id]: { ...prev[causa.id], existingId: data.id } }))
-        }
+  // Guarda una sola causa — se llama en onBlur de nota y onChange de checkboxes
+  async function saveCausa(causa, rowOverride) {
+    const r = rowOverride ?? rows[causa.id]
+    if (!r) return
+    const hasDirty = r.siau || r.pjud || r.nota.trim()
+    if (r.existingId) {
+      await supabase.from('revisiones').update({
+        siau_revisado: r.siau,
+        pjud_revisado: r.pjud,
+        por_hacer:     r.nota.trim() || null,
+      }).eq('id', r.existingId)
+    } else if (hasDirty) {
+      const { data } = await supabase.from('revisiones').insert({
+        causa_id:            causa.id,
+        causa_rit:           causa.rit ?? null,
+        cliente_nombre:      causa.cliente_nombre,
+        semana_key:          key,
+        fecha:               mondayIso,
+        fecha_revision:      mondayIso,
+        por_hacer:           r.nota.trim() || null,
+        siau_revisado:       r.siau,
+        pjud_revisado:       r.pjud,
+        es_revision_semanal: true,
+        responsable:         'MT',
+      }).select('id').single()
+      if (data?.id) {
+        setRows(prev => ({ ...prev, [causa.id]: { ...prev[causa.id], existingId: data.id } }))
       }
     }
+  }
 
+  async function saveWeek(silent = false) {
+    if (!silent) setSaving(true)
+    for (const causa of causas) {
+      await saveCausa(causa)
+    }
     if (!silent) {
       setSaving(false)
       setSaved(true)
@@ -289,7 +290,11 @@ export default function MiSemana() {
                       <input
                         type="checkbox"
                         checked={r.siau}
-                        onChange={e => setRows(prev => ({ ...prev, [causa.id]: { ...prev[causa.id], siau: e.target.checked } }))}
+                        onChange={e => {
+                          const next = { ...r, siau: e.target.checked }
+                          setRows(prev => ({ ...prev, [causa.id]: next }))
+                          saveCausa(causa, next)
+                        }}
                         style={{ accentColor: '#1a2e4a', width: 16, height: 16, cursor: 'pointer' }}
                       />
                     </td>
@@ -299,7 +304,11 @@ export default function MiSemana() {
                       <input
                         type="checkbox"
                         checked={r.pjud}
-                        onChange={e => setRows(prev => ({ ...prev, [causa.id]: { ...prev[causa.id], pjud: e.target.checked } }))}
+                        onChange={e => {
+                          const next = { ...r, pjud: e.target.checked }
+                          setRows(prev => ({ ...prev, [causa.id]: next }))
+                          saveCausa(causa, next)
+                        }}
                         style={{ accentColor: '#1a2e4a', width: 16, height: 16, cursor: 'pointer' }}
                       />
                     </td>
@@ -310,6 +319,7 @@ export default function MiSemana() {
                         type="text"
                         value={r.nota}
                         onChange={e => setRows(prev => ({ ...prev, [causa.id]: { ...prev[causa.id], nota: e.target.value } }))}
+                        onBlur={() => saveCausa(causa)}
                         placeholder="Nota de la semana…"
                         className="w-full text-[12px] text-gray-700 bg-transparent border-0 outline-none placeholder:text-gray-300 py-1 px-2 -mx-2 rounded-lg focus:bg-white focus:border focus:border-blue-200 transition-all"
                       />
@@ -325,7 +335,7 @@ export default function MiSemana() {
       {/* ── Footer ── */}
       <div className="flex-shrink-0 border-t border-gray-100 bg-white px-6 py-4 flex items-center justify-between">
         <p className="text-[11px] text-gray-400">
-          {causas.length} causas activas · El guardado automático se activa al cambiar de semana
+          {causas.length} causas activas · Notas y checkboxes se guardan automáticamente
         </p>
         <button
           onClick={() => saveWeek(false)}
