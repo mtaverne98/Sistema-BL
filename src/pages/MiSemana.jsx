@@ -48,6 +48,7 @@ export default function MiSemana() {
   const [anchor, setAnchor] = useState(todayAnchor)
   const [causas,  setCausas]  = useState([])
   const [rows,    setRows]    = useState({})
+  const rowsRef = useRef({}) // siempre tiene el valor más reciente de rows
   const [loading, setLoading] = useState(true)
   const [saving,  setSaving]  = useState(false)
   const [saved,   setSaved]   = useState(false)
@@ -71,8 +72,9 @@ export default function MiSemana() {
       .then(({ data }) => setCausas(data || []))
   }, [])
 
-  // Persist rows to localStorage on every change
+  // Mantiene rowsRef sincronizado y persiste en localStorage
   useEffect(() => {
+    rowsRef.current = rows
     if (Object.keys(rows).length === 0) return
     localStorage.setItem(`mi_semana_${key}`, JSON.stringify(rows))
   }, [rows, key])
@@ -177,11 +179,8 @@ export default function MiSemana() {
   function scheduleNotaSave(causa, texto) {
     clearTimeout(notaTimers.current[causa.id])
     notaTimers.current[causa.id] = setTimeout(() => {
-      setRows(prev => {
-        const r = prev[causa.id]
-        if (r) saveNota(causa, { ...r, nota: texto })
-        return prev
-      })
+      const r = rowsRef.current[causa.id]
+      if (r) saveNota(causa, { ...r, nota: texto })
     }, 800)
   }
 
