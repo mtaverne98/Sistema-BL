@@ -2894,6 +2894,11 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                                   {row.notas && (
                                     <p className="text-[11px] text-gray-400 mt-1 leading-snug">{row.notas}</p>
                                   )}
+                                  {row.origen === 'agenda' && (
+                                    <span className="inline-block mt-1 text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-400">
+                                      Agenda diaria
+                                    </span>
+                                  )}
                                   {row.es_revision_semanal && (
                                     <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
                                       <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-[#1a2e4a]/8 text-[#1a2e4a]">

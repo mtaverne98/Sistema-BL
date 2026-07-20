@@ -127,6 +127,74 @@ function ConvMenu({ nota, onConvert, onClose }) {
   )
 }
 
+// ── SeguimientoPicker ─────────────────────────────────────────────────────────
+function SeguimientoPicker({ nota, causas, onConfirm, onClose }) {
+  const [query, setQuery] = useState('')
+  const inputRef = useRef(null)
+
+  useEffect(() => { inputRef.current?.focus() }, [])
+  useEffect(() => {
+    const fn = e => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', fn)
+    return () => window.removeEventListener('keydown', fn)
+  }, [onClose])
+
+  const filtered = useMemo(() => {
+    if (!query.trim()) return causas.slice(0, 12)
+    const q = query.toLowerCase()
+    return causas.filter(c =>
+      (c.rit || '').toLowerCase().includes(q) ||
+      (c.ruc || '').toLowerCase().includes(q) ||
+      (c.materia || '').toLowerCase().includes(q) ||
+      (c.cliente_nombre || '').toLowerCase().includes(q)
+    ).slice(0, 12)
+  }, [causas, query])
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30"
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div className="bg-white rounded-xl shadow-2xl w-[420px] max-h-[500px] flex flex-col overflow-hidden">
+        {/* Header */}
+        <div className="px-4 pt-4 pb-3 border-b border-gray-100">
+          <p className="text-[10px] font-semibold text-[#2570BA] uppercase tracking-wide mb-1">→ Seguimiento</p>
+          <p className="text-xs text-gray-700 leading-snug line-clamp-2">"{nota.texto}"</p>
+          <p className="text-[10px] text-gray-400 mt-0.5">Selecciona la causa donde registrar este seguimiento</p>
+        </div>
+        {/* Search */}
+        <div className="px-4 py-2.5 border-b border-gray-100">
+          <input ref={inputRef} value={query} onChange={e => setQuery(e.target.value)}
+            placeholder="Buscar por RIT, RUC, materia o cliente…"
+            className="w-full text-xs bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-[#2570BA] focus:ring-1 focus:ring-[#2570BA]/20 transition-colors" />
+        </div>
+        {/* Lista */}
+        <div className="overflow-y-auto flex-1 py-1">
+          {filtered.length === 0 ? (
+            <p className="text-[11px] text-gray-300 text-center py-6">Sin resultados</p>
+          ) : filtered.map(c => (
+            <button key={c.id} onClick={() => onConfirm(c)}
+              className="w-full text-left px-4 py-2.5 hover:bg-[#2570BA]/5 transition-colors border-b border-gray-50 last:border-0">
+              <div className="flex items-baseline gap-2">
+                <span className="text-[11px] font-mono font-semibold text-[#1A2E4A]">{c.rit || c.ruc || '—'}</span>
+                <span className="text-[10px] text-gray-400 truncate">{c.cliente_nombre}</span>
+              </div>
+              {c.materia && (
+                <p className="text-[10px] text-gray-500 leading-snug mt-0.5 truncate">{c.materia}</p>
+              )}
+            </button>
+          ))}
+        </div>
+        {/* Footer */}
+        <div className="px-4 py-3 border-t border-gray-100 flex justify-end">
+          <button onClick={onClose}
+            className="text-[11px] text-gray-400 hover:text-gray-600 transition-colors px-3 py-1.5 rounded-lg border border-gray-200">
+            Cancelar
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── NotaItem ──────────────────────────────────────────────────────────────────
 function NotaItem({ nota, clientes, onToggle, onDelete, onConvert, isPast }) {
   const [showConv, setShowConv] = useState(false)
@@ -428,7 +496,9 @@ export default function Apuntes() {
   const [tareas,     setTareas]     = useState({})
   const [plazos,     setPlazos]     = useState({})
   const [clientes,   setClientes]   = useState([])
+  const [causas,     setCausas]     = useState([])
   const [loading,    setLoading]    = useState(false)
+  const [segPickerNota, setSegPickerNota] = useState(null)
 
   // Días de la semana (Lun–Vie)
   const weekDays = useMemo(() =>
@@ -482,6 +552,7 @@ export default function Apuntes() {
         { data: tareasData },
         { data: plazosData },
         { data: clientesData },
+        { data: causasData },
       ] = await Promise.all([
         supabase.from('agenda_notas').select('*')
           .gte('fecha', start).lte('fecha', end).order('hora'),
@@ -493,6 +564,10 @@ export default function Apuntes() {
         supabase.from('plazos').select('id, descripcion, fecha_limite, causa_rit, cliente_nombre, urgente')
           .gte('fecha_limite', start).lte('fecha_limite', end),
         supabase.from('clientes').select('id, nombre'),
+        supabase.from('causas')
+          .select('id, rit, ruc, materia, cliente_nombre, estado')
+          .in('estado', ['Abierta', 'Revisar', 'En tramitación'])
+          .order('cliente_nombre', { ascending: true }),
       ])
 
       function groupBy(arr, key) {
@@ -509,6 +584,7 @@ export default function Apuntes() {
       setTareas(groupBy(tareasData, 'fecha_vencimiento'))
       setPlazos(groupBy(plazosData, 'fecha_limite'))
       setClientes(clientesData || [])
+      setCausas(causasData || [])
       setLoading(false)
     }
 
@@ -567,20 +643,31 @@ export default function Apuntes() {
   }, [])
 
   // Convertir nota en tarea o seguimiento
-  const handleConvertNota = useCallback(async (nota, tipo) => {
+  const handleConvertNota = useCallback(async (nota, tipo, causa = null) => {
     if (tipo === 'tarea') {
       await supabase.from('tareas').insert([{
-        titulo:         nota.texto,
-        cliente_nombre: nota.cliente_nombre || null,
-        estado:         'Pendiente',
-        prioridad:      'Media',
+        titulo:           nota.texto,
+        cliente_nombre:   nota.cliente_nombre || null,
+        estado:           'Pendiente',
+        prioridad:        'Media',
         fecha_vencimiento: nota.fecha,
       }])
     } else if (tipo === 'seguimiento') {
+      // Requiere selección de causa — abre picker si no viene causa
+      if (!causa) {
+        setSegPickerNota(nota)
+        return
+      }
       await supabase.from('revisiones').insert([{
-        fecha:      nota.fecha,
-        por_hacer:  nota.texto,
-        semana_key: `SEG-${nota.fecha}`,
+        causa_id:       causa.id,
+        causa_rit:      causa.rit || null,
+        cliente_nombre: causa.cliente_nombre || null,
+        fecha_revision: nota.fecha,
+        por_hacer:      nota.texto,
+        que_se_hizo:    'Pendiente',
+        semana_key:     null,
+        revisada:       false,
+        origen:         'agenda',
       }])
     }
     // Marcar tag en la nota
@@ -595,9 +682,27 @@ export default function Apuntes() {
     }
   }, [])
 
+  // Confirmar causa en el picker de seguimiento
+  const handleSegPickerConfirm = useCallback(async (causa) => {
+    const nota = segPickerNota
+    setSegPickerNota(null)
+    if (!nota || !causa) return
+    await handleConvertNota(nota, 'seguimiento', causa)
+  }, [segPickerNota, handleConvertNota])
+
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
     <div className="flex flex-col h-full min-h-screen bg-white">
+
+      {/* Picker de causa para → Seguimiento */}
+      {segPickerNota && (
+        <SeguimientoPicker
+          nota={segPickerNota}
+          causas={causas}
+          onConfirm={handleSegPickerConfirm}
+          onClose={() => setSegPickerNota(null)}
+        />
+      )}
 
       {/* Header */}
       <div className="px-7 pt-7 pb-5 border-b border-gray-100">
