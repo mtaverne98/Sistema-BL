@@ -29,14 +29,6 @@ const DIAS = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábad
 
 // ── Date helpers ──────────────────────────────────────────────────────────────
 
-function getActiveThursday() {
-  const d = new Date()
-  const day = d.getDay() // 0=Dom … 4=Jue … 6=Sáb
-  const offset = day <= 4 ? (4 - day) : (4 - day + 7)
-  const thu = new Date(d)
-  thu.setDate(d.getDate() + offset)
-  return thu.toISOString().slice(0, 10)
-}
 
 function fmtLarga(iso) {
   if (!iso) return ''
@@ -236,7 +228,7 @@ function AddTemaForm({ onSave, onCancel }) {
 }
 
 // ── HistorialItem (accordion) ─────────────────────────────────────────────────
-function HistorialItem({ reunion, temas, onDeleteReunion }) {
+function HistorialItem({ reunion, temas, onDeleteReunion, onSelect }) {
   const [open, setOpen] = useState(false)
   const ts   = temas.filter(t => t.fecha_jueves === reunion.fecha_jueves)
   const disc = ts.filter(t => t.estado === 'discutido').length
@@ -279,6 +271,14 @@ function HistorialItem({ reunion, temas, onDeleteReunion }) {
             <span className="text-[10px] font-semibold text-green-700 bg-green-50 px-2 py-0.5 rounded-full border border-green-200 flex items-center gap-1">
               <CheckCircle2 size={9}/> Realizada
             </span>
+          )}
+          {onSelect && (
+            <button
+              onClick={e => { e.stopPropagation(); onSelect() }}
+              className="text-[10px] font-semibold text-[#2570BA] hover:underline px-2 py-1 rounded-lg hover:bg-blue-50 transition-colors"
+              title="Ver reunión activa">
+              Ver
+            </button>
           )}
           {onDeleteReunion && (
             <button
@@ -359,9 +359,11 @@ export default function Reuniones() {
   const [savingAcuerdos, setSavingAcuerdos] = useState(false)
   const [savedFlash,     setSavedFlash]     = useState(false)
   const [deleteTarget,   setDeleteTarget]   = useState(null)
+  const [activeDate,     setActiveDate]     = useState(null)   // null = sin reunión seleccionada
+  const [showDatePicker, setShowDatePicker] = useState(false)
+  const [newDateDraft,   setNewDateDraft]   = useState('')
 
-  const activeThursday = useMemo(() => getActiveThursday(), [])
-  const countdown      = useMemo(() => getCountdown(activeThursday), [activeThursday])
+  const countdown = useMemo(() => activeDate ? getCountdown(activeDate) : null, [activeDate])
 
   // ── Fetch ──
   const fetchAll = useCallback(async () => {
@@ -370,31 +372,36 @@ export default function Reuniones() {
       supabase.from('reuniones').select('*').order('fecha_jueves', { ascending: false }),
       supabase.from('reunion_temas').select('*').order('created_at'),
     ])
-    setReuniones(reuns || [])
+    const listaReuns = reuns || []
+    setReuniones(listaReuns)
     setTemas(tms || [])
+    // Seleccionar automáticamente la reunión más reciente si no hay ninguna activa
+    if (!activeDate && listaReuns.length > 0) {
+      setActiveDate(listaReuns[0].fecha_jueves)
+    }
     setLoading(false)
-  }, [])
+  }, []) // eslint-disable-line
 
   useEffect(() => { fetchAll() }, [fetchAll])
 
   // ── Derived ──
   const reunionActual = useMemo(
-    () => reuniones.find(r => r.fecha_jueves === activeThursday) || null,
-    [reuniones, activeThursday],
+    () => activeDate ? (reuniones.find(r => r.fecha_jueves === activeDate) || null) : null,
+    [reuniones, activeDate],
   )
 
   const temasActuales = useMemo(
-    () => temas
-      .filter(t => t.fecha_jueves === activeThursday)
-      .sort((a, b) => a.created_at > b.created_at ? 1 : -1),
-    [temas, activeThursday],
+    () => activeDate
+      ? temas.filter(t => t.fecha_jueves === activeDate).sort((a, b) => a.created_at > b.created_at ? 1 : -1)
+      : [],
+    [temas, activeDate],
   )
 
   const historial = useMemo(
     () => reuniones
-      .filter(r => r.fecha_jueves < activeThursday)
+      .filter(r => r.fecha_jueves !== activeDate)
       .sort((a, b) => b.fecha_jueves.localeCompare(a.fecha_jueves)),
-    [reuniones, activeThursday],
+    [reuniones, activeDate],
   )
 
   // Stats
@@ -412,11 +419,28 @@ export default function Reuniones() {
 
   // ── Handlers ──
 
-  async function ensureReunion() {
-    if (reunionActual) return reunionActual.id
+  async function handleCrearReunion() {
+    if (!newDateDraft) return
     const { data } = await supabase
       .from('reuniones')
-      .insert([{ fecha_jueves: activeThursday, estado: 'pendiente' }])
+      .insert([{ fecha_jueves: newDateDraft, estado: 'pendiente' }])
+      .select()
+      .single()
+    if (data) {
+      setReuniones(prev => [data, ...prev].sort((a, b) => b.fecha_jueves.localeCompare(a.fecha_jueves)))
+      setActiveDate(newDateDraft)
+    }
+    setShowDatePicker(false)
+    setNewDateDraft('')
+    setTab('actual')
+  }
+
+  async function ensureReunion() {
+    if (reunionActual) return reunionActual.id
+    if (!activeDate) return null
+    const { data } = await supabase
+      .from('reuniones')
+      .insert([{ fecha_jueves: activeDate, estado: 'pendiente' }])
       .select()
       .single()
     setReuniones(prev => [data, ...prev])
@@ -425,9 +449,10 @@ export default function Reuniones() {
 
   async function handleAddTema(draft) {
     const reunion_id = await ensureReunion()
+    if (!reunion_id || !activeDate) return
     const { data } = await supabase
       .from('reunion_temas')
-      .insert([{ ...draft, fecha_jueves: activeThursday, reunion_id }])
+      .insert([{ ...draft, fecha_jueves: activeDate, reunion_id }])
       .select()
       .single()
     if (data) setTemas(prev => [...prev, data])
@@ -473,9 +498,33 @@ export default function Reuniones() {
       <div className="bg-white border-b border-gray-100 px-6 py-5 flex-shrink-0">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h1 className="text-lg font-bold text-[#1a2e4a]">Seguimiento Semanal</h1>
-            <p className="text-xs text-gray-400 mt-0.5">Todos los jueves · {historial.length} reunión{historial.length !== 1 ? 'es' : ''} en el historial</p>
+            <h1 className="text-lg font-bold text-[#1a2e4a]">Reuniones de equipo</h1>
+            <p className="text-xs text-gray-400 mt-0.5">{reuniones.length} reunión{reuniones.length !== 1 ? 'es' : ''} registrada{reuniones.length !== 1 ? 's' : ''}</p>
           </div>
+          {showDatePicker ? (
+            <div className="flex items-center gap-2">
+              <input
+                type="date"
+                value={newDateDraft}
+                onChange={e => setNewDateDraft(e.target.value)}
+                className="text-xs border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-[#2570BA]"
+                autoFocus
+              />
+              <button onClick={handleCrearReunion} disabled={!newDateDraft}
+                className="text-xs font-semibold bg-[#2570BA] text-white px-3 py-2 rounded-lg hover:bg-[#2570BA]/90 disabled:opacity-40 transition-colors">
+                Crear
+              </button>
+              <button onClick={() => { setShowDatePicker(false); setNewDateDraft('') }}
+                className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors">
+                <X size={13}/>
+              </button>
+            </div>
+          ) : (
+            <button onClick={() => setShowDatePicker(true)}
+              className="flex items-center gap-1.5 text-xs font-semibold bg-[#2570BA] text-white px-3.5 py-2 rounded-xl hover:bg-[#2570BA]/90 transition-colors shadow-sm">
+              <Plus size={13}/> Nueva reunión
+            </button>
+          )}
         </div>
 
         {/* Tabs */}
@@ -506,13 +555,26 @@ export default function Reuniones() {
           // ───────── Esta semana ─────────
           <div className="max-w-2xl space-y-5">
 
+            {/* Sin reunión activa */}
+            {!activeDate && (
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-5 py-10 text-center">
+                <Calendar size={28} className="text-gray-200 mx-auto mb-3"/>
+                <p className="text-sm text-gray-400 font-medium">No hay reunión activa</p>
+                <p className="text-[12px] text-gray-300 mt-1 mb-4">Crea una nueva reunión eligiendo la fecha</p>
+                <button onClick={() => setShowDatePicker(true)}
+                  className="text-xs font-semibold text-[#2570BA] hover:underline">
+                  + Nueva reunión
+                </button>
+              </div>
+            )}
+
             {/* Meeting info card */}
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-5 py-4 flex items-center gap-4">
+            {activeDate && <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-5 py-4 flex items-center gap-4">
               <div className="w-11 h-11 rounded-xl bg-[#2570BA] flex items-center justify-center flex-shrink-0">
                 <Calendar size={18} className="text-white"/>
               </div>
               <div className="flex-1">
-                <p className="text-[14px] font-bold text-[#1a2e4a]">{fmtLarga(activeThursday)}</p>
+                <p className="text-[14px] font-bold text-[#1a2e4a]">{fmtLarga(activeDate)}</p>
                 <p className="text-[11px] text-gray-400 mt-0.5">
                   {stats.total > 0
                     ? <>
@@ -524,18 +586,18 @@ export default function Reuniones() {
                     : 'Sin temas aún'}
                 </p>
               </div>
-              <span className={`text-[11px] font-semibold px-3 py-1 rounded-full border whitespace-nowrap ${countdown.cls}`}>
+              {countdown && <span className={`text-[11px] font-semibold px-3 py-1 rounded-full border whitespace-nowrap ${countdown.cls}`}>
                 {countdown.label}
-              </span>
+              </span>}
               {reunionActual?.estado === 'realizada' && (
                 <span className="text-[10px] font-semibold text-green-700 bg-green-50 px-2.5 py-1 rounded-full border border-green-200 flex items-center gap-1 whitespace-nowrap">
                   <CheckCircle2 size={10}/> Realizada
                 </span>
               )}
-            </div>
+            </div>}
 
-            {/* ── Temas ── */}
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+            {/* ── Temas y acuerdos (solo si hay reunión activa) ── */}
+            {activeDate && <><div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
               <div className="px-5 py-3.5 border-b border-gray-50 flex items-center justify-between">
                 <div>
                   <h2 className="text-[13px] font-bold text-[#1a2e4a]">Temas para discutir</h2>
@@ -633,7 +695,7 @@ export default function Reuniones() {
                   <MessageSquare size={14} className="text-[#1a2e4a]"/>
                   <h2 className="text-[13px] font-bold text-[#1a2e4a]">Acuerdos y decisiones</h2>
                 </div>
-                {countdown.isToday && (
+                {countdown?.isToday && (
                   <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
                     Reunión activa
                   </span>
@@ -677,7 +739,7 @@ export default function Reuniones() {
                   </p>
                 )}
               </div>
-            </div>
+            </div></>}
           </div>
 
         ) : (
@@ -694,6 +756,7 @@ export default function Reuniones() {
             ) : (
               historial.map(r => (
                 <HistorialItem key={r.id} reunion={r} temas={temas}
+                  onSelect={() => { setActiveDate(r.fecha_jueves); setTab('actual') }}
                   onDeleteReunion={r => setDeleteTarget({ id: r.id, fecha_jueves: r.fecha_jueves, name: `la reunión del ${fmtLarga(r.fecha_jueves)}` })}
                 />
               ))

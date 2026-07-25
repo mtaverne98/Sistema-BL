@@ -758,7 +758,7 @@ export default function Apuntes() {
                   key={date}
                   date={date}
                   isToday={isToday}
-                  isPast={isPast && !isToday}
+                  isPast={false}
                   isOpen={expandedDays.has(date)}
                   onToggle={() => toggleDay(date)}
                   notas={notas[date] || []}

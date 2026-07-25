@@ -479,6 +479,7 @@ export function SolicitudesTable({ grupo, registrosAll, onUpdate, onAdd, onDelet
                   <>
                     <tr key={r.id}
                       onClick={() => !isEditing && toggleRow(r.id)}
+                      onDoubleClick={e => !isEditing && startEdit(r, e)}
                       className={`border-b border-gray-50 transition-colors group ${
                         isEditing  ? 'bg-blue-50/20' :
                         isExpanded ? 'bg-[#1a2e4a]/[0.03]' :
