@@ -603,12 +603,29 @@ export default function Apuntes() {
         }, {})
       }
 
-      setNotas(groupBy(notasData, 'fecha'))
-      setAudiencias(groupBy(audData, 'fecha'))
-      setTareas(groupBy(tareasData, 'fecha_vencimiento'))
-      setPlazos(groupBy(plazosData, 'fecha_limite'))
+      const notasByDate   = groupBy(notasData,   'fecha')
+      const audByDate     = groupBy(audData,      'fecha')
+      const tareasByDate  = groupBy(tareasData,   'fecha_vencimiento')
+      const plazosByDate  = groupBy(plazosData,   'fecha_limite')
+
+      setNotas(notasByDate)
+      setAudiencias(audByDate)
+      setTareas(tareasByDate)
+      setPlazos(plazosByDate)
       setClientes(clientesData || [])
       setCausas(causasData || [])
+
+      // Expandir automáticamente los días que tienen contenido
+      const daysWithContent = new Set([
+        ...Object.keys(notasByDate),
+        ...Object.keys(audByDate),
+        ...Object.keys(tareasByDate),
+        ...Object.keys(plazosByDate),
+      ])
+      if (daysWithContent.size) {
+        setExpandedDays(prev => new Set([...prev, ...daysWithContent]))
+      }
+
       setLoading(false)
     }
 
