@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import {
   ChevronLeft, ChevronRight, ChevronDown, ChevronUp,
   Gavel, CheckSquare, Clock, Plus, Check, X,
-  Circle, CheckCircle2, ArrowRight, AlertTriangle,
+  Circle, CheckCircle2, ArrowRight, AlertTriangle, StickyNote,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 
@@ -196,9 +196,21 @@ function SeguimientoPicker({ nota, causas, onConfirm, onClose }) {
 }
 
 // ── NotaItem ──────────────────────────────────────────────────────────────────
-function NotaItem({ nota, clientes, onToggle, onDelete, onConvert, isPast }) {
-  const [showConv, setShowConv] = useState(false)
-  const [showDel, setShowDel] = useState(false)
+function NotaItem({ nota, clientes, onToggle, onDelete, onConvert, onUpdateNota, isPast }) {
+  const [showConv,  setShowConv]  = useState(false)
+  const [showDel,   setShowDel]   = useState(false)
+  const [showNota,  setShowNota]  = useState(false)
+  const [notaDraft, setNotaDraft] = useState(nota.notas || '')
+
+  async function handleNotaBlur() {
+    const trimmed = notaDraft.trim()
+    if (trimmed === (nota.notas || '').trim()) return
+    await supabase.from('agenda_notas').update({ notas: trimmed || null }).eq('id', nota.id)
+    onUpdateNota(nota.id, trimmed || null)
+  }
+
+  const hasNota = !!(nota.notas && nota.notas.trim())
+
   return (
     <div className="group"
       onMouseEnter={() => setShowDel(true)}
@@ -240,12 +252,29 @@ function NotaItem({ nota, clientes, onToggle, onDelete, onConvert, isPast }) {
               convertir
             </button>
           )}
+          <button onClick={() => setShowNota(s => !s)}
+            title="Agregar nota"
+            className={`transition-colors ${hasNota ? 'text-amber-400' : 'text-gray-300 hover:text-amber-400'}`}>
+            <StickyNote size={11} />
+          </button>
           <button onClick={() => onDelete(nota)}
             className="text-gray-300 hover:text-red-400 transition-colors">
             <X size={11} />
           </button>
         </div>
       </div>
+      {showNota && (
+        <div className="ml-[52px] mb-1">
+          <textarea
+            rows={2}
+            value={notaDraft}
+            onChange={e => setNotaDraft(e.target.value)}
+            onBlur={handleNotaBlur}
+            placeholder="Notas adicionales…"
+            className="w-full text-[11px] text-gray-600 bg-amber-50/60 border border-amber-200/60 rounded-lg px-2.5 py-1.5 resize-none focus:outline-none focus:border-amber-300 placeholder:text-gray-300 leading-relaxed"
+          />
+        </div>
+      )}
       {showConv && (
         <ConvMenu nota={nota}
           onConvert={async (tipo) => {
@@ -315,7 +344,7 @@ function SystemItems({ audiencias = [], tareas = [], plazos = [] }) {
 function DiaRow({
   date, isToday, isOpen, isPast, onToggle,
   notas, audiencias, tareas, plazos,
-  clientes, onAddNota, onToggleNota, onDeleteNota, onConvertNota,
+  clientes, onAddNota, onToggleNota, onDeleteNota, onConvertNota, onUpdateNota,
 }) {
   const [inputVal, setInputVal]     = useState('')
   const [isAdding, setIsAdding]     = useState(false)
@@ -437,6 +466,7 @@ function DiaRow({
                     onToggle={onToggleNota}
                     onDelete={onDeleteNota}
                     onConvert={onConvertNota}
+                    onUpdateNota={onUpdateNota}
                   />
                   {n.id === newNotaId && isActionText(n.texto) && !n.tag && (
                     <ConvMenu nota={n}
@@ -625,6 +655,18 @@ export default function Apuntes() {
     }
   }, [])
 
+  // Actualizar campo notas de un apunte
+  const handleUpdateNota = useCallback((notaId, texto) => {
+    setNotas(prev => {
+      const entries = Object.entries(prev)
+      const updated = {}
+      for (const [fecha, list] of entries) {
+        updated[fecha] = list.map(n => n.id === notaId ? { ...n, notas: texto } : n)
+      }
+      return updated
+    })
+  }, [])
+
   // Eliminar nota
   const handleDeleteNota = useCallback(async (nota) => {
     const { error } = await supabase.from('agenda_notas').delete().eq('id', nota.id)
@@ -770,6 +812,7 @@ export default function Apuntes() {
                   onToggleNota={handleToggleNota}
                   onDeleteNota={handleDeleteNota}
                   onConvertNota={handleConvertNota}
+                  onUpdateNota={handleUpdateNota}
                 />
               )
             })}
