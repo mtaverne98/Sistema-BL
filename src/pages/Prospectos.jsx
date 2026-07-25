@@ -11,12 +11,7 @@ import {
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal'
 
 // ── Opciones ──────────────────────────────────────────────────────────────
-const ESTADO_OPTIONS = [
-  'Nuevo contacto', 'Contactado', 'Reunión agendada',
-  'En evaluación', 'Esperando antecedentes', 'Presupuesto enviado',
-  'Seguimiento', 'Cliente aceptado', 'Cliente rechazado',
-  'Sin respuesta', 'Descartado',
-]
+const ESTADO_OPTIONS = ['Activo', 'Inactivo']
 const ACCION_OPTIONS = [
   'Llamar', 'Agendar reunión', 'Enviar presupuesto',
   'Enviar contrato', 'Seguimiento', 'Esperando respuesta', 'Sin acción',
@@ -26,17 +21,8 @@ const MATERIA_OPTIONS = ['Penal', 'Civil', 'Laboral', 'Familia', 'Policía Local
 
 // ── Estilos ───────────────────────────────────────────────────────────────
 const ESTADO_STYLES = {
-  'Nuevo contacto':         { badge: 'bg-blue-50 text-blue-600',     dot: 'bg-blue-400'     },
-  'Contactado':             { badge: 'bg-sky-50 text-sky-600',       dot: 'bg-sky-400'      },
-  'Reunión agendada':       { badge: 'bg-purple-50 text-purple-600', dot: 'bg-purple-400'   },
-  'En evaluación':          { badge: 'bg-amber-50 text-amber-600',   dot: 'bg-amber-400'    },
-  'Esperando antecedentes': { badge: 'bg-orange-50 text-orange-600', dot: 'bg-orange-400'   },
-  'Presupuesto enviado':    { badge: 'bg-indigo-50 text-indigo-600', dot: 'bg-indigo-400'   },
-  'Seguimiento':            { badge: 'bg-violet-50 text-violet-600', dot: 'bg-violet-400'   },
-  'Cliente aceptado':       { badge: 'bg-emerald-50 text-emerald-600', dot: 'bg-emerald-400' },
-  'Cliente rechazado':      { badge: 'bg-rose-50 text-rose-500',     dot: 'bg-rose-400'     },
-  'Sin respuesta':          { badge: 'bg-gray-100 text-gray-500',    dot: 'bg-gray-400'     },
-  'Descartado':             { badge: 'bg-gray-100 text-gray-400',    dot: 'bg-gray-300'     },
+  'Activo':   { badge: 'bg-emerald-50 text-emerald-600', dot: 'bg-emerald-400' },
+  'Inactivo': { badge: 'bg-gray-100 text-gray-400',      dot: 'bg-gray-300'   },
 }
 const ACCION_STYLES = {
   'Llamar':              { dot: 'bg-red-400',    label: 'text-red-600'    },
@@ -64,11 +50,11 @@ const INTERACCION_STYLES = {
   seguimiento: { bg: 'bg-amber-50',   text: 'text-amber-500',   Icon: Clock        },
 }
 
-const INACTIVOS = ['Descartado', 'Cliente rechazado', 'Sin respuesta']
+const INACTIVOS = ['Inactivo']
 
 // ── DB helpers ────────────────────────────────────────────────────────────
 // Base columns always present; extended columns added via supabase_schema_additions.sql
-const PROSPECTOS_BASE_FIELDS    = new Set(['nombre','telefono','email','fecha_contacto','origen','materia','estado','proxima_accion','notas'])
+const PROSPECTOS_BASE_FIELDS    = new Set(['nombre','telefono','email','fecha_contacto','origen','materia','estado','proxima_accion','notas','convertido'])
 const PROSPECTOS_EXTENDED_FIELDS = new Set(['presupuesto_enviado','descripcion','antecedentes','interacciones'])
 const PROSPECTOS_DB_FIELDS = new Set([...PROSPECTOS_BASE_FIELDS, ...PROSPECTOS_EXTENDED_FIELDS])
 
@@ -81,7 +67,8 @@ function mapProspectoRow(row) {
     fecha_contacto:      row.fecha_contacto      || '',
     origen:              row.origen              || '',
     materia:             row.materia             || '',
-    estado:              row.estado              || 'Nuevo contacto',
+    estado:              row.estado              || 'Activo',
+    convertido:          !!row.convertido,
     proxima_accion:      row.proxima_accion      || 'Llamar',
     presupuesto_enviado: !!row.presupuesto_enviado,
     descripcion:         row.descripcion         || '',
@@ -375,7 +362,7 @@ function PanelDetalle({ prospecto, onClose, onConvertir, onUpdate }) {
     { key: 'notas',         label: 'Notas',         Icon: FileText      },
   ]
 
-  const inactivo = INACTIVOS.includes(prospecto.estado)
+  const inactivo = prospecto.estado === 'Inactivo' || prospecto.convertido
 
   return (
     <div className="w-[460px] flex-shrink-0 border-l border-gray-100 flex flex-col bg-white">
@@ -408,7 +395,7 @@ function PanelDetalle({ prospecto, onClose, onConvertir, onUpdate }) {
         </div>
 
         {/* Acciones */}
-        {prospecto.estado === 'Cliente aceptado' ? (
+        {!inactivo ? (
           confirmando ? (
             <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
               <div className="flex items-center gap-2 mb-1.5">
@@ -432,39 +419,31 @@ function PanelDetalle({ prospecto, onClose, onConvertir, onUpdate }) {
               </div>
             </div>
           ) : (
-            <button
-              onClick={() => setConfirmando(true)}
-              className="w-full flex items-center justify-center gap-2 py-2.5 text-xs font-semibold text-white rounded-xl transition-all hover:opacity-90 shadow-sm"
-              style={{ background: 'linear-gradient(135deg, #059669, #10b981)' }}
-            >
-              <UserPlus size={13} />Convertir a cliente
-            </button>
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => setConfirmando(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition-colors"
+              >
+                <UserPlus size={11} />Convertir a cliente
+              </button>
+              <button className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors">
+                <Phone size={11} />Llamar
+              </button>
+              <button className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors">
+                <Mail size={11} />Email
+              </button>
+            </div>
           )
-        ) : inactivo ? (
+        ) : (
           <div className="flex items-center gap-2">
-            <div className={`flex-1 text-center py-2 text-[11px] rounded-lg ${ESTADO_STYLES[prospecto.estado]?.badge}`}>
-              {prospecto.estado}
+            <div className="flex-1 text-center py-2 text-[11px] rounded-lg bg-gray-100 text-gray-400">
+              {prospecto.convertido ? 'Convertido a cliente' : 'Inactivo'}
             </div>
             <button
-              onClick={() => onUpdate(prospecto.id, { estado: 'Nuevo contacto', proxima_accion: 'Llamar' })}
+              onClick={() => onUpdate(prospecto.id, { estado: 'Activo', convertido: false })}
               className="px-3 py-2 text-[11px] font-medium text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors whitespace-nowrap"
             >
               Reactivar
-            </button>
-          </div>
-        ) : (
-          <div className="flex items-center gap-1.5">
-            <button className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors">
-              <Phone size={11} />Llamar
-            </button>
-            <button className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors">
-              <Mail size={11} />Email
-            </button>
-            <button className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors">
-              <Calendar size={11} />Reunión
-            </button>
-            <button className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors">
-              <CheckSquare size={11} />Tarea
             </button>
           </div>
         )}
@@ -518,7 +497,7 @@ function PanelDetalle({ prospecto, onClose, onConvertir, onUpdate }) {
                     value={prospecto.estado}
                     onChange={v => onUpdate(prospecto.id, { estado: v })}
                     options={ESTADO_OPTIONS}
-                    getStyle={opt => ESTADO_STYLES[opt] ?? ESTADO_STYLES['Nuevo contacto']}
+                    getStyle={opt => ESTADO_STYLES[opt] ?? ESTADO_STYLES['Activo']}
                     label="Estado del prospecto"
                     variant="badge"
                   />
@@ -650,7 +629,7 @@ function FormNuevoProspecto({ onClose, onGuardar }) {
   const [form, setForm] = useState({
     nombre: '', telefono: '', email: '',
     fecha_contacto: todayISO,
-    origen: '', materia: '', estado: 'Nuevo contacto',
+    origen: '', materia: '', estado: 'Activo',
     proxima_accion: 'Llamar',
     descripcion: '', antecedentes: '',
   })
@@ -788,7 +767,7 @@ export default function Prospectos() {
   const [busqueda,      setBusqueda]      = useState('')
   const [filtroOrigen,  setFiltroOrigen]  = useState('')
   const [filtroMateria, setFiltroMateria] = useState('')
-  const [filtroEstado,  setFiltroEstado]  = useState('')
+  const [filtroEstado,  setFiltroEstado]  = useState('Activo')
   const [deleteTarget,  setDeleteTarget]  = useState(null)
 
   useEffect(() => {
@@ -823,9 +802,24 @@ export default function Prospectos() {
   }
 
   const handleConvertir = async (id) => {
-    setProspectos(p => p.map(x => x.id === id ? { ...x, estado: 'Cliente aceptado' } : x))
+    const prospecto = prospectos.find(p => p.id === id)
+    if (!prospecto) return
+
+    // Insertar en clientes
+    const { error: errCliente } = await supabase.from('clientes').insert([{
+      nombre:   prospecto.nombre,
+      telefono: prospecto.telefono || null,
+      email:    prospecto.email    || null,
+      estado:   'Activo',
+    }])
+    if (errCliente) { console.error('[convertir] error insertando cliente:', errCliente.message); return }
+
+    // Marcar prospecto como inactivo (siempre)
+    await supabase.from('prospectos').update({ estado: 'Inactivo' }).eq('id', id)
+    // Marcar convertido=true si la columna existe (ignorar error si no existe)
+    await supabase.from('prospectos').update({ convertido: true }).eq('id', id)
+    setProspectos(p => p.map(x => x.id === id ? { ...x, estado: 'Inactivo', convertido: true } : x))
     setSeleccionado(null)
-    await supabase.from('prospectos').update({ estado: 'Cliente aceptado' }).eq('id', id)
     navigate('/clientes')
   }
 
@@ -867,17 +861,16 @@ export default function Prospectos() {
   const hayFiltros = filtroOrigen || filtroMateria || filtroEstado
 
   const metricas = useMemo(() => {
-    const total     = prospectos.length
-    const reuniones = prospectos.filter(p => p.estado === 'Reunión agendada').length
-    const aceptados = prospectos.filter(p => p.estado === 'Cliente aceptado').length
-    // "nuevos esta semana" — last 7 days from today
+    const total      = prospectos.length
+    const activos    = prospectos.filter(p => p.estado === 'Activo').length
+    const convertidos = prospectos.filter(p => p.convertido).length
     const hace7 = new Date(); hace7.setDate(hace7.getDate() - 7)
     const nuevos = prospectos.filter(p => {
       const d = new Date(p.fecha_contacto)
       return !isNaN(d) && d >= hace7
     }).length
-    const tasa   = total > 0 ? Math.round((aceptados / total) * 100) : 0
-    return { total, reuniones, nuevos, tasa }
+    const tasa = total > 0 ? Math.round((convertidos / total) * 100) : 0
+    return { total, activos, convertidos, nuevos, tasa }
   }, [prospectos])
 
   if (cargando) return (
@@ -893,10 +886,10 @@ export default function Prospectos() {
         {/* Header */}
         <div className="px-7 pt-7 pb-5 border-b border-gray-100">
           <div className="grid grid-cols-4 gap-4 mb-7">
-            <MetricCard label="Total prospectos"    value={metricas.total}    sub={`${metricas.total - prospectos.filter(p => INACTIVOS.includes(p.estado)).length} activos`} icon={Users} iconColor="bg-gray-50" />
-            <MetricCard label="Nuevos esta semana"  value={metricas.nuevos}   sub="últimos 7 días"   color="text-[#2570ba]"  icon={TrendingUp}  iconColor="bg-blue-50"    />
-            <MetricCard label="Reuniones agendadas" value={metricas.reuniones} sub="pendientes"      color="text-purple-600" icon={Calendar}    iconColor="bg-purple-50"  />
-            <MetricCard label="Tasa de conversión"  value={`${metricas.tasa}%`} sub={`${prospectos.filter(p => p.estado === 'Cliente aceptado').length} aceptados`} color="text-emerald-600" icon={ArrowUpRight} iconColor="bg-emerald-50" />
+            <MetricCard label="Total prospectos"   value={metricas.total}      sub={`${metricas.activos} activos`}              icon={Users}       iconColor="bg-gray-50"    />
+            <MetricCard label="Nuevos esta semana" value={metricas.nuevos}      sub="últimos 7 días"                             color="text-[#2570ba]"  icon={TrendingUp}  iconColor="bg-blue-50"    />
+            <MetricCard label="Convertidos"        value={metricas.convertidos} sub="total histórico"                            color="text-purple-600" icon={CheckCircle} iconColor="bg-purple-50"  />
+            <MetricCard label="Tasa de conversión" value={`${metricas.tasa}%`}  sub={`${metricas.convertidos} convertidos`}      color="text-emerald-600" icon={ArrowUpRight} iconColor="bg-emerald-50" />
           </div>
           <div className="flex items-center justify-between mb-4">
             <div>
