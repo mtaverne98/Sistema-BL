@@ -3005,6 +3005,8 @@ function clienteAvatarColor(isSelected, hasActiveCausas) {
 
 // ── Sidebar de navegación interna ─────────────────────────────────────────
 function CausasSidebar({ causas, clienteActivo, onSelect, busquedaSidebar, setBusquedaSidebar, clienteEstadoMap = {}, listaClientes = [] }) {
+  const [collapsed, setCollapsed] = useState(false)
+
   // Mapa nombre→estado para búsqueda rápida por nombre (fallback cuando no hay cliente_id)
   const nombreEstadoMap = useMemo(() => {
     const m = {}
@@ -3047,8 +3049,19 @@ function CausasSidebar({ causas, clienteActivo, onSelect, busquedaSidebar, setBu
   }, [filtrados])
 
   return (
-    <div className="flex-shrink-0 flex flex-col border-r border-gray-100 bg-white overflow-hidden" style={{ width: 200 }}>
-      <div className="px-3 pt-4 pb-3 border-b border-gray-100">
+    <div className="flex-shrink-0 flex flex-col border-r border-gray-100 bg-white overflow-hidden transition-all duration-200"
+      style={{ width: collapsed ? 32 : 200 }}>
+
+      {/* Toggle button */}
+      <button
+        onClick={() => setCollapsed(c => !c)}
+        title={collapsed ? 'Expandir clientes' : 'Colapsar clientes'}
+        className="flex-shrink-0 flex items-center justify-center h-9 border-b border-gray-100 text-gray-300 hover:text-gray-500 hover:bg-gray-50 transition-colors">
+        {collapsed ? <ChevronRight size={13}/> : <ChevronLeft size={13}/>}
+      </button>
+
+      {!collapsed && <>
+      <div className="px-3 pt-3 pb-3 border-b border-gray-100">
         <div className="relative">
           <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-300" />
           <input
@@ -3107,6 +3120,7 @@ function CausasSidebar({ causas, clienteActivo, onSelect, busquedaSidebar, setBu
           ))
         }
       </nav>
+      </>}
     </div>
   )
 }
