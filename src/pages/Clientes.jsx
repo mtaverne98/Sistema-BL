@@ -198,7 +198,7 @@ function PanelCliente({ cliente, hasActiveCausas, onClose, onEstadoCambiar, onIn
   const save = (field) => async (value) => onInlineSave?.(cliente.id, field, value)
 
   return (
-    <div className="w-80 flex-shrink-0 border-l border-gray-100 flex flex-col bg-white">
+    <div className="flex-1 min-w-0 border-l border-gray-100 flex flex-col bg-white">
       {/* Header */}
       <div className="px-5 py-4 border-b border-gray-100 flex items-start justify-between">
         <div className="flex-1 min-w-0">
@@ -422,7 +422,7 @@ function FormCliente({ inicial, onClose, onGuardar, guardando, errorMsg }) {
   }, [])
 
   return (
-    <div className="w-80 flex-shrink-0 border-l border-gray-100 flex flex-col bg-white">
+    <div className="flex-1 min-w-0 border-l border-gray-100 flex flex-col bg-white">
       <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
         <p className="text-sm font-semibold text-gray-900">
           {esEdicion ? 'Editar cliente' : 'Nuevo cliente'}
@@ -533,6 +533,33 @@ export default function Clientes() {
   const [formulario, setFormulario] = useState(null) // null | 'nuevo' | objeto cliente
   const [formError, setFormError] = useState(null)   // error del formulario modal
   const [deleteModal, setDeleteModal] = useState(null) // null | { cliente, causasCount }
+
+  const [rightPanelW, setRightPanelW] = useState(() => {
+    const s = localStorage.getItem('clientes_panel_w')
+    return s ? Math.max(180, Math.min(350, parseInt(s))) : 320
+  })
+  const rightDragging = useRef(false)
+
+  function startDragRight(e) {
+    e.preventDefault()
+    const startX = e.clientX
+    const startW = rightPanelW
+    let cur = startW
+    rightDragging.current = true
+
+    function onMove(ev) {
+      cur = Math.max(180, Math.min(350, startW - (ev.clientX - startX)))
+      setRightPanelW(cur)
+    }
+    function onUp() {
+      rightDragging.current = false
+      localStorage.setItem('clientes_panel_w', cur.toString())
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+    }
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+  }
 
   // ── Fetch ───────────────────────────────────────────────────────────────
   const fetchClientes = useCallback(async () => {
@@ -984,26 +1011,44 @@ export default function Clientes() {
         </div>
       </div>
 
-      {/* ── Panel lateral ── */}
-      {clienteSeleccionado && !formulario && (
-        <PanelCliente
-          cliente={clienteSeleccionado}
-          hasActiveCausas={clienteHasActiveCausasSet.has(clienteSeleccionado.id)}
-          onClose={() => setSeleccionado(null)}
-          onEstadoCambiar={handleEstadoCambiar}
-          onInlineSave={handleInlineSave}
-          onRequestDelete={handleRequestDelete}
-        />
-      )}
-      {formulario && (
-        <FormCliente
-          inicial={formulario === 'nuevo' ? null : formulario}
-          onClose={() => { setFormulario(null); setFormError(null) }}
-          onGuardar={handleGuardar}
-          guardando={guardando}
-          errorMsg={formError}
-        />
-      )}
+      {/* ── Handle + Panel lateral ── */}
+      {(clienteSeleccionado || formulario) && (<>
+        {/* Handle de redimensión */}
+        <div
+          onMouseDown={startDragRight}
+          onDoubleClick={() => setRightPanelW(w => w === 320 ? 180 : 320)}
+          title="Arrastrar para redimensionar · Doble clic para alternar"
+          className="flex-shrink-0 w-2 flex flex-col items-center justify-center bg-white border-gray-100 hover:bg-blue-50 hover:border-blue-200 transition-colors group cursor-col-resize select-none"
+        >
+          <div className="flex flex-col gap-[3px] opacity-0 group-hover:opacity-100 transition-opacity">
+            <span className="w-[3px] h-[3px] rounded-full bg-gray-400" />
+            <span className="w-[3px] h-[3px] rounded-full bg-gray-400" />
+            <span className="w-[3px] h-[3px] rounded-full bg-gray-400" />
+          </div>
+        </div>
+        {/* Panel */}
+        <div className="flex-shrink-0 flex flex-col" style={{ width: rightPanelW, transition: rightDragging.current ? 'none' : 'width 0.15s' }}>
+          {clienteSeleccionado && !formulario && (
+            <PanelCliente
+              cliente={clienteSeleccionado}
+              hasActiveCausas={clienteHasActiveCausasSet.has(clienteSeleccionado.id)}
+              onClose={() => setSeleccionado(null)}
+              onEstadoCambiar={handleEstadoCambiar}
+              onInlineSave={handleInlineSave}
+              onRequestDelete={handleRequestDelete}
+            />
+          )}
+          {formulario && (
+            <FormCliente
+              inicial={formulario === 'nuevo' ? null : formulario}
+              onClose={() => { setFormulario(null); setFormError(null) }}
+              onGuardar={handleGuardar}
+              guardando={guardando}
+              errorMsg={formError}
+            />
+          )}
+        </div>
+      </>)}
     </div>
 
     {/* ── Modal eliminar cliente ── */}

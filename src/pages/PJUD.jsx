@@ -874,9 +874,10 @@ export function MovimientosTable({ causaData, rowsAll, onUpdate, onAdd, onDelete
                       onClick={() => !isEditing && toggleRow(r.id)}
                       onDoubleClick={e => !isEditing && startEdit(r, e)}
                       className={`border-b border-gray-50 transition-colors group ${
+                        isEditing  ? 'bg-blue-50/30 border-l-2 border-l-blue-300' :
                         r.estado === 'Urgente' ? 'border-l-2 border-l-red-400' : ''
                       } ${
-                        isEditing  ? 'bg-blue-50/20' :
+                        isEditing  ? '' :
                         isExpanded ? 'bg-[#1a2e4a]/[0.03]' :
                         altRow     ? 'bg-gray-50/60 hover:bg-gray-100/60' :
                         'bg-white hover:bg-gray-50'

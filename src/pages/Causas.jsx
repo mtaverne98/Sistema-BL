@@ -3006,6 +3006,34 @@ function clienteAvatarColor(isSelected, hasActiveCausas) {
 // ── Sidebar de navegación interna ─────────────────────────────────────────
 function CausasSidebar({ causas, clienteActivo, onSelect, busquedaSidebar, setBusquedaSidebar, clienteEstadoMap = {}, listaClientes = [] }) {
   const [collapsed, setCollapsed] = useState(false)
+  const [panelWidth, setPanelWidth] = useState(() => {
+    const s = localStorage.getItem('causas_sidebar_w')
+    return s ? Math.max(180, Math.min(350, parseInt(s))) : 240
+  })
+  const dragging = useRef(false)
+
+  function startDrag(e) {
+    e.preventDefault()
+    const startX = e.clientX
+    const startW = panelWidth
+    let cur = startW
+    dragging.current = true
+
+    function onMove(ev) {
+      cur = Math.max(180, Math.min(350, startW + (ev.clientX - startX)))
+      setPanelWidth(cur)
+      if (cur <= 185 && !collapsed) setCollapsed(true)
+      if (cur > 185 && collapsed) setCollapsed(false)
+    }
+    function onUp() {
+      dragging.current = false
+      localStorage.setItem('causas_sidebar_w', cur.toString())
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+    }
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+  }
 
   // Mapa nombre→estado para búsqueda rápida por nombre (fallback cuando no hay cliente_id)
   const nombreEstadoMap = useMemo(() => {
@@ -3049,8 +3077,9 @@ function CausasSidebar({ causas, clienteActivo, onSelect, busquedaSidebar, setBu
   }, [filtrados])
 
   return (
-    <div className="flex-shrink-0 flex flex-col border-r border-gray-100 bg-white overflow-hidden transition-all duration-200"
-      style={{ width: collapsed ? 32 : 200 }}>
+    <>
+    <div className="flex-shrink-0 flex flex-col bg-white overflow-hidden"
+      style={{ width: collapsed ? 32 : panelWidth, transition: dragging.current ? 'none' : 'width 0.2s' }}>
 
       {/* Toggle button */}
       <button
@@ -3122,6 +3151,28 @@ function CausasSidebar({ causas, clienteActivo, onSelect, busquedaSidebar, setBu
       </nav>
       </>}
     </div>
+
+    {/* Handle de redimensión */}
+    <div
+      onMouseDown={startDrag}
+      onDoubleClick={() => {
+        const next = !collapsed
+        setCollapsed(next)
+        if (!next) {
+          const saved = localStorage.getItem('causas_sidebar_w')
+          setPanelWidth(saved ? Math.max(180, Math.min(350, parseInt(saved))) : 240)
+        }
+      }}
+      title="Arrastrar para redimensionar · Doble clic para colapsar"
+      className="flex-shrink-0 w-2 flex flex-col items-center justify-center border-r border-gray-100 bg-white hover:bg-blue-50 hover:border-blue-200 transition-colors group cursor-col-resize select-none"
+    >
+      <div className="flex flex-col gap-[3px] opacity-0 group-hover:opacity-100 transition-opacity">
+        <span className="w-[3px] h-[3px] rounded-full bg-gray-400" />
+        <span className="w-[3px] h-[3px] rounded-full bg-gray-400" />
+        <span className="w-[3px] h-[3px] rounded-full bg-gray-400" />
+      </div>
+    </div>
+    </>
   )
 }
 
