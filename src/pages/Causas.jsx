@@ -1065,6 +1065,30 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
   // Load seguimiento rows — reset cache when causa changes
   useEffect(() => { setSegRows([]) }, [causa?.id])
 
+  // Refresh segRows when Agenda inserts a new seguimiento for this causa
+  useEffect(() => {
+    if (!causa?.id) return
+    const handler = (e) => {
+      const { causa_id, causa_rit, row } = e.detail
+      const matches = causa_id === causa.id || (causa_rit && causa_rit === causa.rit)
+      if (!matches) return
+      if (row) {
+        setSegRows(prev => [row, ...prev.filter(r => r.id !== row.id)])
+      } else {
+        const base = causa.rit
+          ? supabase.from('revisiones').select('*').eq('causa_rit', causa.rit)
+          : supabase.from('revisiones').select('*').eq('causa_id', causa.id)
+        base
+          .or('semana_key.is.null,semana_key.like.SEG-%,semana_key.like.NOTA-%')
+          .or('es_revision_semanal.is.null,es_revision_semanal.eq.false')
+          .order('fecha_revision', { ascending: false })
+          .then(({ data }) => setSegRows(data ?? []))
+      }
+    }
+    window.addEventListener('seguimiento:created', handler)
+    return () => window.removeEventListener('seguimiento:created', handler)
+  }, [causa?.id, causa?.rit])
+
   // Load seguimiento rows — excluye es_revision_semanal=true (filas SIAU/PJUD de Mi semana)
   useEffect(() => {
     if ((tab !== 'seguimiento' && tab !== 'revisiones' && tab !== 'resumen') || !causa?.id) return
@@ -3389,10 +3413,22 @@ export default function Causas() {
   // ── Actualización parcial (ej: cambio de estado inline) ─────────────────
   const handleCausaUpdate = useCallback(async (updates) => {
     if (!seleccionada) return
+    // Optimistic update first so the UI responds instantly
+    const optimista = { ...seleccionada, ...updates }
+    setCausas(prev => prev.map(c => c.id === seleccionada.id ? { ...c, ...updates } : c))
+    setSeleccionada(optimista)
     const { data, error: err } = await supabase
-      .from('causas').update(updates).eq('id', seleccionada.id).select().single()
-    if (!err && data) {
-      const actualizada = mapCausa(data)
+      .from('causas').update(updates).eq('id', seleccionada.id).select()
+    if (err) {
+      console.error('Error actualizando causa:', err.message, err)
+      // Rollback optimistic update
+      setCausas(prev => prev.map(c => c.id === seleccionada.id ? seleccionada : c))
+      setSeleccionada(seleccionada)
+      return
+    }
+    // If select returned a row, use the server value (more accurate)
+    if (data?.length > 0) {
+      const actualizada = mapCausa(data[0])
       setCausas(prev => prev.map(c => c.id === actualizada.id ? actualizada : c))
       setSeleccionada(actualizada)
     }

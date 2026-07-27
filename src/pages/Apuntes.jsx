@@ -711,7 +711,7 @@ export default function Apuntes() {
         setSegPickerNota(nota)
         return
       }
-      await supabase.from('revisiones').insert([{
+      const payload = {
         causa_id:       causa.id,
         causa_rit:      causa.rit || null,
         cliente_nombre: causa.cliente_nombre || null,
@@ -721,7 +721,15 @@ export default function Apuntes() {
         semana_key:     null,
         revisada:       false,
         origen:         'agenda',
-      }])
+      }
+      console.log('Guardando en revisiones:', { causa_rit: payload.causa_rit, cliente_nombre: payload.cliente_nombre, por_hacer: payload.por_hacer })
+      const { data: segData, error: segError } = await supabase.from('revisiones').insert([payload]).select().single()
+      if (segError) {
+        console.error('Error al guardar seguimiento en revisiones:', segError.message, segError)
+        return
+      }
+      // Notificar a CausaView para que refresque segRows inmediatamente
+      window.dispatchEvent(new CustomEvent('seguimiento:created', { detail: { causa_id: causa.id, causa_rit: causa.rit, row: segData } }))
     }
     // Marcar tag en la nota
     const { error } = await supabase.from('agenda_notas')
