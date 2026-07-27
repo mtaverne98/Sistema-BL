@@ -1232,8 +1232,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
   // Seguimiento — save new row
   async function handleSaveNewSegRow() {
     if (!newSegRow?.por_hacer?.trim()) return
-    setSavingSegRow(true)
-    const { data, error } = await supabase.from('revisiones').insert([{
+    const payload = {
       causa_id:       causa.id,
       causa_rit:      causa.rit       || null,
       cliente_nombre: causa.cliente_nombre || null,
@@ -1243,10 +1242,23 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
       notas:          newSegRow.notas?.trim() || null,
       semana_key:     null,
       revisada:       false,
-    }]).select().single()
-    if (!error && data) { setSegRows(prev => [data, ...prev]); showToast('Entrada guardada') }
+    }
+    const optimista = { ...payload, id: `temp-${Date.now()}` }
+    setSegRows(prev => [optimista, ...prev])
     setNewSegRow(null)
+    setSavingSegRow(true)
+    const { data, error } = await supabase.from('revisiones').insert([payload]).select()
     setSavingSegRow(false)
+    if (error) {
+      console.error('Error guardando seguimiento:', error.message, error)
+      setSegRows(prev => prev.filter(r => r.id !== optimista.id))
+      showToast('Error al guardar')
+      return
+    }
+    if (data?.length > 0) {
+      setSegRows(prev => prev.map(r => r.id === optimista.id ? data[0] : r))
+    }
+    showToast('Entrada guardada')
   }
 
   // Seguimiento — update row
@@ -2813,7 +2825,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                               className="text-[11px] border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:border-blue-300 w-full"/>
                           </td>
                           <td className="px-3 py-3">
-                            <textarea defaultValue={newSegRow.por_hacer || ''} onBlur={e => setNewSegRow(p => ({ ...p, por_hacer: e.target.value }))}
+                            <textarea value={newSegRow.por_hacer || ''} onChange={e => setNewSegRow(p => ({ ...p, por_hacer: e.target.value }))}
                               rows={2} autoFocus placeholder="¿Qué hay que hacer?"
                               className="w-full text-[12px] border border-gray-200 rounded-lg px-2.5 py-1.5 resize-none focus:outline-none focus:border-blue-300 bg-white placeholder:text-gray-300"/>
                           </td>
