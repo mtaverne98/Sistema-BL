@@ -24,6 +24,7 @@ const ESTADO_STYLES = {
   'Activo':   { badge: 'bg-emerald-50 text-emerald-600', dot: 'bg-emerald-400' },
   'Inactivo': { badge: 'bg-gray-100 text-gray-400',      dot: 'bg-gray-300'   },
 }
+const ESTADO_STYLE_DEFAULT = { badge: 'bg-blue-50 text-blue-600', dot: 'bg-blue-400' }
 const ACCION_STYLES = {
   'Llamar':              { dot: 'bg-red-400',    label: 'text-red-600'    },
   'Agendar reunión':     { dot: 'bg-purple-400', label: 'text-purple-600' },
@@ -300,7 +301,7 @@ function DropdownSelect({ value, onChange, options, getStyle, label, variant = '
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 function EstadoBadge({ estado }) {
-  const s = ESTADO_STYLES[estado] ?? ESTADO_STYLES['Nuevo contacto']
+  const s = ESTADO_STYLES[estado] ?? ESTADO_STYLE_DEFAULT
   return (
     <span className={`inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full whitespace-nowrap ${s.badge}`}>
       <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${s.dot}`} />
