@@ -862,7 +862,8 @@ export default function Prospectos() {
 
   const metricas = useMemo(() => {
     const total      = prospectos.length
-    const activos    = prospectos.filter(p => p.estado === 'Activo').length
+    const inactivos  = prospectos.filter(p => p.estado === 'Inactivo').length
+    const activos    = total - inactivos
     const convertidos = prospectos.filter(p => p.convertido).length
     const hace7 = new Date(); hace7.setDate(hace7.getDate() - 7)
     const nuevos = prospectos.filter(p => {
@@ -870,7 +871,7 @@ export default function Prospectos() {
       return !isNaN(d) && d >= hace7
     }).length
     const tasa = total > 0 ? Math.round((convertidos / total) * 100) : 0
-    return { total, activos, convertidos, nuevos, tasa }
+    return { total, activos, inactivos, convertidos, nuevos, tasa }
   }, [prospectos])
 
   if (cargando) return (
@@ -886,7 +887,7 @@ export default function Prospectos() {
         {/* Header */}
         <div className="px-7 pt-7 pb-5 border-b border-gray-100">
           <div className="grid grid-cols-4 gap-4 mb-7">
-            <MetricCard label="Total prospectos"   value={metricas.total}      sub={`${metricas.activos} activos`}              icon={Users}       iconColor="bg-gray-50"    />
+            <MetricCard label="Total prospectos"   value={metricas.total}      sub={`${metricas.activos} activos · ${metricas.inactivos} inactivos`}  icon={Users}  iconColor="bg-gray-50"  />
             <MetricCard label="Nuevos esta semana" value={metricas.nuevos}      sub="últimos 7 días"                             color="text-[#2570ba]"  icon={TrendingUp}  iconColor="bg-blue-50"    />
             <MetricCard label="Convertidos"        value={metricas.convertidos} sub="total histórico"                            color="text-purple-600" icon={CheckCircle} iconColor="bg-purple-50"  />
             <MetricCard label="Tasa de conversión" value={`${metricas.tasa}%`}  sub={`${metricas.convertidos} convertidos`}      color="text-emerald-600" icon={ArrowUpRight} iconColor="bg-emerald-50" />
@@ -894,7 +895,7 @@ export default function Prospectos() {
           <div className="flex items-center justify-between mb-4">
             <div>
               <h1 className="text-xl font-semibold text-gray-900">Prospectos</h1>
-              <p className="mt-0.5 text-xs text-gray-400">{filtrados.length} de {prospectos.length} registros</p>
+              <p className="mt-0.5 text-xs text-gray-400">{prospectos.length} total · {metricas.activos} activos · {metricas.inactivos} inactivos</p>
             </div>
             <button onClick={handleNuevo}
               className="flex items-center gap-2 px-3.5 py-2 text-xs font-medium text-white rounded-lg hover:opacity-90 transition-opacity"
