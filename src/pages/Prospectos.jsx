@@ -76,6 +76,7 @@ function mapProspectoRow(row) {
     antecedentes:        row.antecedentes        || '',
     interacciones:       Array.isArray(row.interacciones) ? row.interacciones : [],
     notas:               row.notas               || '',
+    created_at:          row.created_at          || '',
   }
 }
 
@@ -866,11 +867,11 @@ export default function Prospectos() {
     const inactivos  = prospectos.filter(p => p.estado === 'Inactivo').length
     const activos    = total - inactivos
     const convertidos = prospectos.filter(p => p.convertido).length
-    const hace7 = new Date(); hace7.setDate(hace7.getDate() - 7)
-    const nuevos = prospectos.filter(p => {
-      const d = new Date(p.fecha_contacto)
-      return !isNaN(d) && d >= hace7
-    }).length
+    const inicioSemana = new Date()
+    const diaSemana = inicioSemana.getDay()
+    inicioSemana.setDate(inicioSemana.getDate() - (diaSemana === 0 ? 6 : diaSemana - 1))
+    inicioSemana.setHours(0, 0, 0, 0)
+    const nuevos = prospectos.filter(p => p.created_at && new Date(p.created_at) >= inicioSemana).length
     const tasa = total > 0 ? Math.round((convertidos / total) * 100) : 0
     return { total, activos, inactivos, convertidos, nuevos, tasa }
   }, [prospectos])
