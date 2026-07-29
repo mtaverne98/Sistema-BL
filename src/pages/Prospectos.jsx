@@ -336,17 +336,27 @@ function initials(nombre) {
 }
 
 // ── Metric Card ───────────────────────────────────────────────────────────
-function MetricCard({ label, value, sub, color = 'text-gray-900', icon: Icon, iconColor }) {
+function MetricCard({ label, value, sub, color = 'text-gray-900', icon: Icon, iconColor, onClick, active }) {
   return (
-    <div className="bg-white border border-gray-100 rounded-xl px-5 py-4 flex items-start justify-between hover:border-gray-200 transition-colors">
+    <div
+      onClick={onClick}
+      className={`bg-white border rounded-xl px-5 py-4 flex items-start justify-between transition-colors
+        ${onClick ? 'cursor-pointer' : ''}
+        ${active
+          ? 'border-[#2570ba] bg-[#E6F1FB]'
+          : onClick
+            ? 'border-gray-100 hover:border-[#2570ba]/40'
+            : 'border-gray-100 hover:border-gray-200'
+        }`}
+    >
       <div>
         <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-2">{label}</p>
         <p className={`text-2xl font-bold leading-none ${color}`}>{value}</p>
         {sub && <p className="text-[11px] text-gray-400 mt-1.5">{sub}</p>}
       </div>
       {Icon && (
-        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${iconColor ?? 'bg-gray-50'}`}>
-          <Icon size={15} className="text-gray-400" />
+        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${active ? 'bg-[#2570ba]/10' : (iconColor ?? 'bg-gray-50')}`}>
+          <Icon size={15} className={active ? 'text-[#2570ba]' : 'text-gray-400'} />
         </div>
       )}
     </div>
@@ -767,10 +777,12 @@ export default function Prospectos() {
   const [seleccionado,  setSeleccionado]  = useState(null)
   const [mostrarForm,   setMostrarForm]   = useState(false)
   const [busqueda,      setBusqueda]      = useState('')
-  const [filtroOrigen,  setFiltroOrigen]  = useState('')
-  const [filtroMateria, setFiltroMateria] = useState('')
-  const [filtroEstado,  setFiltroEstado]  = useState('Activo')
-  const [deleteTarget,  setDeleteTarget]  = useState(null)
+  const [filtroOrigen,      setFiltroOrigen]      = useState('')
+  const [filtroMateria,     setFiltroMateria]     = useState('')
+  const [filtroEstado,      setFiltroEstado]      = useState('Activo')
+  const [filtroNuevos,      setFiltroNuevos]      = useState(false)
+  const [filtroConvertidos, setFiltroConvertidos] = useState(false)
+  const [deleteTarget,      setDeleteTarget]      = useState(null)
 
   useEffect(() => {
     async function fetchProspectos() {
@@ -847,6 +859,10 @@ export default function Prospectos() {
 
   const filtrados = useMemo(() => {
     const q = busqueda.toLowerCase().trim()
+    const inicioSemana = new Date()
+    const diaSemana = inicioSemana.getDay()
+    inicioSemana.setDate(inicioSemana.getDate() - (diaSemana === 0 ? 6 : diaSemana - 1))
+    inicioSemana.setHours(0, 0, 0, 0)
     return prospectos.filter(p => {
       const matchQ = !q ||
         p.nombre.toLowerCase().includes(q) ||
@@ -854,13 +870,15 @@ export default function Prospectos() {
         p.materia.toLowerCase().includes(q) ||
         p.telefono.includes(q)
       return matchQ &&
-        (!filtroOrigen  || p.origen  === filtroOrigen) &&
-        (!filtroMateria || p.materia === filtroMateria) &&
-        (!filtroEstado  || p.estado  === filtroEstado)
+        (!filtroOrigen      || p.origen  === filtroOrigen) &&
+        (!filtroMateria     || p.materia === filtroMateria) &&
+        (!filtroEstado      || p.estado  === filtroEstado) &&
+        (!filtroNuevos      || (p.created_at && new Date(p.created_at) >= inicioSemana)) &&
+        (!filtroConvertidos || p.convertido === true)
     }).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
-  }, [prospectos, busqueda, filtroOrigen, filtroMateria, filtroEstado])
+  }, [prospectos, busqueda, filtroOrigen, filtroMateria, filtroEstado, filtroNuevos, filtroConvertidos])
 
-  const hayFiltros = filtroOrigen || filtroMateria || filtroEstado
+  const hayFiltros = filtroOrigen || filtroMateria || filtroEstado || filtroNuevos || filtroConvertidos
 
   const metricas = useMemo(() => {
     const total      = prospectos.length
@@ -889,9 +907,15 @@ export default function Prospectos() {
         {/* Header */}
         <div className="px-7 pt-7 pb-5 border-b border-gray-100">
           <div className="grid grid-cols-4 gap-4 mb-7">
-            <MetricCard label="Total prospectos"   value={metricas.total}      sub={`${metricas.activos} activos · ${metricas.inactivos} inactivos`}  icon={Users}  iconColor="bg-gray-50"  />
-            <MetricCard label="Nuevos esta semana" value={metricas.nuevos}      sub="últimos 7 días"                             color="text-[#2570ba]"  icon={TrendingUp}  iconColor="bg-blue-50"    />
-            <MetricCard label="Convertidos"        value={metricas.convertidos} sub="total histórico"                            color="text-purple-600" icon={CheckCircle} iconColor="bg-purple-50"  />
+            <MetricCard label="Total prospectos"   value={metricas.total}      sub={`${metricas.activos} activos · ${metricas.inactivos} inactivos`}  icon={Users}       iconColor="bg-gray-50"     />
+            <MetricCard label="Nuevos esta semana" value={metricas.nuevos}      sub="desde el lunes"                             color="text-[#2570ba]"  icon={TrendingUp}  iconColor="bg-blue-50"
+              active={filtroNuevos}
+              onClick={() => { setFiltroNuevos(v => !v); setFiltroConvertidos(false) }}
+            />
+            <MetricCard label="Convertidos"        value={metricas.convertidos} sub="total histórico"                            color="text-purple-600" icon={CheckCircle} iconColor="bg-purple-50"
+              active={filtroConvertidos}
+              onClick={() => { setFiltroConvertidos(v => !v); setFiltroNuevos(false) }}
+            />
             <MetricCard label="Tasa de conversión" value={`${metricas.tasa}%`}  sub={`${metricas.convertidos} convertidos`}      color="text-emerald-600" icon={ArrowUpRight} iconColor="bg-emerald-50" />
           </div>
           <div className="flex items-center justify-between mb-4">
@@ -928,9 +952,9 @@ export default function Prospectos() {
               {ORIGEN_OPTIONS.map(o => <option key={o}>{o}</option>)}
             </select>
             {hayFiltros && (
-              <button onClick={() => { setFiltroOrigen(''); setFiltroMateria(''); setFiltroEstado('') }}
+              <button onClick={() => { setFiltroOrigen(''); setFiltroMateria(''); setFiltroEstado(''); setFiltroNuevos(false); setFiltroConvertidos(false) }}
                 className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 px-2">
-                <X size={11} />Limpiar
+                <X size={11} />Limpiar filtro
               </button>
             )}
           </div>
