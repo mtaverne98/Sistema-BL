@@ -45,10 +45,11 @@ const MATERIA_STYLES = {
 }
 const ORIGEN_COLOR = { MT: '#2570ba', AB: '#059669', CL: '#7c3aed' }
 const INTERACCION_STYLES = {
-  llamada:     { bg: 'bg-blue-50',    text: 'text-blue-500',    Icon: Phone        },
-  email:       { bg: 'bg-purple-50',  text: 'text-purple-500',  Icon: Mail         },
-  reunion:     { bg: 'bg-emerald-50', text: 'text-emerald-500', Icon: Users        },
-  seguimiento: { bg: 'bg-amber-50',   text: 'text-amber-500',   Icon: Clock        },
+  'Llamada':    { bg: 'bg-blue-50',    text: 'text-blue-500',    Icon: Phone         },
+  'Email':      { bg: 'bg-purple-50',  text: 'text-purple-500',  Icon: Mail          },
+  'Reunión':    { bg: 'bg-emerald-50', text: 'text-emerald-500', Icon: Users         },
+  'WhatsApp':   { bg: 'bg-green-50',   text: 'text-green-600',   Icon: MessageSquare },
+  'Seguimiento':{ bg: 'bg-amber-50',   text: 'text-amber-500',   Icon: Clock         },
 }
 
 const INACTIVOS = ['Inactivo']
@@ -367,6 +368,62 @@ function MetricCard({ label, value, sub, color = 'text-gray-900', icon: Icon, ic
 function PanelDetalle({ prospecto, onClose, onConvertir, onUpdate }) {
   const [tab, setTab] = useState('resumen')
   const [confirmando, setConfirmando] = useState(false)
+  // Notas
+  const [editandoNota, setEditandoNota] = useState(false)
+  const [textNota, setTextNota] = useState(prospecto.notas || '')
+  const [guardandoNota, setGuardandoNota] = useState(false)
+  // Interacciones
+  const [interacciones, setInteracciones] = useState([])
+  const [cargandoInter, setCargandoInter] = useState(false)
+  const [mostrarFormInter, setMostrarFormInter] = useState(false)
+  const todayISO = new Date().toISOString().slice(0, 10)
+  const [formInter, setFormInter] = useState({ fecha: todayISO, tipo: 'Llamada', descripcion: '', resultado: '' })
+  const [guardandoInter, setGuardandoInter] = useState(false)
+
+  useEffect(() => {
+    setTextNota(prospecto.notas || '')
+    setEditandoNota(false)
+  }, [prospecto.id])
+
+  useEffect(() => {
+    if (tab !== 'interacciones') return
+    setCargandoInter(true)
+    supabase
+      .from('prospecto_interacciones')
+      .select('*')
+      .eq('prospecto_id', prospecto.id)
+      .order('fecha', { ascending: false })
+      .then(({ data, error }) => {
+        if (!error && data) setInteracciones(data)
+        setCargandoInter(false)
+      })
+  }, [tab, prospecto.id])
+
+  async function handleGuardarNota() {
+    setGuardandoNota(true)
+    await onUpdate(prospecto.id, { notas: textNota })
+    setGuardandoNota(false)
+    setEditandoNota(false)
+  }
+
+  async function handleGuardarInter() {
+    if (!formInter.descripcion.trim()) return
+    setGuardandoInter(true)
+    const payload = {
+      prospecto_id: prospecto.id,
+      fecha: formInter.fecha,
+      tipo: formInter.tipo,
+      descripcion: formInter.descripcion.trim(),
+      resultado: formInter.resultado.trim() || null,
+    }
+    const { data, error } = await supabase.from('prospecto_interacciones').insert([payload]).select()
+    if (!error && data?.length > 0) {
+      setInteracciones(prev => [data[0], ...prev])
+      setMostrarFormInter(false)
+      setFormInter({ fecha: todayISO, tipo: 'Llamada', descripcion: '', resultado: '' })
+    }
+    setGuardandoInter(false)
+  }
 
   const TABS = [
     { key: 'resumen',       label: 'Resumen',       Icon: User          },
@@ -438,12 +495,18 @@ function PanelDetalle({ prospecto, onClose, onConvertir, onUpdate }) {
               >
                 <UserPlus size={11} />Convertir a cliente
               </button>
-              <button className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors">
-                <Phone size={11} />Llamar
-              </button>
-              <button className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors">
-                <Mail size={11} />Email
-              </button>
+              {prospecto.telefono && (
+                <a href={`tel:${prospecto.telefono}`}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors">
+                  <Phone size={11} />Llamar
+                </a>
+              )}
+              {prospecto.email && (
+                <a href={`mailto:${prospecto.email}`}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors">
+                  <Mail size={11} />Email
+                </a>
+              )}
             </div>
           )
         ) : (
@@ -573,39 +636,101 @@ function PanelDetalle({ prospecto, onClose, onConvertir, onUpdate }) {
         {tab === 'interacciones' && (
           <div>
             <div className="px-6 py-3 border-b border-gray-50 flex items-center justify-between">
-              <p className="text-xs text-gray-500">{prospecto.interacciones.length} interaccion{prospecto.interacciones.length !== 1 ? 'es' : ''}</p>
-              <button className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white rounded-lg" style={{ backgroundColor: '#2570BA' }}>
-                <Plus size={11} />Agregar
+              <p className="text-xs text-gray-500">{interacciones.length} interaccion{interacciones.length !== 1 ? 'es' : ''}</p>
+              <button
+                onClick={() => setMostrarFormInter(v => !v)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white rounded-lg"
+                style={{ backgroundColor: '#2570BA' }}
+              >
+                <Plus size={11} />Nueva interacción
               </button>
             </div>
-            <div className="px-6 py-5">
-              <div className="relative">
-                <div className="absolute left-[13px] top-3 bottom-3 w-px bg-gray-100" />
-                <div className="space-y-6">
-                  {prospecto.interacciones.map(inter => {
-                    const style = INTERACCION_STYLES[inter.tipo] ?? INTERACCION_STYLES.seguimiento
-                    return (
-                      <div key={inter.id} className="flex gap-4 relative">
-                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 z-10 mt-0.5 ${style.bg}`}>
-                          <style.Icon size={13} className={style.text} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between gap-2 mb-1">
-                            <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded capitalize ${style.bg} ${style.text}`}>
-                              {inter.tipo}
-                            </span>
-                            <span className="text-[11px] text-gray-400 flex-shrink-0">{inter.fecha} · {inter.hora}</span>
-                          </div>
-                          <p className="text-xs text-gray-700 leading-snug">{inter.descripcion}</p>
-                          {inter.resultado && (
-                            <p className="text-[11px] text-gray-400 mt-1 italic">→ {inter.resultado}</p>
-                          )}
-                        </div>
-                      </div>
-                    )
-                  })}
+            {mostrarFormInter && (
+              <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/70">
+                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-3">Nueva interacción</p>
+                <div className="space-y-2.5">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[10px] text-gray-500 mb-1">Fecha</label>
+                      <input type="date" value={formInter.fecha}
+                        onChange={e => setFormInter(p => ({ ...p, fecha: e.target.value }))}
+                        className="w-full px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg outline-none focus:border-[#2570ba] bg-white" />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-gray-500 mb-1">Tipo</label>
+                      <select value={formInter.tipo}
+                        onChange={e => setFormInter(p => ({ ...p, tipo: e.target.value }))}
+                        className="w-full px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg outline-none focus:border-[#2570ba] bg-white">
+                        {['Llamada', 'Reunión', 'Email', 'WhatsApp'].map(t => <option key={t}>{t}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-gray-500 mb-1">Descripción</label>
+                    <textarea value={formInter.descripcion}
+                      onChange={e => setFormInter(p => ({ ...p, descripcion: e.target.value }))}
+                      placeholder="¿Qué ocurrió en esta interacción?"
+                      rows={2}
+                      className="w-full px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg outline-none focus:border-[#2570ba] resize-none placeholder:text-gray-300" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-gray-500 mb-1">Resultado</label>
+                    <input value={formInter.resultado}
+                      onChange={e => setFormInter(p => ({ ...p, resultado: e.target.value }))}
+                      placeholder="¿Cuál fue el resultado?"
+                      className="w-full px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg outline-none focus:border-[#2570ba] placeholder:text-gray-300" />
+                  </div>
+                  <div className="flex gap-2 pt-1">
+                    <button onClick={handleGuardarInter} disabled={guardandoInter || !formInter.descripcion.trim()}
+                      className="flex-1 py-1.5 text-xs font-medium text-white rounded-lg disabled:opacity-40 transition-opacity"
+                      style={{ backgroundColor: '#2570BA' }}>
+                      {guardandoInter ? 'Guardando…' : 'Guardar'}
+                    </button>
+                    <button onClick={() => setMostrarFormInter(false)}
+                      className="px-3 py-1.5 text-xs text-gray-500 hover:bg-gray-100 rounded-lg transition-colors">
+                      Cancelar
+                    </button>
+                  </div>
                 </div>
               </div>
+            )}
+            <div className="px-6 py-5">
+              {cargandoInter ? (
+                <p className="text-xs text-gray-400 text-center py-8">Cargando…</p>
+              ) : interacciones.length === 0 ? (
+                <div className="flex flex-col items-center py-12 text-center">
+                  <MessageSquare size={26} className="text-gray-200 mb-3" />
+                  <p className="text-xs text-gray-400">Sin interacciones registradas</p>
+                </div>
+              ) : (
+                <div className="relative">
+                  <div className="absolute left-[13px] top-3 bottom-3 w-px bg-gray-100" />
+                  <div className="space-y-6">
+                    {interacciones.map(inter => {
+                      const style = INTERACCION_STYLES[inter.tipo] ?? INTERACCION_STYLES['Llamada']
+                      return (
+                        <div key={inter.id} className="flex gap-4 relative">
+                          <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 z-10 mt-0.5 ${style.bg}`}>
+                            <style.Icon size={13} className={style.text} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-2 mb-1">
+                              <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${style.bg} ${style.text}`}>
+                                {inter.tipo}
+                              </span>
+                              <span className="text-[11px] text-gray-400 flex-shrink-0">{inter.fecha}</span>
+                            </div>
+                            <p className="text-xs text-gray-700 leading-snug">{inter.descripcion}</p>
+                            {inter.resultado && (
+                              <p className="text-[11px] text-gray-400 mt-1 italic">→ {inter.resultado}</p>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -615,17 +740,54 @@ function PanelDetalle({ prospecto, onClose, onConvertir, onUpdate }) {
           <div className="px-6 py-5">
             <div className="flex items-center justify-between mb-4">
               <p className="text-[10px] font-semibold text-gray-300 uppercase tracking-widest">Notas internas</p>
-              <button className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-gray-600 transition-colors">
-                <Pencil size={11} />Editar
-              </button>
+              {!editandoNota && (
+                <button
+                  onClick={() => setEditandoNota(true)}
+                  className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  <Pencil size={11} />{prospecto.notas ? 'Editar' : '+ Agregar nota'}
+                </button>
+              )}
             </div>
-            {prospecto.notas ? (
-              <p className="text-sm text-gray-700 leading-relaxed">{prospecto.notas}</p>
+            {editandoNota ? (
+              <div className="space-y-2">
+                <textarea
+                  value={textNota}
+                  onChange={e => setTextNota(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleGuardarNota() }}
+                  autoFocus
+                  rows={8}
+                  placeholder="Escribe tus notas internas aquí…"
+                  className="w-full px-3 py-2.5 text-xs border border-gray-200 rounded-lg outline-none focus:border-[#2570ba] focus:ring-1 focus:ring-[#2570ba]/20 resize-none placeholder:text-gray-300 leading-relaxed"
+                />
+                <p className="text-[10px] text-gray-300">Cmd+Enter para guardar</p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleGuardarNota}
+                    disabled={guardandoNota}
+                    className="flex-1 py-1.5 text-xs font-medium text-white rounded-lg disabled:opacity-40"
+                    style={{ backgroundColor: '#2570BA' }}
+                  >
+                    {guardandoNota ? 'Guardando…' : 'Guardar'}
+                  </button>
+                  <button
+                    onClick={() => { setTextNota(prospecto.notas || ''); setEditandoNota(false) }}
+                    className="px-3 py-1.5 text-xs text-gray-500 hover:bg-gray-100 rounded-lg transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            ) : prospecto.notas ? (
+              <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{prospecto.notas}</p>
             ) : (
               <div className="flex flex-col items-center py-12 text-center">
                 <FileText size={26} className="text-gray-200 mb-3" />
                 <p className="text-xs text-gray-400">Sin notas internas</p>
-                <button className="mt-3 text-xs text-[#2570ba] hover:underline">+ Agregar nota</button>
+                <button
+                  onClick={() => setEditandoNota(true)}
+                  className="mt-3 text-xs text-[#2570ba] hover:underline"
+                >+ Agregar nota</button>
               </div>
             )}
           </div>
