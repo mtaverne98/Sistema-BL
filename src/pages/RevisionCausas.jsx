@@ -249,9 +249,8 @@ function HistorialTimeline({ history }) {
           <div className="flex items-center gap-2 mb-0.5 flex-wrap">
             <span className="text-[10px] font-bold text-gray-600">{fmtDateFull(rev.fecha)}</span>
             {rev.responsable && <RespAvatar resp={rev.responsable} />}
-            {rev.proxima_accion && <AccionBadge accion={rev.proxima_accion} />}
           </div>
-          {rev.nota && <p className="text-[11px] text-gray-600 leading-relaxed">{rev.nota}</p>}
+          {rev.notas && <p className="text-[11px] text-gray-600 leading-relaxed">{rev.notas}</p>}
         </div>
       ))}
     </div>
@@ -297,8 +296,7 @@ function CausaRow({ causa, revData, pKey, onMarcar, onDesmarcar, onCrearTarea })
   const [showModal,   setShowModal]   = useState(false)
   const [saving,      setSaving]      = useState(false)
   const [draft, setDraft] = useState({
-    nota: revData?.nota || '',
-    proxima_accion: revData?.proxima_accion || 'Esperar resolución',
+    notas: revData?.notas || '',
     responsable: revData?.responsable || 'MT',
   })
 
@@ -318,7 +316,7 @@ function CausaRow({ causa, revData, pKey, onMarcar, onDesmarcar, onCrearTarea })
     if (revisada) {
       onDesmarcar(causa.id)
     } else {
-      onMarcar(causa.id, { nota: '', proxima_accion: 'Esperar resolución', responsable: 'MT', fecha: TODAY, causa_rit: causa.rit, cliente_nombre: causa.cliente_nombre })
+      onMarcar(causa.id, { notas: '', responsable: 'MT', fecha: TODAY, causa_rit: causa.rit, cliente_nombre: causa.cliente_nombre })
     }
   }
 
@@ -366,7 +364,6 @@ function CausaRow({ causa, revData, pKey, onMarcar, onDesmarcar, onCrearTarea })
             </div>
             {revisada && (
               <div className="flex items-center gap-2 mt-1 flex-wrap">
-                {revData?.proxima_accion && <AccionBadge accion={revData.proxima_accion} />}
                 {revData?.responsable && <RespAvatar resp={revData.responsable} />}
                 {revData?.fecha && (
                   <span className="text-[10px] text-green-600 font-medium">✓ {fmtDateFull(revData.fecha)}</span>
@@ -402,15 +399,14 @@ function CausaRow({ causa, revData, pKey, onMarcar, onDesmarcar, onCrearTarea })
           <div className="border-t border-gray-100 px-4 pt-4 pb-4 space-y-4 bg-white/70">
 
             {/* Show saved review */}
-            {revisada && revData?.nota && (
+            {revisada && revData?.notas && (
               <div className="rounded-xl bg-green-50/60 border border-green-100 px-3.5 py-3">
-                <p className="text-[12px] text-gray-700 leading-relaxed">{revData.nota}</p>
+                <p className="text-[12px] text-gray-700 leading-relaxed">{revData.notas}</p>
                 <div className="flex items-center justify-between mt-2 pt-2 border-t border-green-100">
                   <div className="flex items-center gap-2 flex-wrap">
-                    {revData.proxima_accion && <AccionBadge accion={revData.proxima_accion} />}
                     {revData.responsable && <RespAvatar resp={revData.responsable} />}
                   </div>
-                  <button onClick={() => { setDraft({ nota: revData.nota || '', proxima_accion: revData.proxima_accion || 'Esperar resolución', responsable: revData.responsable || 'MT' }); onDesmarcar(causa.id) }}
+                  <button onClick={() => { setDraft({ notas: revData.notas || '', responsable: revData.responsable || 'MT' }); onDesmarcar(causa.id) }}
                     className="text-[10px] text-gray-400 hover:text-gray-600 flex items-center gap-1">
                     <Edit2 size={10} /> Editar
                   </button>
@@ -425,27 +421,18 @@ function CausaRow({ causa, revData, pKey, onMarcar, onDesmarcar, onCrearTarea })
                   <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">
                     ¿Qué se revisó? ¿Qué se conversó?
                   </label>
-                  <textarea value={draft.nota} onChange={e => setDraft(d => ({ ...d, nota: e.target.value }))}
+                  <textarea value={draft.notas} onChange={e => setDraft(d => ({ ...d, notas: e.target.value }))}
                     onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleGuardar() } }}
                     rows={3} autoFocus
                     placeholder="Estado actual, novedades, pendientes, decisiones tomadas..."
                     className="w-full text-[12px] border border-gray-200 rounded-xl px-3 py-2.5 resize-none focus:outline-none focus:border-blue-400 bg-white transition-colors leading-relaxed" />
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Próxima acción</label>
-                    <select value={draft.proxima_accion} onChange={e => setDraft(d => ({ ...d, proxima_accion: e.target.value }))}
-                      className="w-full text-[12px] border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white focus:outline-none focus:border-blue-400">
-                      {PROXIMAS_ACCIONES.map(a => <option key={a} value={a}>{a}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Revisado por</label>
-                    <select value={draft.responsable} onChange={e => setDraft(d => ({ ...d, responsable: e.target.value }))}
-                      className="w-full text-[12px] border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white focus:outline-none focus:border-blue-400">
-                      {Object.entries(RESPONSABLE_INFO).map(([k, v]) => <option key={k} value={k}>{v.nombre}</option>)}
-                    </select>
-                  </div>
+                <div>
+                  <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Revisado por</label>
+                  <select value={draft.responsable} onChange={e => setDraft(d => ({ ...d, responsable: e.target.value }))}
+                    className="w-full text-[12px] border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white focus:outline-none focus:border-blue-400">
+                    {Object.entries(RESPONSABLE_INFO).map(([k, v]) => <option key={k} value={k}>{v.nombre}</option>)}
+                  </select>
                 </div>
                 <div className="flex items-center gap-2 pt-0.5">
                   <button onClick={handleGuardar} disabled={saving}
@@ -673,29 +660,27 @@ export default function RevisionCausas() {
     revRows.filter(r => r.semana_key === pKey).forEach(r => {
       const cid = String(r.causa_id)
       map[cid] = {
-        revisada:       revisadasSet.has(cid), // fuente de verdad: revision_activa
-        nota:           r.nota           || '',
-        proxima_accion: r.proxima_accion || '',
-        responsable:    r.responsable    || 'MT',
-        fecha:          r.fecha          || TODAY,
-        semana_key:     r.semana_key,
-        history:        [],
+        revisada:    revisadasSet.has(cid), // fuente de verdad: revision_activa
+        notas:       r.notas          || r.nota || '',
+        responsable: r.responsable    || 'MT',
+        fecha:       r.fecha          || TODAY,
+        semana_key:  r.semana_key,
+        history:     [],
       }
     })
     // Causas marcadas en revision_activa sin fila en revisiones aún
     for (const cid of revisadasSet) {
-      if (!map[cid]) map[cid] = { revisada: true, nota: '', proxima_accion: '', responsable: 'MT', fecha: TODAY, semana_key: pKey, history: [] }
+      if (!map[cid]) map[cid] = { revisada: true, notas: '', responsable: 'MT', fecha: TODAY, semana_key: pKey, history: [] }
       else map[cid].revisada = true
     }
     // Historial (períodos anteriores)
     revRows.filter(r => r.semana_key !== pKey && r.revisada).forEach(r => {
       const cid = String(r.causa_id)
-      if (!map[cid]) map[cid] = { revisada: false, nota: '', proxima_accion: '', responsable: 'MT', fecha: null, semana_key: null, history: [] }
+      if (!map[cid]) map[cid] = { revisada: false, notas: '', responsable: 'MT', fecha: null, semana_key: null, history: [] }
       map[cid].history.push({
         fecha: r.fecha || null,
         semana_key: r.semana_key,
-        nota: r.nota || '',
-        proxima_accion: r.proxima_accion || '',
+        notas: r.notas || r.nota || '',
         responsable: r.responsable || 'MT',
         revisada: r.revisada,
       })

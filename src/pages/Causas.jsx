@@ -854,7 +854,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
 
   // Revision form & edit
   const [showRevForm,   setShowRevForm]   = useState(false)
-  const [revDraft,      setRevDraft]      = useState({ nota: '', proxima_accion: 'Esperar resolución', responsable: 'MT', urgente: false })
+  const [revDraft,      setRevDraft]      = useState({ notas: '', responsable: 'MT', urgente: false })
   const [savingRev,     setSavingRev]     = useState(false)
   const [editRevId,     setEditRevId]     = useState(null)
   const [editRevDraft,  setEditRevDraft]  = useState(null)
@@ -1019,7 +1019,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
         .order('fecha', { ascending: false }).limit(1)
         .then(({ data }) => setLastSiau(data?.[0] ?? null))
     }
-    supabase.from('revisiones').select('fecha,responsable,nota,proxima_accion,semana_key').eq('causa_id', causa.id)
+    supabase.from('revisiones').select('fecha,responsable,nota,notas,semana_key,urgente,id').eq('causa_id', causa.id)
       .order('fecha', { ascending: false }).limit(3)
       .then(({ data }) => {
         const teamRev = (data ?? []).find(r => /^\d{4}-W\d{2}$/.test(r.semana_key ?? ''))
@@ -1201,7 +1201,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
 
   // Save new revision
   async function handleSaveRevision() {
-    if (!revDraft.nota.trim()) return
+    if (!revDraft.notas.trim()) return
     setSavingRev(true)
     const today = new Date().toISOString().slice(0, 10)
     const weekNum = getISOWeek_C(today)
@@ -1211,8 +1211,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
       causa_id: causa.id,
       semana_key,
       revisada: true,
-      nota: revDraft.nota.trim(),
-      proxima_accion: revDraft.proxima_accion,
+      notas: revDraft.notas.trim(),
       responsable: revDraft.responsable,
       urgente: revDraft.urgente,
       fecha: today,
@@ -1225,7 +1224,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
       showToast('Revisión guardada')
     }
     setShowRevForm(false)
-    setRevDraft({ nota: '', proxima_accion: 'Esperar resolución', responsable: 'MT', urgente: false })
+    setRevDraft({ notas: '', responsable: 'MT', urgente: false })
     setSavingRev(false)
   }
 
@@ -1284,12 +1283,11 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
 
   // Save edited revision
   async function handleSaveEditRevision() {
-    if (!editRevDraft?.nota?.trim()) return
+    if (!editRevDraft?.notas?.trim()) return
     setSavingEditRev(true)
     const { data, error } = await supabase.from('revisiones')
       .update({
-        nota: editRevDraft.nota.trim(),
-        proxima_accion: editRevDraft.proxima_accion,
+        notas: editRevDraft.notas.trim(),
         responsable: editRevDraft.responsable,
         urgente: editRevDraft.urgente,
       })
@@ -2010,41 +2008,27 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                     ¿Qué se vio en esta causa?
                   </label>
                   <textarea
-                    value={revDraft.nota}
-                    onChange={e => setRevDraft(d => ({ ...d, nota: e.target.value }))}
+                    value={revDraft.notas}
+                    onChange={e => setRevDraft(d => ({ ...d, notas: e.target.value }))}
                     rows={4}
                     autoFocus
                     placeholder="Estado actual, novedades, pendientes, decisiones tomadas..."
                     className="w-full text-[12px] border border-gray-200 rounded-xl px-3.5 py-2.5 resize-none focus:outline-none focus:border-[#1a2e4a]/30 bg-white leading-relaxed transition-colors"
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">
-                      Próxima acción
-                    </label>
-                    <select
-                      value={revDraft.proxima_accion}
-                      onChange={e => setRevDraft(d => ({ ...d, proxima_accion: e.target.value }))}
-                      className="w-full text-[12px] border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:border-[#1a2e4a]/30"
-                    >
-                      {PROXIMAS_ACCIONES_C.map(a => <option key={a} value={a}>{a}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">
-                      Revisado por
-                    </label>
-                    <select
-                      value={revDraft.responsable}
-                      onChange={e => setRevDraft(d => ({ ...d, responsable: e.target.value }))}
-                      className="w-full text-[12px] border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:border-[#1a2e4a]/30"
-                    >
-                      {Object.entries(RESPONSABLE_NAMES_C).map(([k, v]) => (
-                        <option key={k} value={k}>{v}</option>
-                      ))}
-                    </select>
-                  </div>
+                <div>
+                  <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">
+                    Revisado por
+                  </label>
+                  <select
+                    value={revDraft.responsable}
+                    onChange={e => setRevDraft(d => ({ ...d, responsable: e.target.value }))}
+                    className="w-full text-[12px] border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:border-[#1a2e4a]/30"
+                  >
+                    {Object.entries(RESPONSABLE_NAMES_C).map(([k, v]) => (
+                      <option key={k} value={k}>{v}</option>
+                    ))}
+                  </select>
                 </div>
                 {/* Urgente toggle */}
                 <div className="flex items-center gap-3">
@@ -2063,7 +2047,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                 <div className="flex items-center gap-2 pt-1">
                   <button
                     onClick={handleSaveRevision}
-                    disabled={savingRev || !revDraft.nota.trim()}
+                    disabled={savingRev || !revDraft.notas.trim()}
                     className="flex items-center gap-1.5 text-[12px] font-medium text-white px-4 py-2 rounded-lg disabled:opacity-50 transition-colors hover:opacity-90"
                     style={{ backgroundColor: '#2570BA' }}
                   >
@@ -2146,7 +2130,6 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                     const weekNum = rev.semana_key ? parseInt(rev.semana_key.split('-W')[1]) : null
                     const year    = rev.semana_key ? parseInt(rev.semana_key.split('-W')[0]) : null
                     const isFirst = i === 0
-                    const accionStyle = ACCION_STYLES_C[rev.proxima_accion] || 'bg-gray-50 text-gray-400'
                     const isEditing = editRevId === rev.id
                     return (
                       <div key={rev.id} className="relative pl-6">
@@ -2168,34 +2151,25 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                             /* Edit mode */
                             <div className="space-y-3">
                               <textarea
-                                value={editRevDraft.nota}
-                                onChange={e => setEditRevDraft(d => ({ ...d, nota: e.target.value }))}
+                                value={editRevDraft.notas}
+                                onChange={e => setEditRevDraft(d => ({ ...d, notas: e.target.value }))}
                                 rows={3}
                                 autoFocus
                                 className="w-full text-[12px] border border-gray-200 rounded-xl px-3 py-2.5 resize-none focus:outline-none focus:border-[#1a2e4a]/30 bg-white leading-relaxed"
                               />
-                              <div className="grid grid-cols-2 gap-3">
-                                <select
-                                  value={editRevDraft.proxima_accion}
-                                  onChange={e => setEditRevDraft(d => ({ ...d, proxima_accion: e.target.value }))}
-                                  className="text-[12px] border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white focus:outline-none"
-                                >
-                                  {PROXIMAS_ACCIONES_C.map(a => <option key={a} value={a}>{a}</option>)}
-                                </select>
-                                <select
-                                  value={editRevDraft.responsable}
-                                  onChange={e => setEditRevDraft(d => ({ ...d, responsable: e.target.value }))}
-                                  className="text-[12px] border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white focus:outline-none"
-                                >
-                                  {Object.entries(RESPONSABLE_NAMES_C).map(([k, v]) => (
-                                    <option key={k} value={k}>{v}</option>
-                                  ))}
-                                </select>
-                              </div>
+                              <select
+                                value={editRevDraft.responsable}
+                                onChange={e => setEditRevDraft(d => ({ ...d, responsable: e.target.value }))}
+                                className="text-[12px] border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white focus:outline-none"
+                              >
+                                {Object.entries(RESPONSABLE_NAMES_C).map(([k, v]) => (
+                                  <option key={k} value={k}>{v}</option>
+                                ))}
+                              </select>
                               <div className="flex items-center gap-2">
                                 <button
                                   onClick={handleSaveEditRevision}
-                                  disabled={savingEditRev || !editRevDraft.nota.trim()}
+                                  disabled={savingEditRev || !editRevDraft.notas.trim()}
                                   className="flex items-center gap-1.5 text-[11px] font-medium text-white px-3 py-1.5 rounded-lg disabled:opacity-50 hover:opacity-90"
                                   style={{ backgroundColor: '#2570BA' }}
                                 >
@@ -2268,7 +2242,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                                     <Flame size={12} />
                                   </button>
                                   <button
-                                    onClick={() => { setEditRevId(rev.id); setEditRevDraft({ nota: rev.nota, proxima_accion: rev.proxima_accion, responsable: rev.responsable, urgente: rev.urgente }) }}
+                                    onClick={() => { setEditRevId(rev.id); setEditRevDraft({ notas: rev.notas || rev.nota || '', responsable: rev.responsable, urgente: rev.urgente }) }}
                                     className="p-1.5 rounded-lg text-gray-300 hover:text-gray-600 hover:bg-gray-100 transition-colors"
                                     title="Editar revisión"
                                   >
@@ -2276,13 +2250,8 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                                   </button>
                                 </div>
                               </div>
-                              {rev.nota && (
-                                <p className="text-[12px] text-gray-700 leading-relaxed mb-2.5">{rev.nota}</p>
-                              )}
-                              {rev.proxima_accion && (
-                                <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full ${accionStyle}`}>
-                                  → {rev.proxima_accion}
-                                </span>
+                              {(rev.notas || rev.nota) && (
+                                <p className="text-[12px] text-gray-700 leading-relaxed mb-2.5">{rev.notas || rev.nota}</p>
                               )}
                             </>
                           )}
