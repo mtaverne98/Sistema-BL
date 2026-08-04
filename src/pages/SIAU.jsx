@@ -443,7 +443,7 @@ export function SolicitudesTable({ grupo, registrosAll, onUpdate, onAdd, onDelet
             </button>
           </div>
         ) : (
-          <table className="text-left border-collapse" style={{ minWidth: siauMinWidth }}>
+          <table className="siau-table text-left border-collapse" style={{ minWidth: siauMinWidth }}>
             <colgroup>
               <col style={{ width: siauW[0] }} />
               <col style={{ width: siauW[1] }} />

@@ -26,3 +26,47 @@
     -moz-osx-font-smoothing: grayscale;
   }
 }
+
+/* ── Portrait / responsive utilities ───────────────────────────────── */
+@media (orientation: portrait) {
+
+  /* Ocultar columnas secundarias en tablas */
+  .portrait-hidden { display: none !important; }
+
+  /* SIAU: mostrar Fecha, Folio, Solicitud, Estado — ocultar el resto */
+  .siau-table th:nth-child(3), .siau-table td:nth-child(3),
+  .siau-table th:nth-child(5), .siau-table td:nth-child(5),
+  .siau-table th:nth-child(6), .siau-table td:nth-child(6),
+  .siau-table th:nth-child(7), .siau-table td:nth-child(7),
+  .siau-table th:nth-child(8), .siau-table td:nth-child(8) { display: none !important; }
+
+  /* PJUD: mostrar Fecha, Folio, Solicitud, Notas — ocultar el resto */
+  .pjud-table th:nth-child(3), .pjud-table td:nth-child(3),
+  .pjud-table th:nth-child(5), .pjud-table td:nth-child(5),
+  .pjud-table th:nth-child(6), .pjud-table td:nth-child(6),
+  .pjud-table th:nth-child(7), .pjud-table td:nth-child(7) { display: none !important; }
+
+  /* Dashboard: métricas en 2 columnas, secciones principales en 1 */
+  .dashboard-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .dashboard-main    { grid-template-columns: repeat(1, minmax(0, 1fr)) !important; }
+
+  /* Botones táctiles: mínimo 44px */
+  button, a[href] { min-height: 44px; }
+  /* Excluir botones de badge/icon que no son touch targets principales */
+  .no-touch-min { min-height: unset !important; }
+
+  /* Panel lateral → drawer de pantalla completa desde la derecha */
+  .detail-panel {
+    position: fixed !important;
+    top: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    z-index: 50;
+    overflow-y: auto;
+    box-shadow: none !important;
+    border-left: none !important;
+  }
+}

@@ -481,7 +481,7 @@ export default function Dashboard() {
       <div className="px-8 py-6 space-y-6">
 
         {/* Métricas */}
-        <div className="grid grid-cols-5 gap-4">
+        <div className="grid grid-cols-5 gap-4 dashboard-metrics">
           {metricas.map(m => (
             <MetricCard key={m.label} {...m} onClick={() => navigate(m.path)} />
           ))}
@@ -540,7 +540,7 @@ export default function Dashboard() {
         )}
 
         {/* Fila principal: audiencias + tareas + actividad */}
-        <div className="grid grid-cols-3 gap-5">
+        <div className="grid grid-cols-3 gap-5 dashboard-main">
 
           {/* Próximas audiencias */}
           <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">

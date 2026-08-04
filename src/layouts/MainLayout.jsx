@@ -15,6 +15,7 @@ import { useSistema }    from '../context/SistemaContext'
 import { useNavigation } from '../context/NavigationContext'
 import { useUser }       from '../context/UserContext'
 import { supabase }      from '../lib/supabase'
+import { useOrientation } from '../hooks/useOrientation'
 import QuickAdd          from '../components/QuickAdd'
 import SlashCommands     from '../components/SlashCommands'
 import SaveStatusBadge   from '../components/SaveStatusBadge'
@@ -438,11 +439,14 @@ export default function MainLayout() {
   const { user, setUser } = useUser()
   const [cmdOpen, setCmdOpen] = useState(false)
   const location = useLocation()
+  const isPortrait = useOrientation()
 
   // Mobile / responsive state
   const [mobileOpen, setMobileOpen] = useState(false)
   const [screenWidth, setScreenWidth] = useState(() => window.innerWidth)
   const isMobile = screenWidth < 768
+  // Responsive = mobile breakpoint OR portrait orientation on any device
+  const isResponsive = isMobile || isPortrait
 
   useEffect(() => {
     function onResize() { setScreenWidth(window.innerWidth) }
@@ -528,7 +532,7 @@ export default function MainLayout() {
     })
   }
 
-  const currentSbWidth = isMobile ? 280 : (sbCollapsed ? 56 : sbWidth)
+  const currentSbWidth = isResponsive ? 280 : (sbCollapsed ? 56 : sbWidth)
 
   // Global shortcuts
   useEffect(() => {
@@ -576,7 +580,7 @@ export default function MainLayout() {
     <div className="flex h-screen bg-white overflow-hidden">
 
       {/* ── Mobile backdrop ── */}
-      {isMobile && mobileOpen && (
+      {isResponsive && mobileOpen && (
         <div
           className="fixed inset-0 z-[59] bg-black/50"
           onClick={() => setMobileOpen(false)}
@@ -586,14 +590,14 @@ export default function MainLayout() {
       {/* ── Sidebar ── */}
       <aside
         className={`flex-shrink-0 flex flex-col overflow-hidden ${
-          isMobile
+          isResponsive
             ? `fixed inset-y-0 left-0 z-[60] transition-transform duration-300 ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`
             : 'relative'
         }`}
         style={{
           width: currentSbWidth,
           backgroundColor: '#1A2E4A',
-          transition: isResizing ? 'none' : isMobile ? undefined : 'width 0.2s ease',
+          transition: isResizing ? 'none' : isResponsive ? undefined : 'width 0.2s ease',
         }}
       >
 
@@ -767,7 +771,7 @@ export default function MainLayout() {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
 
         {/* ── Mobile top bar ── */}
-        {isMobile && (
+        {isResponsive && (
           <header className="flex-shrink-0 h-14 flex items-center gap-3 px-3"
             style={{ backgroundColor: '#1A2E4A' }}>
             <button
@@ -796,13 +800,13 @@ export default function MainLayout() {
         )}
 
         {/* ── Main content ── */}
-        <main className={`flex-1 overflow-y-auto bg-white min-w-0 ${isMobile ? 'pb-14' : ''}`}>
+        <main className={`flex-1 overflow-y-auto bg-white min-w-0 ${isResponsive ? 'pb-16' : ''}`}>
           <Outlet />
         </main>
       </div>
 
-      {/* ── Mobile bottom nav ── */}
-      {isMobile && (
+      {/* ── Bottom nav (mobile + portrait) ── */}
+      {isResponsive && (
         <nav className="fixed bottom-0 inset-x-0 z-50 h-14 flex items-center justify-around px-2"
           style={{ backgroundColor: '#1A2E4A', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
           {[

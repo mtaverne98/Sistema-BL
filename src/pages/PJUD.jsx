@@ -837,7 +837,7 @@ export function MovimientosTable({ causaData, rowsAll, onUpdate, onAdd, onDelete
             )}
           </div>
         ) : (
-          <table className="text-left border-collapse" style={{ minWidth: pjudMinWidth }}>
+          <table className="pjud-table text-left border-collapse" style={{ minWidth: pjudMinWidth }}>
             <colgroup>
               <col style={{ width: pjudW[0] }} />
               <col style={{ width: pjudW[1] }} />

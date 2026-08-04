@@ -1,6 +1,7 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { useOrientation } from '../hooks/useOrientation'
 import {
   Search, Plus, X, Phone, Mail,
   Clock, Pencil, UserPlus, TrendingUp,
@@ -434,7 +435,7 @@ function PanelDetalle({ prospecto, onClose, onConvertir, onUpdate }) {
   const inactivo = prospecto.estado === 'Inactivo' || prospecto.convertido
 
   return (
-    <div className="w-[460px] flex-shrink-0 border-l border-gray-100 flex flex-col bg-white">
+    <div className="detail-panel w-[460px] flex-shrink-0 border-l border-gray-100 flex flex-col bg-white">
 
       {/* Header */}
       <div className="px-6 pt-5 pb-4 border-b border-gray-100">
@@ -819,7 +820,7 @@ function FormNuevoProspecto({ onClose, onGuardar }) {
   }
 
   return (
-    <div className="w-[460px] flex-shrink-0 border-l border-gray-100 flex flex-col bg-white">
+    <div className="detail-panel w-[460px] flex-shrink-0 border-l border-gray-100 flex flex-col bg-white">
       <div className="px-6 pt-5 pb-4 border-b border-gray-100 flex items-center justify-between">
         <div>
           <h2 className="text-[15px] font-semibold text-gray-900">Nuevo prospecto</h2>
@@ -934,6 +935,7 @@ function FormNuevoProspecto({ onClose, onGuardar }) {
 // ── Componente principal ──────────────────────────────────────────────────
 export default function Prospectos() {
   const navigate = useNavigate()
+  const isPortrait = useOrientation()
   const [prospectos,    setProspectos]    = useState([])
   const [cargando,      setCargando]      = useState(true)
   const [seleccionado,  setSeleccionado]  = useState(null)
@@ -1186,6 +1188,9 @@ export default function Prospectos() {
         </div>
       </div>
 
+      {seleccionado && !mostrarForm && isPortrait && (
+        <div className="fixed inset-0 bg-black/30 z-40" onClick={() => setSeleccionado(null)} />
+      )}
       {seleccionado && !mostrarForm && (
         <PanelDetalle
           prospecto={seleccionado}
