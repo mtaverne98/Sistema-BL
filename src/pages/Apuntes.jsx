@@ -3,6 +3,7 @@ import {
   ChevronLeft, ChevronRight, ChevronDown, ChevronUp,
   Gavel, CheckSquare, Clock, Plus, Check, X,
   Circle, CheckCircle2, ArrowRight, AlertTriangle, StickyNote,
+  Undo2, CalendarDays, ListTodo,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 
@@ -507,6 +508,162 @@ function DiaRow({
   )
 }
 
+// ── PendientesItem ────────────────────────────────────────────────────────────
+function PendientesItem({
+  p, isResolving, isEditing, editDraft, weekDays, showMoverMenu,
+  onEditDraftChange, onToggle, onUndo, onStartEdit, onSaveEdit, onCancelEdit,
+  onToggleMoverMenu, onMover, onConvertTarea, onConvertSeguimiento,
+}) {
+  useEffect(() => {
+    if (!showMoverMenu) return
+    const t  = setTimeout(() => onToggleMoverMenu(null), 6000)
+    const fn = e => { if (e.key === 'Escape') onToggleMoverMenu(null) }
+    window.addEventListener('keydown', fn)
+    return () => { clearTimeout(t); window.removeEventListener('keydown', fn) }
+  }, [showMoverMenu, onToggleMoverMenu])
+
+  if (isResolving) {
+    return (
+      <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg">
+        <CheckCircle2 size={13} className="text-emerald-400 flex-shrink-0" />
+        <span className="text-xs text-gray-300 line-through flex-1 truncate">{p.texto}</span>
+        <button onClick={() => onUndo(p)}
+          className="flex items-center gap-1 text-[10px] font-semibold text-[#2570BA] hover:underline flex-shrink-0">
+          <Undo2 size={11} /> Deshacer
+        </button>
+      </div>
+    )
+  }
+
+  const dias   = Math.floor((Date.now() - new Date(p.created_at).getTime()) / 86400000)
+  const isOld  = dias > 7
+
+  return (
+    <div className="group relative px-2 py-1.5 rounded-lg hover:bg-gray-50 transition-colors">
+      <div className="flex items-start gap-2">
+        <button onClick={() => onToggle(p)}
+          className="mt-0.5 flex-shrink-0 text-gray-300 hover:text-emerald-500 transition-colors">
+          <Circle size={13} />
+        </button>
+
+        {isEditing ? (
+          <input
+            autoFocus
+            value={editDraft}
+            onChange={e => onEditDraftChange(e.target.value)}
+            onBlur={() => onSaveEdit(p)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') { e.preventDefault(); onSaveEdit(p) }
+              if (e.key === 'Escape') onCancelEdit()
+            }}
+            className="flex-1 text-xs text-gray-700 bg-white border border-blue-300 rounded-md px-1.5 py-0.5 outline-none"
+          />
+        ) : (
+          <span
+            onDoubleClick={() => onStartEdit(p)}
+            className={`flex-1 text-xs leading-relaxed cursor-text ${isOld ? 'text-gray-300' : 'text-gray-700'}`}>
+            {p.texto}
+          </span>
+        )}
+
+        {isOld && !isEditing && (
+          <span className="text-[9px] text-gray-300 flex-shrink-0 mt-0.5 tabular-nums">{dias}d</span>
+        )}
+      </div>
+
+      {!isEditing && (
+        <div className="flex items-center gap-1 mt-1 ml-[21px] opacity-0 group-hover:opacity-100 transition-opacity">
+          <div className="relative">
+            <button onClick={() => onToggleMoverMenu(p.id)}
+              className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium text-gray-400 border border-gray-200 rounded-md hover:text-gray-600 transition-colors">
+              <CalendarDays size={10} /> Mover
+            </button>
+            {showMoverMenu && (
+              <div className="absolute left-0 top-full mt-1 z-20 bg-white border border-gray-200 rounded-lg shadow-lg py-1 flex flex-col min-w-[110px]">
+                {weekDays.map(date => (
+                  <button key={date} onClick={() => onMover(p, date)}
+                    className="text-left px-2.5 py-1 text-[11px] text-gray-600 hover:bg-gray-50 transition-colors">
+                    {dowShort(date)} {dayNum(date)}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <button onClick={() => onConvertTarea(p)}
+            className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium bg-[#1A2E4A] text-white rounded-md hover:opacity-80 transition-opacity">
+            <ArrowRight size={9} />Tarea
+          </button>
+          <button onClick={() => onConvertSeguimiento(p)}
+            className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium bg-[#2570BA]/10 text-[#2570BA] border border-[#2570BA]/20 rounded-md hover:bg-[#2570BA]/20 transition-colors">
+            <ArrowRight size={9} />Seguimiento
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── PendientesPanel ───────────────────────────────────────────────────────────
+function PendientesPanel({
+  pendientes, resolvingIds, weekDays, input, onInputChange, onAddPendiente,
+  editingId, editDraft, onEditDraftChange, onToggle, onUndo,
+  onStartEdit, onSaveEdit, onCancelEdit,
+  moverMenuId, onToggleMoverMenu, onMover, onConvertTarea, onConvertSeguimiento,
+}) {
+  return (
+    <div className="w-[300px] flex-shrink-0 border-l border-gray-100 bg-white flex flex-col h-full overflow-hidden">
+      <div className="px-4 py-4 border-b border-gray-100 flex-shrink-0">
+        <div className="flex items-center gap-2 mb-3">
+          <ListTodo size={14} className="text-[#2570BA]" />
+          <h2 className="text-sm font-bold text-[#1a2e4a]">Pendientes</h2>
+          {pendientes.length > 0 && (
+            <span className="ml-auto text-[10px] font-semibold text-gray-300 tabular-nums">{pendientes.length}</span>
+          )}
+        </div>
+        <input
+          value={input}
+          onChange={e => onInputChange(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); onAddPendiente() } }}
+          placeholder="Agregar pendiente… (Enter)"
+          className="w-full text-xs text-gray-700 placeholder:text-gray-300 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-[#2570BA] focus:bg-white transition-colors"
+        />
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-2 py-2">
+        {pendientes.length === 0 ? (
+          <div className="text-center py-10">
+            <p className="text-xs text-gray-300">Sin pendientes</p>
+          </div>
+        ) : (
+          <div className="space-y-0.5">
+            {pendientes.map(p => (
+              <PendientesItem
+                key={p.id}
+                p={p}
+                isResolving={resolvingIds.has(p.id)}
+                isEditing={editingId === p.id}
+                editDraft={editDraft}
+                weekDays={weekDays}
+                showMoverMenu={moverMenuId === p.id}
+                onEditDraftChange={onEditDraftChange}
+                onToggle={onToggle}
+                onUndo={onUndo}
+                onStartEdit={onStartEdit}
+                onSaveEdit={onSaveEdit}
+                onCancelEdit={onCancelEdit}
+                onToggleMoverMenu={onToggleMoverMenu}
+                onMover={onMover}
+                onConvertTarea={onConvertTarea}
+                onConvertSeguimiento={onConvertSeguimiento}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── Componente principal ──────────────────────────────────────────────────────
 export default function Apuntes() {
   const [weekMonday, setWeekMonday] = useState(() => {
@@ -522,7 +679,16 @@ export default function Apuntes() {
   const [clientes,   setClientes]   = useState([])
   const [causas,     setCausas]     = useState([])
   const [loading,    setLoading]    = useState(false)
-  const [segPickerNota, setSegPickerNota] = useState(null)
+  const [segPicker,  setSegPicker]  = useState(null) // { kind: 'nota' | 'pendiente', item }
+
+  // Pendientes (panel lateral)
+  const [pendientes,        setPendientes]        = useState([])
+  const [pendienteInput,    setPendienteInput]     = useState('')
+  const [resolvingIds,      setResolvingIds]       = useState(new Set())
+  const [editingPendienteId, setEditingPendienteId] = useState(null)
+  const [editPendienteDraft, setEditPendienteDraft] = useState('')
+  const [moverMenuId,       setMoverMenuId]        = useState(null)
+  const resolveTimers = useRef({})
 
   // Días de la semana (Lun–Vie)
   const weekDays = useMemo(() =>
@@ -708,7 +874,7 @@ export default function Apuntes() {
     } else if (tipo === 'seguimiento') {
       // Requiere selección de causa — abre picker si no viene causa
       if (!causa) {
-        setSegPickerNota(nota)
+        setSegPicker({ kind: 'nota', item: nota })
         return
       }
       const payload = {
@@ -743,107 +909,267 @@ export default function Apuntes() {
     }
   }, [])
 
-  // Confirmar causa en el picker de seguimiento
-  const handleSegPickerConfirm = useCallback(async (causa) => {
-    const nota = segPickerNota
-    setSegPickerNota(null)
-    if (!nota || !causa) return
-    await handleConvertNota(nota, 'seguimiento', causa)
-  }, [segPickerNota, handleConvertNota])
+  // Confirmar causa en el picker de seguimiento (nota o pendiente)
+  async function handleSegPickerConfirm(causa) {
+    const picker = segPicker
+    setSegPicker(null)
+    if (!picker || !causa) return
+    if (picker.kind === 'nota') await handleConvertNota(picker.item, 'seguimiento', causa)
+    else await handleConvertPendienteSeguimiento(picker.item, causa)
+  }
+
+  // ── Pendientes (panel lateral) ────────────────────────────────────────────────
+
+  // Carga inicial de pendientes no resueltos
+  useEffect(() => {
+    supabase.from('agenda_pendientes').select('*')
+      .eq('resuelto', false)
+      .order('created_at', { ascending: true })
+      .then(({ data, error }) => {
+        if (error) console.error('[agenda_pendientes] fetch error:', error.message)
+        setPendientes(data || [])
+      })
+  }, [])
+
+  // Limpia timers de "deshacer" al desmontar
+  useEffect(() => () => {
+    Object.values(resolveTimers.current).forEach(clearTimeout)
+  }, [])
+
+  async function handleAddPendiente() {
+    const texto = pendienteInput.trim()
+    if (!texto) return
+    setPendienteInput('')
+    const { data, error } = await supabase.from('agenda_pendientes')
+      .insert([{ texto, resuelto: false }]).select().single()
+    if (error) { console.error('[agenda_pendientes] insert error:', error.message); return }
+    if (data) setPendientes(prev => [...prev, data])
+  }
+
+  // Marca resuelto en BD y lo quita de la lista sin animación (usado por las conversiones)
+  async function resolvePendienteSilent(p) {
+    setPendientes(prev => prev.filter(x => x.id !== p.id))
+    const { error } = await supabase.from('agenda_pendientes')
+      .update({ resuelto: true, resuelto_at: new Date().toISOString() }).eq('id', p.id)
+    if (error) console.error('[agenda_pendientes] resolve error:', error.message)
+  }
+
+  // Checkbox: marca resuelto, tacha, y tras 3s lo saca de la lista (con opción de deshacer)
+  function handleTogglePendiente(p) {
+    setResolvingIds(prev => new Set(prev).add(p.id))
+    supabase.from('agenda_pendientes')
+      .update({ resuelto: true, resuelto_at: new Date().toISOString() }).eq('id', p.id)
+      .then(({ error }) => { if (error) console.error('[agenda_pendientes] toggle error:', error.message) })
+
+    clearTimeout(resolveTimers.current[p.id])
+    resolveTimers.current[p.id] = setTimeout(() => {
+      setPendientes(prev => prev.filter(x => x.id !== p.id))
+      setResolvingIds(prev => { const n = new Set(prev); n.delete(p.id); return n })
+      delete resolveTimers.current[p.id]
+    }, 3000)
+  }
+
+  function handleUndoPendiente(p) {
+    clearTimeout(resolveTimers.current[p.id])
+    delete resolveTimers.current[p.id]
+    setResolvingIds(prev => { const n = new Set(prev); n.delete(p.id); return n })
+    supabase.from('agenda_pendientes')
+      .update({ resuelto: false, resuelto_at: null }).eq('id', p.id)
+      .then(({ error }) => { if (error) console.error('[agenda_pendientes] undo error:', error.message) })
+  }
+
+  function handleStartEditPendiente(p) {
+    setEditingPendienteId(p.id)
+    setEditPendienteDraft(p.texto)
+  }
+  function handleCancelEditPendiente() {
+    setEditingPendienteId(null)
+  }
+  async function handleSaveEditPendiente(p) {
+    const texto = editPendienteDraft.trim()
+    setEditingPendienteId(null)
+    if (!texto || texto === p.texto) return
+    const { error } = await supabase.from('agenda_pendientes').update({ texto }).eq('id', p.id)
+    if (error) { console.error('[agenda_pendientes] edit error:', error.message); return }
+    setPendientes(prev => prev.map(x => x.id === p.id ? { ...x, texto } : x))
+  }
+
+  function handleToggleMoverMenu(id) {
+    setMoverMenuId(prev => prev === id ? null : id)
+  }
+
+  // Mover pendiente a un día de la semana → crea un apunte en Agenda Diaria y resuelve el pendiente
+  async function handleMoverPendiente(p, date) {
+    setMoverMenuId(null)
+    const hora     = nowHHMM()
+    const tipo     = isActionText(p.texto) ? 'checkbox' : 'nota'
+    const clNombre = detectClientName(p.texto, clientes)
+
+    const { data, error } = await supabase.from('agenda_notas')
+      .insert([{ fecha: date, hora, texto: p.texto, tipo,
+                 cliente_nombre: clNombre || null, completada: false }])
+      .select().single()
+
+    if (error) { console.error('[pendiente→agenda_notas] insert error:', error.message); return }
+    if (data) setNotas(prev => ({ ...prev, [date]: [...(prev[date] || []), data] }))
+    await resolvePendienteSilent(p)
+  }
+
+  // Convertir pendiente en tarea
+  async function handleConvertPendienteTarea(p) {
+    const clNombre = detectClientName(p.texto, clientes)
+    const { error } = await supabase.from('tareas').insert([{
+      titulo:            p.texto,
+      cliente_nombre:    clNombre || null,
+      estado:            'Pendiente',
+      prioridad:         'Media',
+      fecha_vencimiento: TODAY,
+    }])
+    if (error) { console.error('[pendiente→tarea] insert error:', error.message); return }
+    await resolvePendienteSilent(p)
+  }
+
+  // Enviar pendiente a seguimiento de una causa (abre picker si no viene causa)
+  async function handleConvertPendienteSeguimiento(p, causa = null) {
+    if (!causa) {
+      setSegPicker({ kind: 'pendiente', item: p })
+      return
+    }
+    const payload = {
+      causa_id:       causa.id,
+      causa_rit:      causa.rit || null,
+      cliente_nombre: causa.cliente_nombre || null,
+      fecha_revision: TODAY,
+      por_hacer:      p.texto,
+      que_se_hizo:    'Pendiente',
+      semana_key:     null,
+      revisada:       false,
+      origen:         'agenda',
+    }
+    const { data: segData, error } = await supabase.from('revisiones').insert([payload]).select().single()
+    if (error) { console.error('[pendiente→seguimiento] insert error:', error.message); return }
+    window.dispatchEvent(new CustomEvent('seguimiento:created', { detail: { causa_id: causa.id, causa_rit: causa.rit, row: segData } }))
+    await resolvePendienteSilent(p)
+  }
 
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col h-full min-h-screen bg-white">
+    <div className="flex h-full min-h-screen bg-white">
 
       {/* Picker de causa para → Seguimiento */}
-      {segPickerNota && (
+      {segPicker && (
         <SeguimientoPicker
-          nota={segPickerNota}
+          nota={segPicker.item}
           causas={causas}
           onConfirm={handleSegPickerConfirm}
-          onClose={() => setSegPickerNota(null)}
+          onClose={() => setSegPicker(null)}
         />
       )}
 
-      {/* Header */}
-      <div className="px-7 pt-7 pb-5 border-b border-gray-100">
-        <div className="flex items-center gap-3">
-          <button onClick={() => navWeek(-1)}
-            className="p-1.5 rounded-lg border border-gray-200 text-gray-400 hover:text-gray-700 hover:border-gray-300 transition-colors">
-            <ChevronLeft size={14} />
-          </button>
-          <div className="flex-1">
-            <h1 className="text-lg font-semibold text-[#1C2533]">
-              Semana {weekNum} · {weekRange}
-            </h1>
-            {todayInWeek ? (
-              <p className="mt-0.5 text-xs text-gray-400">
-                <span className="capitalize">{dowLong(TODAY)}</span>
-                {' '}{dayNum(TODAY)} · <span className="font-semibold text-[#2570BA]">hoy</span>
-                {pendientesTotal > 0 && (
-                  <span className="ml-1 text-gray-400">
-                    · {pendientesTotal} pendiente{pendientesTotal !== 1 ? 's' : ''} esta semana
-                  </span>
-                )}
-              </p>
-            ) : (
-              <p className="mt-0.5 text-xs text-gray-400">
-                {weekMonday < getMonday(TODAY) ? 'Semana anterior — solo lectura' : 'Próxima semana'}
-              </p>
-            )}
+      <div className="flex flex-col flex-1 min-w-0">
+        {/* Header */}
+        <div className="px-7 pt-7 pb-5 border-b border-gray-100">
+          <div className="flex items-center gap-3">
+            <button onClick={() => navWeek(-1)}
+              className="p-1.5 rounded-lg border border-gray-200 text-gray-400 hover:text-gray-700 hover:border-gray-300 transition-colors">
+              <ChevronLeft size={14} />
+            </button>
+            <div className="flex-1">
+              <h1 className="text-lg font-semibold text-[#1C2533]">
+                Semana {weekNum} · {weekRange}
+              </h1>
+              {todayInWeek ? (
+                <p className="mt-0.5 text-xs text-gray-400">
+                  <span className="capitalize">{dowLong(TODAY)}</span>
+                  {' '}{dayNum(TODAY)} · <span className="font-semibold text-[#2570BA]">hoy</span>
+                  {pendientesTotal > 0 && (
+                    <span className="ml-1 text-gray-400">
+                      · {pendientesTotal} pendiente{pendientesTotal !== 1 ? 's' : ''} esta semana
+                    </span>
+                  )}
+                </p>
+              ) : (
+                <p className="mt-0.5 text-xs text-gray-400">
+                  {weekMonday < getMonday(TODAY) ? 'Semana anterior — solo lectura' : 'Próxima semana'}
+                </p>
+              )}
+            </div>
+            <button onClick={() => navWeek(1)}
+              className="p-1.5 rounded-lg border border-gray-200 text-gray-400 hover:text-gray-700 hover:border-gray-300 transition-colors">
+              <ChevronRight size={14} />
+            </button>
           </div>
-          <button onClick={() => navWeek(1)}
-            className="p-1.5 rounded-lg border border-gray-200 text-gray-400 hover:text-gray-700 hover:border-gray-300 transition-colors">
-            <ChevronRight size={14} />
-          </button>
+          {!isCurrentWeek && (
+            <button onClick={() => {
+              const m = getMonday(TODAY)
+              setWeekMonday(m)
+              try { localStorage.setItem('agenda_week', m) } catch {}
+            }}
+              className="mt-2 text-[11px] text-[#2570BA] hover:underline">
+              ← Volver a semana actual
+            </button>
+          )}
         </div>
-        {!isCurrentWeek && (
-          <button onClick={() => {
-            const m = getMonday(TODAY)
-            setWeekMonday(m)
-            try { localStorage.setItem('agenda_week', m) } catch {}
-          }}
-            className="mt-2 text-[11px] text-[#2570BA] hover:underline">
-            ← Volver a semana actual
-          </button>
-        )}
+
+        {/* Lista de días */}
+        <div className="flex-1 overflow-y-auto">
+          {loading ? (
+            <div className="flex items-center justify-center py-20 text-sm text-gray-300">
+              Cargando…
+            </div>
+          ) : (
+            <div className="divide-y-0">
+              {weekDays.map(date => {
+                const isToday  = date === TODAY
+                const isPast   = date < TODAY
+                return (
+                  <DiaRow
+                    key={date}
+                    date={date}
+                    isToday={isToday}
+                    isPast={false}
+                    isOpen={expandedDays.has(date)}
+                    onToggle={() => toggleDay(date)}
+                    notas={notas[date] || []}
+                    audiencias={audiencias[date] || []}
+                    tareas={tareas[date] || []}
+                    plazos={plazos[date] || []}
+                    clientes={clientes}
+                    onAddNota={handleAddNota}
+                    onToggleNota={handleToggleNota}
+                    onDeleteNota={handleDeleteNota}
+                    onConvertNota={handleConvertNota}
+                    onUpdateNota={handleUpdateNota}
+                  />
+                )
+              })}
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Lista de días */}
-      <div className="flex-1 overflow-y-auto">
-        {loading ? (
-          <div className="flex items-center justify-center py-20 text-sm text-gray-300">
-            Cargando…
-          </div>
-        ) : (
-          <div className="divide-y-0">
-            {weekDays.map(date => {
-              const isToday  = date === TODAY
-              const isPast   = date < TODAY
-              return (
-                <DiaRow
-                  key={date}
-                  date={date}
-                  isToday={isToday}
-                  isPast={false}
-                  isOpen={expandedDays.has(date)}
-                  onToggle={() => toggleDay(date)}
-                  notas={notas[date] || []}
-                  audiencias={audiencias[date] || []}
-                  tareas={tareas[date] || []}
-                  plazos={plazos[date] || []}
-                  clientes={clientes}
-                  onAddNota={handleAddNota}
-                  onToggleNota={handleToggleNota}
-                  onDeleteNota={handleDeleteNota}
-                  onConvertNota={handleConvertNota}
-                  onUpdateNota={handleUpdateNota}
-                />
-              )
-            })}
-          </div>
-        )}
-      </div>
+      {/* Panel lateral fijo — Pendientes */}
+      <PendientesPanel
+        pendientes={pendientes}
+        resolvingIds={resolvingIds}
+        weekDays={weekDays}
+        input={pendienteInput}
+        onInputChange={setPendienteInput}
+        onAddPendiente={handleAddPendiente}
+        editingId={editingPendienteId}
+        editDraft={editPendienteDraft}
+        onEditDraftChange={setEditPendienteDraft}
+        onToggle={handleTogglePendiente}
+        onUndo={handleUndoPendiente}
+        onStartEdit={handleStartEditPendiente}
+        onSaveEdit={handleSaveEditPendiente}
+        onCancelEdit={handleCancelEditPendiente}
+        moverMenuId={moverMenuId}
+        onToggleMoverMenu={handleToggleMoverMenu}
+        onMover={handleMoverPendiente}
+        onConvertTarea={handleConvertPendienteTarea}
+        onConvertSeguimiento={handleConvertPendienteSeguimiento}
+      />
     </div>
   )
 }
