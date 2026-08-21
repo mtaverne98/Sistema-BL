@@ -514,6 +514,8 @@ function PendientesItem({
   onEditDraftChange, onToggle, onUndo, onStartEdit, onSaveEdit, onCancelEdit,
   onToggleMoverMenu, onMover, onConvertTarea, onConvertSeguimiento,
 }) {
+  const isChild = !!p.parent_id
+
   useEffect(() => {
     if (!showMoverMenu) return
     const t  = setTimeout(() => onToggleMoverMenu(null), 6000)
@@ -536,14 +538,14 @@ function PendientesItem({
   }
 
   const dias   = Math.floor((Date.now() - new Date(p.created_at).getTime()) / 86400000)
-  const isOld  = dias > 7
+  const isOld  = !isChild && dias > 7
 
   return (
     <div className="group relative px-2 py-1.5 rounded-lg hover:bg-gray-50 transition-colors">
       <div className="flex items-start gap-2">
         <button onClick={() => onToggle(p)}
           className="mt-0.5 flex-shrink-0 text-gray-300 hover:text-emerald-500 transition-colors">
-          <Circle size={13} />
+          <Circle size={isChild ? 11 : 13} />
         </button>
 
         {isEditing ? (
@@ -571,7 +573,7 @@ function PendientesItem({
         )}
       </div>
 
-      {!isEditing && (
+      {!isEditing && !isChild && (
         <div className="flex items-center gap-1 mt-1 ml-[21px] opacity-0 group-hover:opacity-100 transition-opacity">
           <div className="relative">
             <button onClick={() => onToggleMoverMenu(p.id)}
@@ -603,12 +605,59 @@ function PendientesItem({
   )
 }
 
+// ── PendienteGroup (pendiente padre + sus puntos) ─────────────────────────────
+function PendienteGroup({
+  parent, children, resolvingIds, editingId, editDraft, weekDays, showMoverMenu,
+  isAddingChild, childInput,
+  onEditDraftChange, onToggle, onUndo, onStartEdit, onSaveEdit, onCancelEdit,
+  onToggleMoverMenu, onMover, onConvertTarea, onConvertSeguimiento,
+  onStartAddChild, onChildInputChange, onAddChild, onCancelAddChild,
+}) {
+  const itemProps = {
+    editingId, editDraft, weekDays, showMoverMenu,
+    onEditDraftChange, onToggle, onUndo, onStartEdit, onSaveEdit, onCancelEdit,
+    onToggleMoverMenu, onMover, onConvertTarea, onConvertSeguimiento,
+  }
+
+  return (
+    <div>
+      <PendientesItem p={parent} isResolving={resolvingIds.has(parent.id)}
+        isEditing={editingId === parent.id} {...itemProps} />
+      <div className="ml-[29px]">
+        {children.map(c => (
+          <PendientesItem key={c.id} p={c} isResolving={resolvingIds.has(c.id)}
+            isEditing={editingId === c.id} {...itemProps} />
+        ))}
+        {isAddingChild ? (
+          <input
+            autoFocus
+            value={childInput}
+            onChange={e => onChildInputChange(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') { e.preventDefault(); onAddChild(parent.id) }
+              if (e.key === 'Escape') onCancelAddChild()
+            }}
+            placeholder="Punto… (Enter)"
+            className="w-full text-xs text-gray-700 bg-white border border-blue-200 rounded-md px-2 py-1 mt-0.5 outline-none focus:border-[#2570BA] transition-colors"
+          />
+        ) : (
+          <button onClick={() => onStartAddChild(parent.id)}
+            className="flex items-center gap-1 px-2 py-1 text-[10px] text-gray-300 hover:text-[#2570BA] transition-colors">
+            <Plus size={10} /> Agregar punto
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── PendientesPanel ───────────────────────────────────────────────────────────
 function PendientesPanel({
-  pendientes, resolvingIds, weekDays, input, onInputChange, onAddPendiente,
+  parents, childrenByParent, resolvingIds, weekDays, input, onInputChange, onAddPendiente,
   editingId, editDraft, onEditDraftChange, onToggle, onUndo,
   onStartEdit, onSaveEdit, onCancelEdit,
   moverMenuId, onToggleMoverMenu, onMover, onConvertTarea, onConvertSeguimiento,
+  addingChildParentId, childInput, onStartAddChild, onChildInputChange, onAddChild, onCancelAddChild,
 }) {
   return (
     <div className="w-[300px] flex-shrink-0 border-l border-gray-100 bg-white flex flex-col h-full overflow-hidden">
@@ -616,8 +665,8 @@ function PendientesPanel({
         <div className="flex items-center gap-2 mb-3">
           <ListTodo size={14} className="text-[#2570BA]" />
           <h2 className="text-sm font-bold text-[#1a2e4a]">Pendientes</h2>
-          {pendientes.length > 0 && (
-            <span className="ml-auto text-[10px] font-semibold text-gray-300 tabular-nums">{pendientes.length}</span>
+          {parents.length > 0 && (
+            <span className="ml-auto text-[10px] font-semibold text-gray-300 tabular-nums">{parents.length}</span>
           )}
         </div>
         <input
@@ -630,21 +679,24 @@ function PendientesPanel({
       </div>
 
       <div className="flex-1 overflow-y-auto px-2 py-2">
-        {pendientes.length === 0 ? (
+        {parents.length === 0 ? (
           <div className="text-center py-10">
             <p className="text-xs text-gray-300">Sin pendientes</p>
           </div>
         ) : (
-          <div className="space-y-0.5">
-            {pendientes.map(p => (
-              <PendientesItem
+          <div className="space-y-1">
+            {parents.map(p => (
+              <PendienteGroup
                 key={p.id}
-                p={p}
-                isResolving={resolvingIds.has(p.id)}
-                isEditing={editingId === p.id}
+                parent={p}
+                children={childrenByParent[p.id] || []}
+                resolvingIds={resolvingIds}
+                editingId={editingId}
                 editDraft={editDraft}
                 weekDays={weekDays}
                 showMoverMenu={moverMenuId === p.id}
+                isAddingChild={addingChildParentId === p.id}
+                childInput={childInput}
                 onEditDraftChange={onEditDraftChange}
                 onToggle={onToggle}
                 onUndo={onUndo}
@@ -655,6 +707,10 @@ function PendientesPanel({
                 onMover={onMover}
                 onConvertTarea={onConvertTarea}
                 onConvertSeguimiento={onConvertSeguimiento}
+                onStartAddChild={onStartAddChild}
+                onChildInputChange={onChildInputChange}
+                onAddChild={onAddChild}
+                onCancelAddChild={onCancelAddChild}
               />
             ))}
           </div>
@@ -681,14 +737,26 @@ export default function Apuntes() {
   const [loading,    setLoading]    = useState(false)
   const [segPicker,  setSegPicker]  = useState(null) // { kind: 'nota' | 'pendiente', item }
 
-  // Pendientes (panel lateral)
+  // Pendientes (panel lateral, dos niveles: pendiente padre + puntos)
   const [pendientes,        setPendientes]        = useState([])
   const [pendienteInput,    setPendienteInput]     = useState('')
   const [resolvingIds,      setResolvingIds]       = useState(new Set())
   const [editingPendienteId, setEditingPendienteId] = useState(null)
   const [editPendienteDraft, setEditPendienteDraft] = useState('')
   const [moverMenuId,       setMoverMenuId]        = useState(null)
-  const resolveTimers = useRef({})
+  const [addingChildParentId, setAddingChildParentId] = useState(null)
+  const [childInput,        setChildInput]        = useState('')
+  const resolveBatches = useRef({}) // batchKey -> { ids, timer }
+  const idToBatch      = useRef({}) // id -> batchKey
+
+  const pendienteParents = useMemo(() => pendientes.filter(p => !p.parent_id), [pendientes])
+  const childrenByParent = useMemo(() => {
+    const m = {}
+    for (const p of pendientes) {
+      if (p.parent_id) (m[p.parent_id] ||= []).push(p)
+    }
+    return m
+  }, [pendientes])
 
   // Días de la semana (Lun–Vie)
   const weekDays = useMemo(() =>
@@ -933,7 +1001,7 @@ export default function Apuntes() {
 
   // Limpia timers de "deshacer" al desmontar
   useEffect(() => () => {
-    Object.values(resolveTimers.current).forEach(clearTimeout)
+    Object.values(resolveBatches.current).forEach(b => clearTimeout(b.timer))
   }, [])
 
   async function handleAddPendiente() {
@@ -941,40 +1009,74 @@ export default function Apuntes() {
     if (!texto) return
     setPendienteInput('')
     const { data, error } = await supabase.from('agenda_pendientes')
-      .insert([{ texto, resuelto: false }]).select().single()
+      .insert([{ texto, resuelto: false, parent_id: null }]).select().single()
     if (error) { console.error('[agenda_pendientes] insert error:', error.message); return }
     if (data) setPendientes(prev => [...prev, data])
   }
 
-  // Marca resuelto en BD y lo quita de la lista sin animación (usado por las conversiones)
-  async function resolvePendienteSilent(p) {
-    setPendientes(prev => prev.filter(x => x.id !== p.id))
-    const { error } = await supabase.from('agenda_pendientes')
-      .update({ resuelto: true, resuelto_at: new Date().toISOString() }).eq('id', p.id)
-    if (error) console.error('[agenda_pendientes] resolve error:', error.message)
+  function handleStartAddChild(parentId) {
+    setAddingChildParentId(parentId)
+    setChildInput('')
+  }
+  function handleCancelAddChild() {
+    setAddingChildParentId(null)
+    setChildInput('')
+  }
+  async function handleAddChild(parentId) {
+    const texto = childInput.trim()
+    if (!texto) return
+    setChildInput('')
+    const { data, error } = await supabase.from('agenda_pendientes')
+      .insert([{ texto, resuelto: false, parent_id: parentId }]).select().single()
+    if (error) { console.error('[agenda_pendientes] insert child error:', error.message); return }
+    if (data) setPendientes(prev => [...prev, data])
+    // Deja el input abierto y enfocado para seguir escribiendo puntos de corrido
   }
 
-  // Checkbox: marca resuelto, tacha, y tras 3s lo saca de la lista (con opción de deshacer)
-  function handleTogglePendiente(p) {
-    setResolvingIds(prev => new Set(prev).add(p.id))
-    supabase.from('agenda_pendientes')
-      .update({ resuelto: true, resuelto_at: new Date().toISOString() }).eq('id', p.id)
-      .then(({ error }) => { if (error) console.error('[agenda_pendientes] toggle error:', error.message) })
+  // Marca resuelto (padre + puntos) en BD y los quita de la lista sin animación (usado por las conversiones)
+  async function resolvePendienteGroupSilent(p) {
+    const ids = [p.id, ...(childrenByParent[p.id] || []).map(c => c.id)]
+    setPendientes(prev => prev.filter(x => !ids.includes(x.id)))
+    const { error } = await supabase.from('agenda_pendientes')
+      .update({ resuelto: true, resuelto_at: new Date().toISOString() }).in('id', ids)
+    if (error) console.error('[agenda_pendientes] resolve group error:', error.message)
+  }
 
-    clearTimeout(resolveTimers.current[p.id])
-    resolveTimers.current[p.id] = setTimeout(() => {
-      setPendientes(prev => prev.filter(x => x.id !== p.id))
-      setResolvingIds(prev => { const n = new Set(prev); n.delete(p.id); return n })
-      delete resolveTimers.current[p.id]
+  // Inicia (o reinicia) el timer de 3s que retira definitivamente un lote de ids resueltos
+  function startResolveBatch(ids) {
+    const batchKey = ids[0]
+    setResolvingIds(prev => { const n = new Set(prev); ids.forEach(id => n.add(id)); return n })
+    ids.forEach(id => { idToBatch.current[id] = batchKey })
+    const timer = setTimeout(() => {
+      setPendientes(prev => prev.filter(x => !ids.includes(x.id)))
+      setResolvingIds(prev => { const n = new Set(prev); ids.forEach(id => n.delete(id)); return n })
+      ids.forEach(id => delete idToBatch.current[id])
+      delete resolveBatches.current[batchKey]
     }, 3000)
+    resolveBatches.current[batchKey] = { ids, timer }
+  }
+
+  // Checkbox: marca resuelto (si es padre, también sus puntos abiertos, en la misma operación),
+  // tacha, y tras 3s lo saca de la lista (con opción de deshacer que revierte todo el lote)
+  function handleTogglePendiente(p) {
+    const ids = p.parent_id ? [p.id] : [p.id, ...(childrenByParent[p.id] || []).map(c => c.id)]
+    supabase.from('agenda_pendientes')
+      .update({ resuelto: true, resuelto_at: new Date().toISOString() }).in('id', ids)
+      .then(({ error }) => { if (error) console.error('[agenda_pendientes] toggle error:', error.message) })
+    startResolveBatch(ids)
   }
 
   function handleUndoPendiente(p) {
-    clearTimeout(resolveTimers.current[p.id])
-    delete resolveTimers.current[p.id]
-    setResolvingIds(prev => { const n = new Set(prev); n.delete(p.id); return n })
+    const batchKey = idToBatch.current[p.id]
+    const batch = resolveBatches.current[batchKey]
+    if (!batch) return
+    clearTimeout(batch.timer)
+    const ids = batch.ids
+    ids.forEach(id => delete idToBatch.current[id])
+    delete resolveBatches.current[batchKey]
+    setResolvingIds(prev => { const n = new Set(prev); ids.forEach(id => n.delete(id)); return n })
     supabase.from('agenda_pendientes')
-      .update({ resuelto: false, resuelto_at: null }).eq('id', p.id)
+      .update({ resuelto: false, resuelto_at: null }).in('id', ids)
       .then(({ error }) => { if (error) console.error('[agenda_pendientes] undo error:', error.message) })
   }
 
@@ -1012,7 +1114,7 @@ export default function Apuntes() {
 
     if (error) { console.error('[pendiente→agenda_notas] insert error:', error.message); return }
     if (data) setNotas(prev => ({ ...prev, [date]: [...(prev[date] || []), data] }))
-    await resolvePendienteSilent(p)
+    await resolvePendienteGroupSilent(p)
   }
 
   // Convertir pendiente en tarea
@@ -1026,7 +1128,7 @@ export default function Apuntes() {
       fecha_vencimiento: TODAY,
     }])
     if (error) { console.error('[pendiente→tarea] insert error:', error.message); return }
-    await resolvePendienteSilent(p)
+    await resolvePendienteGroupSilent(p)
   }
 
   // Enviar pendiente a seguimiento de una causa (abre picker si no viene causa)
@@ -1049,7 +1151,7 @@ export default function Apuntes() {
     const { data: segData, error } = await supabase.from('revisiones').insert([payload]).select().single()
     if (error) { console.error('[pendiente→seguimiento] insert error:', error.message); return }
     window.dispatchEvent(new CustomEvent('seguimiento:created', { detail: { causa_id: causa.id, causa_rit: causa.rit, row: segData } }))
-    await resolvePendienteSilent(p)
+    await resolvePendienteGroupSilent(p)
   }
 
   // ── Render ──────────────────────────────────────────────────────────────────
@@ -1150,7 +1252,8 @@ export default function Apuntes() {
 
       {/* Panel lateral fijo — Pendientes */}
       <PendientesPanel
-        pendientes={pendientes}
+        parents={pendienteParents}
+        childrenByParent={childrenByParent}
         resolvingIds={resolvingIds}
         weekDays={weekDays}
         input={pendienteInput}
@@ -1169,6 +1272,12 @@ export default function Apuntes() {
         onMover={handleMoverPendiente}
         onConvertTarea={handleConvertPendienteTarea}
         onConvertSeguimiento={handleConvertPendienteSeguimiento}
+        addingChildParentId={addingChildParentId}
+        childInput={childInput}
+        onStartAddChild={handleStartAddChild}
+        onChildInputChange={setChildInput}
+        onAddChild={handleAddChild}
+        onCancelAddChild={handleCancelAddChild}
       />
     </div>
   )
