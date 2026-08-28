@@ -9,6 +9,7 @@ import {
   Loader2, AlertTriangle, RefreshCw, Trash2, Check,
   Calendar, Activity, Flame, PlusSquare,
   UserCheck, Upload, Table2, Database, Shield, ExternalLink,
+  ListTodo,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 
@@ -19,6 +20,7 @@ import ConfirmDeleteModal from '../components/ConfirmDeleteModal'
 import InlineField from '../components/InlineField'
 import CargaMasivaModal from '../components/CargaMasivaModal'
 import CopyValue from '../components/CopyValue'
+import { PendientesPanel } from '../components/PendientesPanel'
 import { SolicitudesTable } from './SIAU'
 import { MovimientosTable } from './PJUD'
 import useResizableColumns from '../hooks/useResizableColumns'
@@ -863,6 +865,17 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
   const [savingTarea,   setSavingTarea]   = useState(false)
   const [toastMsg,      setToastMsg]      = useState(null)
 
+  // Pendientes de esta causa (agenda_pendientes donde causa_id = causa.id)
+  const [pendientes,          setPendientes]         = useState([])
+  const [pendienteInput,      setPendienteInput]     = useState('')
+  const [resolvingPendIds,    setResolvingPendIds]   = useState(new Set())
+  const [editingPendId,       setEditingPendId]      = useState(null)
+  const [editPendDraft,       setEditPendDraft]      = useState('')
+  const [addingPendChildId,   setAddingPendChildId]  = useState(null)
+  const [pendChildInput,      setPendChildInput]     = useState('')
+  const resolvePendBatches = useRef({})
+  const idToPendBatch      = useRef({})
+
   // Seguimiento (tabla simple)
   const [segRows,           setSegRows]           = useState([])
   const [loadingSeg,        setLoadingSeg]        = useState(false)
@@ -1102,6 +1115,89 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
       .order('fecha_revision', { ascending: false })
       .then(({ data }) => { setSegRows(data ?? []); setLoadingSeg(false) })
   }, [tab, causa?.id])
+
+  // Load pendientes de esta causa (se carga siempre, alimenta el pulse card y la pestaña)
+  useEffect(() => {
+    if (!causa?.id) return
+    supabase.from('agenda_pendientes')
+      .select('*').eq('causa_id', causa.id).eq('resuelto', false)
+      .order('created_at', { ascending: true })
+      .then(({ data }) => setPendientes(data || []))
+  }, [causa?.id])
+
+  // Limpiar timers al desmontar
+  useEffect(() => () => {
+    Object.values(resolvePendBatches.current).forEach(b => clearTimeout(b.timer))
+  }, [])
+
+  // useMemos de pendientes
+  const pendienteParents   = useMemo(() => pendientes.filter(p => !p.parent_id), [pendientes])
+  const pendChildrenByParent = useMemo(() => {
+    const m = {}
+    for (const p of pendientes) { if (p.parent_id) (m[p.parent_id] ||= []).push(p) }
+    return m
+  }, [pendientes])
+
+  function startResolvePendBatch(ids) {
+    const batchKey = ids[0]
+    setResolvingPendIds(prev => { const n = new Set(prev); ids.forEach(id => n.add(id)); return n })
+    ids.forEach(id => { idToPendBatch.current[id] = batchKey })
+    const timer = setTimeout(() => {
+      setPendientes(prev => prev.filter(x => !ids.includes(x.id)))
+      setResolvingPendIds(prev => { const n = new Set(prev); ids.forEach(id => n.delete(id)); return n })
+      ids.forEach(id => delete idToPendBatch.current[id])
+      delete resolvePendBatches.current[batchKey]
+    }, 3000)
+    resolvePendBatches.current[batchKey] = { ids, timer }
+  }
+
+  async function handleAddPendiente() {
+    const texto = pendienteInput.trim()
+    if (!texto) return
+    setPendienteInput('')
+    const { data } = await supabase.from('agenda_pendientes')
+      .insert([{ texto, resuelto: false, parent_id: null, causa_id: causa.id }]).select().single()
+    if (data) setPendientes(prev => [...prev, data])
+  }
+
+  async function handleAddPendChild(parentId) {
+    const texto = pendChildInput.trim()
+    if (!texto) return
+    setPendChildInput('')
+    const { data } = await supabase.from('agenda_pendientes')
+      .insert([{ texto, resuelto: false, parent_id: parentId, causa_id: causa.id }]).select().single()
+    if (data) setPendientes(prev => [...prev, data])
+  }
+
+  function handleTogglePendiente(p) {
+    const ids = p.parent_id ? [p.id] : [p.id, ...(pendChildrenByParent[p.id] || []).map(c => c.id)]
+    supabase.from('agenda_pendientes')
+      .update({ resuelto: true, resuelto_at: new Date().toISOString() }).in('id', ids)
+      .then(({ error }) => { if (error) console.error('[pendiente toggle]', error.message) })
+    startResolvePendBatch(ids)
+  }
+
+  function handleUndoPendiente(p) {
+    const batchKey = idToPendBatch.current[p.id]
+    const batch    = resolvePendBatches.current[batchKey]
+    if (!batch) return
+    clearTimeout(batch.timer)
+    const ids = batch.ids
+    ids.forEach(id => delete idToPendBatch.current[id])
+    delete resolvePendBatches.current[batchKey]
+    setResolvingPendIds(prev => { const n = new Set(prev); ids.forEach(id => n.delete(id)); return n })
+    supabase.from('agenda_pendientes')
+      .update({ resuelto: false, resuelto_at: null }).in('id', ids)
+      .then(({ error }) => { if (error) console.error('[pendiente undo]', error.message) })
+  }
+
+  async function handleSaveEditPendiente(p) {
+    const texto = editPendDraft.trim()
+    setEditingPendId(null)
+    if (!texto || texto === p.texto) return
+    const { error } = await supabase.from('agenda_pendientes').update({ texto }).eq('id', p.id)
+    if (!error) setPendientes(prev => prev.map(x => x.id === p.id ? { ...x, texto } : x))
+  }
 
   // Load current week revision for the banner
   useEffect(() => {
@@ -1557,8 +1653,9 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
             { key: 'siau',        Icon: Database,    label: 'SIAU',        count: siauRows.length || null, urgent: siauRows.some(r => r.estado === 'Urgente') },
             { key: 'pjud',        Icon: Shield,      label: 'PJUD',        count: pjudRows.length || null, urgent: pjudRows.some(r => r.estado === 'Urgente') },
             { key: 'audiencias',  Icon: Gavel,       label: 'Audiencias',  count: audiencias.length,       urgent: audProximas > 0 },
-            { key: 'tareas',      Icon: CheckSquare, label: 'Tareas',      count: tareasPend,              urgent: tareasUrgentes > 0 },
-            { key: 'plazos',      Icon: Clock,       label: 'Plazos',      count: plazosActivos,           urgent: plazosUrgentes > 0 },
+            { key: 'tareas',      Icon: CheckSquare, label: 'Tareas',      count: tareasPend,                        urgent: tareasUrgentes > 0 },
+            { key: 'pendientes',  Icon: ListTodo,    label: 'Pendientes',  count: pendienteParents.length || null,   urgent: pendienteParents.length > 0 },
+            { key: 'plazos',      Icon: Clock,       label: 'Plazos',      count: plazosActivos,                     urgent: plazosUrgentes > 0 },
             { key: 'documentos',  Icon: FileText,    label: 'Docs',        count: null,                    urgent: false },
             { key: 'seguimiento', Icon: Target,      label: 'Seguimiento', count: segRows.length || null,  urgent: false },
             { key: 'revisiones',  Icon: BookOpen,    label: 'Revisiones',  count: revCount || null,        urgent: false },
@@ -1657,10 +1754,15 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
             {/* ── 4 PULSE CARDS ────────────────────────────────────────── */}
             <div className="flex-shrink-0 grid grid-cols-4 border-b border-gray-100">
               {[
-                { label:'SIAU sin resp.',
-                  value: siauSinResp.length>0?`${siauSinResp.length} pendiente${siauSinResp.length>1?'s':''}`:'Al día',
-                  sub:   oldestSiauDias!==null?`Más antigua: hace ${oldestSiauDias}d`:null,
-                  urgent:(oldestSiauDias??0)>15, color:'amber', Icon:Database, onClick:()=>setTab('siau') },
+                { label:'PENDIENTES',
+                  value: pendienteParents.length===0?'Sin pendientes':`${pendienteParents.length} pendiente${pendienteParents.length>1?'s':''}`,
+                  sub:   (() => {
+                    if (pendienteParents.length === 0) return null
+                    const oldest = pendienteParents.reduce((a, b) => a.created_at < b.created_at ? a : b)
+                    const dias = Math.floor((Date.now() - new Date(oldest.created_at).getTime()) / 86400000)
+                    return `Más antiguo: hace ${dias}d`
+                  })(),
+                  urgent: pendienteParents.length > 0, color:'amber', Icon:ListTodo, onClick:()=>setTab('pendientes') },
                 { label:'Próxima audiencia',
                   value: proxAud?`${fmtFechaCausa(proxAud.fecha)}${proxAud.hora?` · ${proxAud.hora}`:''}` :'Sin programar',
                   sub:   audDias!==null?(audDias===0?'Hoy':audDias===1?'Mañana':`En ${audDias} días`):null,
@@ -2601,6 +2703,36 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                 })}
               </div>
             )}
+          </div>
+        )}
+
+        {/* PENDIENTES */}
+        {tab === 'pendientes' && (
+          <div className="px-5 py-4 h-full">
+            <PendientesPanel
+              variant="section"
+              simpleMode
+              parents={pendienteParents}
+              childrenByParent={pendChildrenByParent}
+              resolvingIds={resolvingPendIds}
+              input={pendienteInput}
+              onInputChange={setPendienteInput}
+              onAddPendiente={handleAddPendiente}
+              editingId={editingPendId}
+              editDraft={editPendDraft}
+              onEditDraftChange={setEditPendDraft}
+              onToggle={handleTogglePendiente}
+              onUndo={handleUndoPendiente}
+              onStartEdit={p => { setEditingPendId(p.id); setEditPendDraft(p.texto) }}
+              onSaveEdit={handleSaveEditPendiente}
+              onCancelEdit={() => setEditingPendId(null)}
+              addingChildParentId={addingPendChildId}
+              childInput={pendChildInput}
+              onStartAddChild={id => { setAddingPendChildId(id); setPendChildInput('') }}
+              onChildInputChange={setPendChildInput}
+              onAddChild={handleAddPendChild}
+              onCancelAddChild={() => { setAddingPendChildId(null); setPendChildInput('') }}
+            />
           </div>
         )}
 
