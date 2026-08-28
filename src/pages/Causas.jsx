@@ -9,7 +9,7 @@ import {
   Loader2, AlertTriangle, RefreshCw, Trash2, Check,
   Calendar, Activity, Flame, PlusSquare,
   UserCheck, Upload, Table2, Database, Shield, ExternalLink,
-  ListTodo,
+  ListTodo, Inbox,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 
@@ -876,6 +876,13 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
   const resolvePendBatches = useRef({})
   const idToPendBatch      = useRef({})
 
+  // Diligencias y OI
+  const [diligencias,      setDiligencias]      = useState([])
+  const [dilFilter,        setDilFilter]        = useState('todas')
+  const [dilGroupByOI,     setDilGroupByOI]     = useState(false)
+  const [dilExpandedId,    setDilExpandedId]    = useState(null)
+  const [dilNewDraft,      setDilNewDraft]      = useState(null) // objeto con campos vacíos para fila nueva
+
   // Seguimiento (tabla simple)
   const [segRows,           setSegRows]           = useState([])
   const [loadingSeg,        setLoadingSeg]        = useState(false)
@@ -1123,6 +1130,14 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
       .select('*').eq('causa_id', causa.id).eq('resuelto', false)
       .order('created_at', { ascending: true })
       .then(({ data }) => setPendientes(data || []))
+  }, [causa?.id])
+
+  useEffect(() => {
+    if (!causa?.id) return
+    supabase.from('diligencias')
+      .select('*').eq('causa_id', causa.id)
+      .order('created_at', { ascending: false })
+      .then(({ data }) => setDiligencias(data || []))
   }, [causa?.id])
 
   // Limpiar timers al desmontar
@@ -1656,8 +1671,9 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
             { key: 'tareas',      Icon: CheckSquare, label: 'Tareas',      count: tareasPend,                        urgent: tareasUrgentes > 0 },
             { key: 'pendientes',  Icon: ListTodo,    label: 'Pendientes',  count: pendienteParents.length || null,   urgent: pendienteParents.length > 0 },
             { key: 'plazos',      Icon: Clock,       label: 'Plazos',      count: plazosActivos,                     urgent: plazosUrgentes > 0 },
-            { key: 'documentos',  Icon: FileText,    label: 'Docs',        count: null,                    urgent: false },
-            { key: 'seguimiento', Icon: Target,      label: 'Seguimiento', count: segRows.length || null,  urgent: false },
+            { key: 'documentos',   Icon: FileText, label: 'Docs',          count: null,                   urgent: false },
+            { key: 'diligencias',  Icon: Inbox,    label: 'Diligencias',   count: diligencias.length || null, urgent: false },
+            { key: 'seguimiento',  Icon: Target,   label: 'Seguimiento',   count: segRows.length || null, urgent: false },
             { key: 'revisiones',  Icon: BookOpen,    label: 'Revisiones',  count: revCount || null,        urgent: false },
           ]
           return (
@@ -2830,6 +2846,285 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
             </p>
           </div>
         )}
+
+        {/* DILIGENCIAS Y OI */}
+        {tab === 'diligencias' && (() => {
+          function fmtDilFecha(iso) {
+            if (!iso) return null
+            const [y, m, d] = iso.split('-')
+            return `${d}/${m}/${y}`
+          }
+          function daysSince(iso) {
+            if (!iso) return 0
+            return Math.floor((Date.now() - new Date(iso + 'T00:00:00').getTime()) / 86400000)
+          }
+
+          const ESTADOS = ['Recibida', 'Solicitada', 'No recibida']
+          const estadoChipCls = {
+            'Recibida':    'bg-emerald-50 text-emerald-700 border-emerald-200',
+            'Solicitada':  'bg-amber-50 text-amber-700 border-amber-200',
+            'No recibida': 'bg-red-50 text-red-600 border-red-200',
+          }
+
+          const filtered = diligencias.filter(d => {
+            if (dilFilter === 'recibidas')    return d.estado === 'Recibida'
+            if (dilFilter === 'solicitadas')  return d.estado === 'Solicitada'
+            if (dilFilter === 'no_recibidas') return d.estado === 'No recibida'
+            return true
+          })
+          const counts = {
+            todas:       diligencias.length,
+            recibidas:   diligencias.filter(d => d.estado === 'Recibida').length,
+            solicitadas: diligencias.filter(d => d.estado === 'Solicitada').length,
+            no_recibidas:diligencias.filter(d => d.estado === 'No recibida').length,
+          }
+
+          let rows = filtered
+          if (dilGroupByOI) {
+            rows = [...filtered].sort((a, b) => (a.organismo || '').localeCompare(b.organismo || ''))
+          }
+
+          async function commitDilField(id, field, value) {
+            setEditingCell(null)
+            const trimmed = value.trim() || null
+            setDiligencias(prev => prev.map(d => d.id === id ? { ...d, [field]: trimmed } : d))
+            await supabase.from('diligencias').update({ [field]: trimmed }).eq('id', id)
+          }
+
+          async function handleAddDiligencia() {
+            if (!causa?.id) return
+            const blank = {
+              causa_id: causa.id,
+              nombre: 'Nueva diligencia',
+              organismo: null, instruccion: null,
+              estado: 'Solicitada',
+              fecha_solicitud: null, fecha_recepcion: null,
+              folio: null, notas: null,
+            }
+            const { data, error } = await supabase.from('diligencias').insert(blank).select().single()
+            if (!error && data) {
+              setDiligencias(prev => [data, ...prev])
+              setDilExpandedId(data.id)
+              setEditingCell({ id: data.id, field: 'nombre' })
+              setCellDraft('Nueva diligencia')
+            }
+          }
+
+          const FILTERS = [
+            { key: 'todas', label: 'Todas' },
+            { key: 'recibidas', label: 'Recibidas' },
+            { key: 'solicitadas', label: 'Solicitadas' },
+            { key: 'no_recibidas', label: 'No recibidas' },
+          ]
+
+          function DilInlineText({ id, field, value, placeholder = '—', multiline = false }) {
+            const isEdit = editingCell?.id === id && editingCell?.field === field
+            if (isEdit) {
+              const props = {
+                autoFocus: true,
+                value: cellDraft,
+                onChange: e => setCellDraft(e.target.value),
+                onBlur: () => commitDilField(id, field, cellDraft),
+                onKeyDown: e => {
+                  if (!multiline && e.key === 'Enter') { e.preventDefault(); commitDilField(id, field, cellDraft) }
+                  if (e.key === 'Escape') setEditingCell(null)
+                },
+                className: 'w-full text-xs text-gray-700 bg-white border border-blue-300 rounded px-1.5 py-0.5 outline-none',
+              }
+              return multiline ? <textarea rows={3} {...props} /> : <input {...props} />
+            }
+            return (
+              <span
+                onClick={() => { setEditingCell({ id, field }); setCellDraft(value ?? '') }}
+                className={`cursor-text text-xs ${value ? 'text-gray-700' : 'text-gray-300 italic'} hover:bg-gray-50 rounded px-0.5`}
+              >
+                {value || placeholder}
+              </span>
+            )
+          }
+
+          function DilInlineSelect({ id, field, value }) {
+            const isEdit = editingCell?.id === id && editingCell?.field === field
+            if (isEdit) {
+              return (
+                <select
+                  autoFocus
+                  value={cellDraft}
+                  onChange={e => setCellDraft(e.target.value)}
+                  onBlur={() => commitDilField(id, field, cellDraft)}
+                  className="text-xs text-gray-700 bg-white border border-blue-300 rounded px-1.5 py-0.5 outline-none"
+                >
+                  {ESTADOS.map(e => <option key={e} value={e}>{e}</option>)}
+                </select>
+              )
+            }
+            return (
+              <span
+                onClick={() => { setEditingCell({ id, field }); setCellDraft(value ?? 'Solicitada') }}
+                className={`cursor-pointer inline-flex items-center px-1.5 py-0.5 rounded-full border text-[10px] font-semibold ${estadoChipCls[value] || 'bg-gray-50 text-gray-500 border-gray-200'}`}
+              >
+                {value || 'Sin estado'}
+              </span>
+            )
+          }
+
+          function DilInlineDate({ id, field, value, placeholder = '—' }) {
+            const isEdit = editingCell?.id === id && editingCell?.field === field
+            if (isEdit) {
+              return (
+                <input
+                  autoFocus
+                  type="date"
+                  value={cellDraft}
+                  onChange={e => setCellDraft(e.target.value)}
+                  onBlur={() => commitDilField(id, field, cellDraft)}
+                  onKeyDown={e => { if (e.key === 'Escape') setEditingCell(null) }}
+                  className="text-xs text-gray-700 bg-white border border-blue-300 rounded px-1.5 py-0.5 outline-none"
+                />
+              )
+            }
+            return (
+              <span
+                onClick={() => { setEditingCell({ id, field }); setCellDraft(value ?? '') }}
+                className={`cursor-text text-xs ${value ? 'text-gray-700' : 'text-gray-300 italic'} hover:bg-gray-50 rounded px-0.5`}
+              >
+                {value ? fmtDilFecha(value) : placeholder}
+              </span>
+            )
+          }
+
+          return (
+            <div className="flex flex-col h-full">
+              {/* Filter bar */}
+              <div className="px-5 py-3 border-b border-[#E2E5EA] flex items-center gap-2 flex-wrap bg-[#F7F8FA] flex-shrink-0">
+                <div className="flex items-center gap-1">
+                  {FILTERS.map(f => (
+                    <button
+                      key={f.key}
+                      onClick={() => setDilFilter(f.key)}
+                      className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors ${
+                        dilFilter === f.key
+                          ? 'bg-[#1A2E4A] text-white'
+                          : 'text-gray-500 hover:bg-gray-200'
+                      }`}
+                    >
+                      {f.label} <span className="opacity-60 tabular-nums">({counts[f.key]})</span>
+                    </button>
+                  ))}
+                </div>
+                <div className="ml-auto flex items-center gap-3">
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={dilGroupByOI}
+                      onChange={e => setDilGroupByOI(e.target.checked)}
+                      className="w-3 h-3 accent-[#2570BA]"
+                    />
+                    <span className="text-[11px] text-gray-500">Agrupar por OI</span>
+                  </label>
+                  <button
+                    onClick={handleAddDiligencia}
+                    className="flex items-center gap-1 px-2.5 py-1 bg-[#1A2E4A] text-white text-[11px] font-semibold rounded-lg hover:opacity-80 transition-opacity"
+                  >
+                    <Plus size={12} /> Nueva
+                  </button>
+                </div>
+              </div>
+
+              {/* List */}
+              <div className="flex-1 overflow-y-auto">
+                {rows.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-16 px-8 text-center">
+                    <Inbox size={28} className="text-gray-200 mb-3" />
+                    <p className="text-[13px] text-gray-400 font-medium">Sin diligencias</p>
+                    <p className="text-[11px] text-gray-400 mt-1">
+                      Registra OIs y diligencias vinculadas a esta causa
+                    </p>
+                  </div>
+                ) : (
+                  <div>
+                    {rows.map((dil, idx) => {
+                      const isExpanded = dilExpandedId === dil.id
+                      const alertDays = dil.estado === 'Solicitada' && dil.fecha_solicitud && daysSince(dil.fecha_solicitud) > 60
+                        ? daysSince(dil.fecha_solicitud) : null
+
+                      return (
+                        <div key={dil.id} className={`border-b border-gray-100 ${isExpanded ? 'bg-gray-50' : 'hover:bg-gray-50'} transition-colors`}>
+                          {/* Row */}
+                          <div
+                            className="flex items-center gap-3 px-5 py-3 cursor-pointer select-none"
+                            onClick={() => setDilExpandedId(isExpanded ? null : dil.id)}
+                          >
+                            <ChevronRight
+                              size={14}
+                              className={`text-gray-300 flex-shrink-0 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
+                            />
+                            <span className="flex-1 text-[12px] font-semibold text-gray-800 truncate">{dil.nombre || '—'}</span>
+                            <span className="text-[11px] text-gray-400 truncate max-w-[120px]">{dil.organismo || '—'}</span>
+                            <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full border text-[10px] font-semibold flex-shrink-0 ${estadoChipCls[dil.estado] || 'bg-gray-50 text-gray-500 border-gray-200'}`}>
+                              {dil.estado || 'Sin estado'}
+                              {alertDays && (
+                                <span className="ml-0.5 text-amber-600 font-bold">{alertDays}d</span>
+                              )}
+                            </span>
+                            <span className="text-[11px] text-gray-400 flex-shrink-0 tabular-nums w-20 text-right">{fmtDilFecha(dil.fecha_recepcion) || '—'}</span>
+                            <span className="text-[11px] text-gray-400 flex-shrink-0 tabular-nums w-20 text-right">{dil.folio || '—'}</span>
+                          </div>
+
+                          {/* Expanded detail */}
+                          {isExpanded && (
+                            <div className="ml-8 mr-5 mb-4 border-l-2 border-[#2570BA] pl-4 bg-white rounded-r-lg shadow-sm">
+                              <div className="pt-3 pb-2">
+                                {/* Title editable */}
+                                <div className="mb-3">
+                                  <DilInlineText id={dil.id} field="nombre" value={dil.nombre} placeholder="Nombre de la diligencia" />
+                                </div>
+                                {/* 2-col grid */}
+                                <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-[11px]">
+                                  <div>
+                                    <span className="text-gray-400 font-medium block mb-0.5">Organismo</span>
+                                    <DilInlineText id={dil.id} field="organismo" value={dil.organismo} />
+                                  </div>
+                                  <div>
+                                    <span className="text-gray-400 font-medium block mb-0.5">Instrucción</span>
+                                    <DilInlineText id={dil.id} field="instruccion" value={dil.instruccion} />
+                                  </div>
+                                  <div>
+                                    <span className="text-gray-400 font-medium block mb-0.5">Solicitada</span>
+                                    <DilInlineDate id={dil.id} field="fecha_solicitud" value={dil.fecha_solicitud} />
+                                  </div>
+                                  <div>
+                                    <span className="text-gray-400 font-medium block mb-0.5">Estado</span>
+                                    <DilInlineSelect id={dil.id} field="estado" value={dil.estado} />
+                                  </div>
+                                  <div>
+                                    <span className="text-gray-400 font-medium block mb-0.5">Recepción</span>
+                                    <DilInlineDate id={dil.id} field="fecha_recepcion" value={dil.fecha_recepcion} />
+                                  </div>
+                                  <div>
+                                    <span className="text-gray-400 font-medium block mb-0.5">Folio</span>
+                                    <DilInlineText id={dil.id} field="folio" value={dil.folio} />
+                                  </div>
+                                </div>
+                                {/* Dotted separator */}
+                                <div className="border-t border-dashed border-gray-200 my-3" />
+                                {/* Notas */}
+                                <div>
+                                  <span className="text-gray-400 font-medium text-[11px] block mb-1">Notas</span>
+                                  <DilInlineText id={dil.id} field="notas" value={dil.notas} placeholder="Agregar notas…" multiline />
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          )
+        })()}
 
         {/* SEGUIMIENTO */}
         {tab === 'seguimiento' && (() => {
