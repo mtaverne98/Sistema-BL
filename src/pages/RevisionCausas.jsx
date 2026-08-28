@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   Search, Check, X, Plus, Edit2, ExternalLink,
   FileText, Scale, ChevronDown, ChevronRight, ArrowRight,
-  RefreshCw, History, Loader2, AlertCircle, CheckCircle2,
+  RefreshCw, History, Loader2, AlertCircle, CheckCircle2, Calendar,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useNavigation } from '../context/NavigationContext'
@@ -560,7 +560,8 @@ export default function RevisionCausas() {
   const [cargando,    setCargando]    = useState(true)
   const [search,      setSearch]      = useState('')
   const [filtroClEst, setFiltroClEst] = useState('')
-  const [showReset,   setShowReset]   = useState(false)
+  const [showReset,          setShowReset]          = useState(false)
+  const [editingFechaInicio, setEditingFechaInicio] = useState(false)
 
   // Revisión activa — persiste en localStorage
   // Fuente de verdad: qué causas están marcadas + cuándo empezó el período.
@@ -751,6 +752,12 @@ export default function RevisionCausas() {
     setShowReset(false)
   }
 
+  function handleSaveFechaInicio(newDate) {
+    if (!newDate) return
+    setRevActiva(prev => ({ ...prev, fecha_inicio: newDate }))
+    setEditingFechaInicio(false)
+  }
+
   // ── Stats — desde revision_activa (no derivadas de reviewMap) ─────────────
   const revisadasCount = revActiva?.total_revisadas ?? 0
   const totalCausas = causasActivas.length
@@ -807,8 +814,8 @@ export default function RevisionCausas() {
         <div className="flex-shrink-0 bg-amber-50 border-b border-amber-200 px-6 py-3 flex items-center gap-3">
           <AlertCircle size={15} className="text-amber-500 flex-shrink-0" />
           <p className="text-[12px] text-amber-800 flex-1">
-            El período de revisión terminó el <strong>{fmtDateFull(periodEnd)}</strong>.
-            ¿Deseas iniciar una nueva revisión?
+            <strong>Período vencido hace {daysSince(periodEnd)} día{daysSince(periodEnd) !== 1 ? 's' : ''}.</strong>{' '}
+            Terminó el {fmtDateFull(periodEnd)}. ¿Deseas iniciar una nueva revisión?
           </p>
           <button onClick={() => setShowReset(true)}
             className="text-[12px] font-semibold px-3 py-1.5 bg-amber-100 text-amber-800 rounded-lg hover:bg-amber-200 flex items-center gap-1.5 flex-shrink-0">
@@ -824,10 +831,33 @@ export default function RevisionCausas() {
             <h1 className="text-[20px] font-bold text-gray-900 tracking-tight leading-none">Revisión de Causas</h1>
             {/* Período */}
             <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-              <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${
+              <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full flex items-center gap-1.5 ${
                 periodExpired ? 'bg-amber-50 text-amber-700 border border-amber-200' : 'bg-blue-50 text-blue-700 border border-blue-200'
               }`}>
-                Período: {fmtDateFull(periodStart)} → {fmtDateFull(periodEnd)}
+                Período:{' '}
+                {editingFechaInicio ? (
+                  <input
+                    type="date"
+                    defaultValue={periodStart}
+                    autoFocus
+                    onBlur={e => { if (e.target.value) handleSaveFechaInicio(e.target.value); else setEditingFechaInicio(false) }}
+                    onChange={e => { if (e.target.value) handleSaveFechaInicio(e.target.value) }}
+                    className="text-[11px] border-0 bg-transparent focus:outline-none w-[130px] cursor-pointer"
+                  />
+                ) : (
+                  <button
+                    onClick={() => setEditingFechaInicio(true)}
+                    title="Editar fecha de inicio"
+                    className="underline decoration-dashed underline-offset-2 hover:opacity-70 flex items-center gap-0.5"
+                  >
+                    <Calendar size={10} />
+                    {fmtDateFull(periodStart)}
+                  </button>
+                )}
+                {' → '}{fmtDateFull(periodEnd)}
+                {periodExpired && (
+                  <span className="font-semibold">· Vencido hace {daysSince(periodEnd)} día{daysSince(periodEnd) !== 1 ? 's' : ''}</span>
+                )}
               </span>
               {!periodExpired && (
                 <span className="text-[11px] text-gray-400">
