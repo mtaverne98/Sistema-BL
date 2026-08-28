@@ -60,17 +60,27 @@ function QuienBadge({ quien }) {
 }
 
 // ── TemaRow ───────────────────────────────────────────────────────────────────
-function TemaRow({ tema, onToggle, onDelete, readOnly = false }) {
-  const [hov, setHov] = useState(false)
-  const cfg       = TEMA_ESTADO[tema.estado] || TEMA_ESTADO.pendiente
-  const NEXT      = { pendiente: 'discutido', discutido: 'postergado', postergado: 'pendiente' }
-  const IconComp  = cfg.icon
+function TemaRow({ tema, onToggle, onDelete, onSaveAcuerdos, readOnly = false }) {
+  const [hov,          setHov]          = useState(false)
+  const [acuerdos,     setAcuerdos]     = useState(tema.acuerdos ?? '')
+  const [showAcuerdos, setShowAcuerdos] = useState(!!tema.acuerdos)
+  const timerRef = useRef(null)
+
+  const cfg      = TEMA_ESTADO[tema.estado] || TEMA_ESTADO.pendiente
+  const NEXT     = { pendiente: 'discutido', discutido: 'postergado', postergado: 'pendiente' }
+  const IconComp = cfg.icon
+
+  function handleAcuerdosChange(val) {
+    setAcuerdos(val)
+    clearTimeout(timerRef.current)
+    timerRef.current = setTimeout(() => onSaveAcuerdos?.(tema.id, val), 800)
+  }
 
   return (
     <div
       onMouseEnter={() => setHov(true)}
       onMouseLeave={() => setHov(false)}
-      className={`flex items-start gap-3 px-4 py-3 rounded-xl border transition-all ${
+      className={`rounded-xl border transition-all ${
         tema.estado === 'discutido'
           ? 'bg-green-50/50 border-green-100'
           : tema.estado === 'postergado'
@@ -78,64 +88,94 @@ function TemaRow({ tema, onToggle, onDelete, readOnly = false }) {
           : 'bg-white border-gray-100 hover:border-gray-200 hover:shadow-sm'
       }`}>
 
-      {/* Toggle button */}
-      {readOnly ? (
-        <div className={`mt-0.5 w-4 h-4 rounded-full flex-shrink-0 flex items-center justify-center ${cfg.dot}`}>
-          {IconComp && <IconComp size={8} className="text-white" strokeWidth={3}/>}
-        </div>
-      ) : (
-        <button
-          onClick={() => onToggle(tema.id, NEXT[tema.estado] || 'pendiente')}
-          title={`→ ${TEMA_ESTADO[NEXT[tema.estado]]?.label}`}
-          className={`mt-0.5 w-4 h-4 rounded-full flex-shrink-0 flex items-center justify-center border-2 transition-all hover:scale-110 ${
-            tema.estado === 'discutido'
-              ? 'bg-green-500 border-green-500'
-              : tema.estado === 'postergado'
-              ? 'bg-slate-300 border-slate-300'
-              : 'border-amber-400 hover:bg-amber-50'
-          }`}>
-          {IconComp && <IconComp size={8} className="text-white" strokeWidth={3}/>}
-        </button>
-      )}
-
-      {/* Content */}
-      <div className="flex-1 min-w-0">
-        <p className={`text-[13px] leading-snug ${
-          tema.estado === 'discutido'  ? 'text-gray-400 line-through' :
-          tema.estado === 'postergado' ? 'text-gray-400' :
-          'text-gray-800'
-        }`}>
-          {tema.descripcion}
-        </p>
-
-        {/* Meta */}
-        <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-          {tema.causa_rit && (
-            <span className="inline-flex items-center gap-1 text-[10px] font-mono font-semibold text-violet-700 bg-violet-50 px-1.5 py-0.5 rounded">
-              <Scale size={8}/> {tema.causa_rit}
-            </span>
-          )}
-          {tema.cliente_nombre && (
-            <span className="text-[10px] font-medium text-[#1a2e4a] bg-[#1a2e4a]/5 px-1.5 py-0.5 rounded">
-              {tema.cliente_nombre}
-            </span>
-          )}
-          <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${cfg.bg} ${cfg.text}`}>
-            {cfg.label}
-          </span>
-        </div>
-      </div>
-
-      {/* Right side */}
-      <div className="flex items-center gap-2 flex-shrink-0 mt-0.5">
-        <QuienBadge quien={tema.agregado_por}/>
-        {!readOnly && hov && (
-          <button onClick={() => onDelete(tema.id)}
-            className="p-1 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors">
-            <Trash2 size={12}/>
+      {/* Top row */}
+      <div className="flex items-start gap-3 px-4 py-3">
+        {/* Toggle button */}
+        {readOnly ? (
+          <div className={`mt-0.5 w-4 h-4 rounded-full flex-shrink-0 flex items-center justify-center ${cfg.dot}`}>
+            {IconComp && <IconComp size={8} className="text-white" strokeWidth={3}/>}
+          </div>
+        ) : (
+          <button
+            onClick={() => onToggle(tema.id, NEXT[tema.estado] || 'pendiente')}
+            title={`→ ${TEMA_ESTADO[NEXT[tema.estado]]?.label}`}
+            className={`mt-0.5 w-4 h-4 rounded-full flex-shrink-0 flex items-center justify-center border-2 transition-all hover:scale-110 ${
+              tema.estado === 'discutido'
+                ? 'bg-green-500 border-green-500'
+                : tema.estado === 'postergado'
+                ? 'bg-slate-300 border-slate-300'
+                : 'border-amber-400 hover:bg-amber-50'
+            }`}>
+            {IconComp && <IconComp size={8} className="text-white" strokeWidth={3}/>}
           </button>
         )}
+
+        {/* Content */}
+        <div className="flex-1 min-w-0">
+          <p className={`text-[13px] leading-snug ${
+            tema.estado === 'discutido'  ? 'text-gray-400 line-through' :
+            tema.estado === 'postergado' ? 'text-gray-400' :
+            'text-gray-800'
+          }`}>
+            {tema.descripcion}
+          </p>
+
+          {/* Meta */}
+          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+            {tema.causa_rit && (
+              <span className="inline-flex items-center gap-1 text-[10px] font-mono font-semibold text-violet-700 bg-violet-50 px-1.5 py-0.5 rounded">
+                <Scale size={8}/> {tema.causa_rit}
+              </span>
+            )}
+            {tema.cliente_nombre && (
+              <span className="text-[10px] font-medium text-[#1a2e4a] bg-[#1a2e4a]/5 px-1.5 py-0.5 rounded">
+                {tema.cliente_nombre}
+              </span>
+            )}
+            <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${cfg.bg} ${cfg.text}`}>
+              {cfg.label}
+            </span>
+          </div>
+        </div>
+
+        {/* Right side */}
+        <div className="flex items-center gap-2 flex-shrink-0 mt-0.5">
+          <QuienBadge quien={tema.agregado_por}/>
+          {!readOnly && hov && (
+            <button onClick={() => onDelete(tema.id)}
+              className="p-1 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors">
+              <Trash2 size={12}/>
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* Acuerdos */}
+      {!readOnly && (
+        <div className="px-4 pb-3 ml-7">
+          {showAcuerdos ? (
+            <textarea
+              value={acuerdos}
+              onChange={e => handleAcuerdosChange(e.target.value)}
+              rows={2}
+              placeholder="Acuerdos y decisiones…"
+              className="w-full text-[12px] text-gray-700 placeholder:text-gray-300 bg-white border border-gray-200 rounded-lg px-3 py-2 resize-none focus:outline-none focus:border-[#2570BA]/40 leading-relaxed"
+            />
+          ) : (
+            <button
+              onClick={() => setShowAcuerdos(true)}
+              className="text-[11px] text-gray-300 hover:text-[#2570BA] transition-colors">
+              + Acuerdo
+            </button>
+          )}
+        </div>
+      )}
+      {readOnly && tema.acuerdos && (
+        <div className="px-4 pb-3 ml-7">
+          <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Acuerdos</p>
+          <p className="text-[12px] text-gray-600 leading-relaxed whitespace-pre-wrap">{tema.acuerdos}</p>
+        </div>
+      )}
     </div>
   )
 }
@@ -469,6 +509,12 @@ export default function Reuniones() {
     await supabase.from('reunion_temas').delete().eq('id', temaId)
   }
 
+  async function handleSaveAcuerdos(temaId, value) {
+    const trimmed = value.trim() || null
+    setTemas(prev => prev.map(t => t.id === temaId ? { ...t, acuerdos: trimmed } : t))
+    await supabase.from('reunion_temas').update({ acuerdos: trimmed }).eq('id', temaId)
+  }
+
   async function handleDeleteReunion() {
     if (!deleteTarget) return
     await supabase.from('reuniones').delete().eq('id', deleteTarget.id)
@@ -649,7 +695,7 @@ export default function Reuniones() {
                         <div key={letra} className="space-y-2">
                           <p className="text-[10px] font-bold text-gray-300 uppercase tracking-widest pt-1 pb-0.5">{letra}</p>
                           {lista.map(t => (
-                            <TemaRow key={t.id} tema={t} onToggle={handleToggle} onDelete={handleDelete} />
+                            <TemaRow key={t.id} tema={t} onToggle={handleToggle} onDelete={handleDelete} onSaveAcuerdos={handleSaveAcuerdos} />
                           ))}
                         </div>
                       ))}
@@ -657,7 +703,7 @@ export default function Reuniones() {
                         <div className="space-y-2">
                           {hasGroups && <p className="text-[10px] font-bold text-gray-300 uppercase tracking-widest pt-1 pb-0.5">Sin cliente</p>}
                           {sinCliente.map(t => (
-                            <TemaRow key={t.id} tema={t} onToggle={handleToggle} onDelete={handleDelete} />
+                            <TemaRow key={t.id} tema={t} onToggle={handleToggle} onDelete={handleDelete} onSaveAcuerdos={handleSaveAcuerdos} />
                           ))}
                         </div>
                       )}
