@@ -881,7 +881,14 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
   const [dilFilter,        setDilFilter]        = useState('todas')
   const [dilGroupByOI,     setDilGroupByOI]     = useState(false)
   const [dilExpandedId,    setDilExpandedId]    = useState(null)
-  const [dilNewDraft,      setDilNewDraft]      = useState(null) // objeto con campos vacíos para fila nueva
+  const [dilNewDraft,      setDilNewDraft]      = useState(null)
+
+  // Entrevistas
+  const [entrevistas,      setEntrevistas]      = useState([])
+  const [entPuntos,        setEntPuntos]        = useState({}) // { [entrevista_id]: punto[] }
+  const [entFilter,        setEntFilter]        = useState('todas')
+  const [entExpandedId,    setEntExpandedId]    = useState(null)
+  const [entPuntoInput,    setEntPuntoInput]    = useState({}) // { [entrevista_id]: string }
 
   // Seguimiento (tabla simple)
   const [segRows,           setSegRows]           = useState([])
@@ -1138,6 +1145,24 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
       .select('*').eq('causa_id', causa.id)
       .order('created_at', { ascending: false })
       .then(({ data }) => setDiligencias(data || []))
+  }, [causa?.id])
+
+  useEffect(() => {
+    if (!causa?.id) return
+    supabase.from('entrevistas')
+      .select('*').eq('causa_id', causa.id)
+      .order('fecha', { ascending: false })
+      .then(({ data }) => setEntrevistas(data || []))
+    supabase.from('entrevista_puntos')
+      .select('*').eq('causa_id', causa.id)
+      .order('created_at', { ascending: true })
+      .then(({ data }) => {
+        const byEnt = {}
+        for (const p of (data || [])) {
+          ;(byEnt[p.entrevista_id] ||= []).push(p)
+        }
+        setEntPuntos(byEnt)
+      })
   }, [causa?.id])
 
   // Limpiar timers al desmontar
@@ -1672,8 +1697,9 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
             { key: 'pendientes',  Icon: ListTodo,    label: 'Pendientes',  count: pendienteParents.length || null,   urgent: pendienteParents.length > 0 },
             { key: 'plazos',      Icon: Clock,       label: 'Plazos',      count: plazosActivos,                     urgent: plazosUrgentes > 0 },
             { key: 'documentos',   Icon: FileText, label: 'Docs',          count: null,                   urgent: false },
-            { key: 'diligencias',  Icon: Inbox,    label: 'Diligencias',   count: diligencias.length || null, urgent: false },
-            { key: 'seguimiento',  Icon: Target,   label: 'Seguimiento',   count: segRows.length || null, urgent: false },
+            { key: 'diligencias',   Icon: Inbox,    label: 'Diligencias',   count: diligencias.length || null, urgent: false },
+            { key: 'entrevistas',   Icon: MessageSquare, label: 'Entrevistas', count: entrevistas.length || null, urgent: false },
+            { key: 'seguimiento',   Icon: Target,   label: 'Seguimiento',   count: segRows.length || null, urgent: false },
             { key: 'revisiones',  Icon: BookOpen,    label: 'Revisiones',  count: revCount || null,        urgent: false },
           ]
           return (
@@ -3112,6 +3138,311 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                                 <div>
                                   <span className="text-gray-400 font-medium text-[11px] block mb-1">Notas</span>
                                   <DilInlineText id={dil.id} field="notas" value={dil.notas} placeholder="Agregar notas…" multiline />
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          )
+        })()}
+
+        {/* ENTREVISTAS */}
+        {tab === 'entrevistas' && (() => {
+          function fmtEntFecha(iso) {
+            if (!iso) return '—'
+            const [y, m, d] = iso.split('-')
+            return `${d}/${m}/${y}`
+          }
+
+          const TIPOS = ['Entrevista', 'Llamada', 'Reunión']
+          const tipoChipCls = {
+            'Entrevista': 'bg-violet-50 text-violet-700 border-violet-200',
+            'Llamada':    'bg-blue-50 text-blue-700 border-blue-200',
+            'Reunión':    'bg-teal-50 text-teal-700 border-teal-200',
+          }
+
+          const filtered = entrevistas.filter(e => {
+            if (entFilter === 'entrevistas') return e.tipo === 'Entrevista'
+            if (entFilter === 'llamadas')    return e.tipo === 'Llamada'
+            if (entFilter === 'reuniones')   return e.tipo === 'Reunión'
+            return true
+          })
+          const counts = {
+            todas:       entrevistas.length,
+            entrevistas: entrevistas.filter(e => e.tipo === 'Entrevista').length,
+            llamadas:    entrevistas.filter(e => e.tipo === 'Llamada').length,
+            reuniones:   entrevistas.filter(e => e.tipo === 'Reunión').length,
+          }
+
+          async function handleAddEntrevista() {
+            if (!causa?.id) return
+            const blank = {
+              causa_id: causa.id,
+              fecha: new Date().toISOString().split('T')[0],
+              tipo: 'Entrevista',
+              persona: null, cargo: null, institucion: null, relato: null,
+            }
+            const { data, error } = await supabase.from('entrevistas').insert(blank).select().single()
+            if (!error && data) {
+              setEntrevistas(prev => [data, ...prev])
+              setEntExpandedId(data.id)
+              setEditingCell({ id: data.id, field: 'persona' })
+              setCellDraft('')
+            }
+          }
+
+          async function commitEntField(id, field, value) {
+            setEditingCell(null)
+            const trimmed = value.trim() || null
+            setEntrevistas(prev => prev.map(e => e.id === id ? { ...e, [field]: trimmed } : e))
+            await supabase.from('entrevistas').update({ [field]: trimmed }).eq('id', id)
+          }
+
+          async function handleAddEntPunto(entId) {
+            const texto = (entPuntoInput[entId] || '').trim()
+            if (!texto) return
+            const { data, error } = await supabase.from('entrevista_puntos')
+              .insert({ entrevista_id: entId, causa_id: causa.id, texto })
+              .select().single()
+            if (!error && data) {
+              setEntPuntos(prev => ({ ...prev, [entId]: [...(prev[entId] || []), data] }))
+              setEntPuntoInput(prev => ({ ...prev, [entId]: '' }))
+            }
+          }
+
+          async function handleDeleteEntPunto(puntoId, entId) {
+            await supabase.from('entrevista_puntos').delete().eq('id', puntoId)
+            setEntPuntos(prev => ({ ...prev, [entId]: (prev[entId] || []).filter(p => p.id !== puntoId) }))
+          }
+
+          async function handlePuntoToPendiente(punto) {
+            const { data, error } = await supabase.from('agenda_pendientes')
+              .insert({ causa_id: causa.id, texto: punto.texto, resuelto: false })
+              .select().single()
+            if (!error && data) {
+              setPendientes(prev => [...prev, data])
+            }
+          }
+
+          function EntInlineText({ id, field, value, placeholder = '—', multiline = false }) {
+            const isEdit = editingCell?.id === id && editingCell?.field === field
+            if (isEdit) {
+              const props = {
+                autoFocus: true,
+                value: cellDraft,
+                onChange: e => setCellDraft(e.target.value),
+                onBlur: () => commitEntField(id, field, cellDraft),
+                onKeyDown: e => {
+                  if (!multiline && e.key === 'Enter') { e.preventDefault(); commitEntField(id, field, cellDraft) }
+                  if (e.key === 'Escape') setEditingCell(null)
+                },
+                className: 'w-full text-xs text-gray-700 bg-white border border-blue-300 rounded px-1.5 py-0.5 outline-none',
+              }
+              return multiline ? <textarea rows={4} {...props} /> : <input {...props} />
+            }
+            return (
+              <span
+                onClick={() => { setEditingCell({ id, field }); setCellDraft(value ?? '') }}
+                className={`cursor-text text-xs ${value ? 'text-gray-700' : 'text-gray-300 italic'} hover:bg-gray-50 rounded px-0.5`}
+              >
+                {value || placeholder}
+              </span>
+            )
+          }
+
+          function EntInlineSelect({ id, field, value }) {
+            const isEdit = editingCell?.id === id && editingCell?.field === field
+            if (isEdit) {
+              return (
+                <select
+                  autoFocus
+                  value={cellDraft}
+                  onChange={e => setCellDraft(e.target.value)}
+                  onBlur={() => commitEntField(id, field, cellDraft)}
+                  className="text-xs text-gray-700 bg-white border border-blue-300 rounded px-1.5 py-0.5 outline-none"
+                >
+                  {TIPOS.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              )
+            }
+            return (
+              <span
+                onClick={() => { setEditingCell({ id, field }); setCellDraft(value ?? 'Entrevista') }}
+                className={`cursor-pointer inline-flex items-center px-1.5 py-0.5 rounded-full border text-[10px] font-semibold ${tipoChipCls[value] || 'bg-gray-50 text-gray-500 border-gray-200'}`}
+              >
+                {value || 'Sin tipo'}
+              </span>
+            )
+          }
+
+          function EntInlineDate({ id, field, value }) {
+            const isEdit = editingCell?.id === id && editingCell?.field === field
+            if (isEdit) {
+              return (
+                <input
+                  autoFocus type="date"
+                  value={cellDraft}
+                  onChange={e => setCellDraft(e.target.value)}
+                  onBlur={() => commitEntField(id, field, cellDraft)}
+                  onKeyDown={e => { if (e.key === 'Escape') setEditingCell(null) }}
+                  className="text-xs text-gray-700 bg-white border border-blue-300 rounded px-1.5 py-0.5 outline-none"
+                />
+              )
+            }
+            return (
+              <span
+                onClick={() => { setEditingCell({ id, field }); setCellDraft(value ?? '') }}
+                className={`cursor-text text-xs ${value ? 'text-gray-700' : 'text-gray-300 italic'} hover:bg-gray-50 rounded px-0.5`}
+              >
+                {value ? fmtEntFecha(value) : '—'}
+              </span>
+            )
+          }
+
+          const FILTERS = [
+            { key: 'todas',       label: 'Todas' },
+            { key: 'entrevistas', label: 'Entrevistas' },
+            { key: 'llamadas',    label: 'Llamadas' },
+            { key: 'reuniones',   label: 'Reuniones' },
+          ]
+
+          return (
+            <div className="flex flex-col h-full">
+              {/* Filter bar */}
+              <div className="px-5 py-3 border-b border-[#E2E5EA] flex items-center gap-2 flex-wrap bg-[#F7F8FA] flex-shrink-0">
+                <div className="flex items-center gap-1">
+                  {FILTERS.map(f => (
+                    <button key={f.key} onClick={() => setEntFilter(f.key)}
+                      className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors ${
+                        entFilter === f.key ? 'bg-[#1A2E4A] text-white' : 'text-gray-500 hover:bg-gray-200'
+                      }`}>
+                      {f.label} <span className="opacity-60 tabular-nums">({counts[f.key]})</span>
+                    </button>
+                  ))}
+                </div>
+                <button onClick={handleAddEntrevista}
+                  className="ml-auto flex items-center gap-1 px-2.5 py-1 bg-[#1A2E4A] text-white text-[11px] font-semibold rounded-lg hover:opacity-80 transition-opacity">
+                  <Plus size={12} /> Nueva
+                </button>
+              </div>
+
+              {/* List */}
+              <div className="flex-1 overflow-y-auto">
+                {filtered.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-16 px-8 text-center">
+                    <MessageSquare size={28} className="text-gray-200 mb-3" />
+                    <p className="text-[13px] text-gray-400 font-medium">Sin entrevistas registradas</p>
+                    <p className="text-[11px] text-gray-400 mt-1">
+                      Registra conversaciones con fiscalía, comisarios u otros actores
+                    </p>
+                  </div>
+                ) : (
+                  <div>
+                    {filtered.map(ent => {
+                      const isExpanded = entExpandedId === ent.id
+                      const puntos = entPuntos[ent.id] || []
+
+                      return (
+                        <div key={ent.id} className={`border-b border-gray-100 ${isExpanded ? 'bg-gray-50' : 'hover:bg-gray-50'} transition-colors`}>
+                          {/* Row summary */}
+                          <div
+                            className="flex items-center gap-3 px-5 py-3 cursor-pointer select-none"
+                            onClick={() => setEntExpandedId(isExpanded ? null : ent.id)}
+                          >
+                            <ChevronRight size={14} className={`text-gray-300 flex-shrink-0 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                            <span className="text-[11px] text-gray-400 tabular-nums flex-shrink-0 w-16">{fmtEntFecha(ent.fecha)}</span>
+                            <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full border text-[10px] font-semibold flex-shrink-0 ${tipoChipCls[ent.tipo] || 'bg-gray-50 text-gray-500 border-gray-200'}`}>
+                              {ent.tipo || '—'}
+                            </span>
+                            <span className="flex-1 text-[12px] font-semibold text-gray-800 truncate">{ent.persona || <span className="text-gray-300 font-normal italic">Sin nombre</span>}</span>
+                            <span className="text-[11px] text-gray-400 truncate max-w-[140px]">{ent.institucion || ''}</span>
+                            {puntos.length > 0 && (
+                              <span className="text-[10px] text-gray-300 flex-shrink-0">{puntos.length} punto{puntos.length !== 1 ? 's' : ''}</span>
+                            )}
+                          </div>
+
+                          {/* Expanded */}
+                          {isExpanded && (
+                            <div className="ml-8 mr-5 mb-4 border-l-2 border-[#2570BA] pl-4 bg-white rounded-r-lg shadow-sm">
+                              <div className="pt-3 pb-2">
+                                {/* 2-col grid de propiedades */}
+                                <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-[11px] mb-3">
+                                  <div>
+                                    <span className="text-gray-400 font-medium block mb-0.5">Fecha</span>
+                                    <EntInlineDate id={ent.id} field="fecha" value={ent.fecha} />
+                                  </div>
+                                  <div>
+                                    <span className="text-gray-400 font-medium block mb-0.5">Tipo</span>
+                                    <EntInlineSelect id={ent.id} field="tipo" value={ent.tipo} />
+                                  </div>
+                                  <div>
+                                    <span className="text-gray-400 font-medium block mb-0.5">Persona</span>
+                                    <EntInlineText id={ent.id} field="persona" value={ent.persona} />
+                                  </div>
+                                  <div>
+                                    <span className="text-gray-400 font-medium block mb-0.5">Cargo</span>
+                                    <EntInlineText id={ent.id} field="cargo" value={ent.cargo} />
+                                  </div>
+                                  <div className="col-span-2">
+                                    <span className="text-gray-400 font-medium block mb-0.5">Institución</span>
+                                    <EntInlineText id={ent.id} field="institucion" value={ent.institucion} />
+                                  </div>
+                                </div>
+
+                                {/* Relato */}
+                                <div className="mb-3">
+                                  <span className="text-gray-400 font-medium text-[11px] block mb-1">Relato</span>
+                                  <EntInlineText id={ent.id} field="relato" value={ent.relato} placeholder="Agregar relato…" multiline />
+                                </div>
+
+                                {/* Separator */}
+                                <div className="border-t border-dashed border-gray-200 my-3" />
+
+                                {/* Punteo */}
+                                <div>
+                                  <span className="text-gray-400 font-medium text-[11px] block mb-2">Punteo</span>
+                                  {puntos.map(p => (
+                                    <div key={p.id} className="group flex items-start gap-2 py-1">
+                                      <span className="w-1 h-1 rounded-full bg-gray-300 mt-1.5 flex-shrink-0" />
+                                      <span className="flex-1 text-xs text-gray-700 leading-relaxed">{p.texto}</span>
+                                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                                        <button
+                                          onClick={() => handlePuntoToPendiente(p)}
+                                          title="Convertir en pendiente"
+                                          className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium bg-amber-50 text-amber-700 border border-amber-200 rounded-md hover:bg-amber-100 transition-colors no-touch-min"
+                                        >
+                                          <ListTodo size={9} /> Pendiente
+                                        </button>
+                                        <button
+                                          onClick={() => handleDeleteEntPunto(p.id, ent.id)}
+                                          className="text-gray-300 hover:text-red-400 transition-colors no-touch-min"
+                                        >
+                                          <X size={11} />
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ))}
+                                  <div className="flex items-center gap-2 mt-1.5">
+                                    <input
+                                      value={entPuntoInput[ent.id] || ''}
+                                      onChange={e => setEntPuntoInput(prev => ({ ...prev, [ent.id]: e.target.value }))}
+                                      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddEntPunto(ent.id) } }}
+                                      placeholder="Agregar punto… (Enter)"
+                                      className="flex-1 text-xs text-gray-700 placeholder:text-gray-300 bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none focus:border-[#2570BA] focus:bg-white transition-colors"
+                                    />
+                                    <button
+                                      onClick={() => handleAddEntPunto(ent.id)}
+                                      className="flex items-center gap-1 px-2 py-1.5 bg-[#1A2E4A] text-white text-[11px] rounded-lg hover:opacity-80 transition-opacity no-touch-min"
+                                    >
+                                      <Plus size={11} />
+                                    </button>
+                                  </div>
                                 </div>
                               </div>
                             </div>
