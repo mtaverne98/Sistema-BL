@@ -2099,6 +2099,36 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                   </section>
                 )}
 
+                {/* Entrevistas recientes */}
+                {entrevistas.length > 0 && (
+                  <section>
+                    <p className="text-[9px] font-bold uppercase tracking-widest text-gray-300 mb-1.5">Entrevistas</p>
+                    <div className="space-y-1">
+                      {entrevistas.slice(0, 3).map(e => {
+                        const tipoClr = { 'Entrevista': 'text-violet-600', 'Llamada': 'text-blue-600', 'Reunión': 'text-teal-600' }
+                        const fmtF = iso => { if (!iso) return '—'; const [y,m,d]=iso.split('-'); return `${d}/${m}` }
+                        return (
+                          <button key={e.id} onClick={() => setTab('entrevistas')}
+                            className="w-full text-left px-3 py-2 rounded-xl border border-gray-100 hover:bg-gray-50 transition-colors">
+                            <div className="flex items-center gap-1.5">
+                              <span className={`text-[9px] font-bold uppercase ${tipoClr[e.tipo] || 'text-gray-400'}`}>{e.tipo || '—'}</span>
+                              <span className="text-[9px] text-gray-300 tabular-nums ml-auto">{fmtF(e.fecha)}</span>
+                            </div>
+                            <p className="text-[11px] font-medium text-gray-700 mt-0.5 truncate">{e.persona || 'Sin nombre'}</p>
+                            {e.institucion && <p className="text-[10px] text-gray-400 truncate">{e.institucion}</p>}
+                          </button>
+                        )
+                      })}
+                      {entrevistas.length > 3 && (
+                        <button onClick={() => setTab('entrevistas')}
+                          className="w-full text-center text-[10px] text-gray-400 hover:text-[#2570BA] py-1 transition-colors">
+                          Ver {entrevistas.length - 3} más…
+                        </button>
+                      )}
+                    </div>
+                  </section>
+                )}
+
                 {/* Notas */}
                 <section>
                   <p className="text-[9px] font-bold uppercase tracking-widest text-gray-300 mb-1.5">Notas</p>
