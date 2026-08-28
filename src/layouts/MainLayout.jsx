@@ -56,7 +56,6 @@ const SECTIONS = [
     { to: '/revision',   icon: ClipboardCheck, label: 'Revisión de causas' },
     { to: '/siau',       icon: Database,       label: 'SIAU'               },
     { to: '/pjud',       icon: Shield,         label: 'PJUD'               },
-    { to: '/documentos', icon: FolderOpen,     label: 'Documentos'         },
   ]},
   { key: 'notas', label: 'Notas', items: [
     { to: '/mi-semana', icon: CalendarCheck, label: 'Mi semana'    },

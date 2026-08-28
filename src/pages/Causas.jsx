@@ -1696,7 +1696,6 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
             { key: 'tareas',      Icon: CheckSquare, label: 'Tareas',      count: tareasPend,                        urgent: tareasUrgentes > 0 },
             { key: 'pendientes',  Icon: ListTodo,    label: 'Pendientes',  count: pendienteParents.length || null,   urgent: pendienteParents.length > 0 },
             { key: 'plazos',      Icon: Clock,       label: 'Plazos',      count: plazosActivos,                     urgent: plazosUrgentes > 0 },
-            { key: 'documentos',   Icon: FileText, label: 'Docs',          count: null,                   urgent: false },
             { key: 'diligencias',   Icon: Inbox,    label: 'Diligencias',   count: diligencias.length || null, urgent: false },
             { key: 'entrevistas',   Icon: MessageSquare, label: 'Entrevistas', count: entrevistas.length || null, urgent: false },
             { key: 'seguimiento',   Icon: Target,   label: 'Seguimiento',   count: segRows.length || null, urgent: false },
@@ -2892,16 +2891,6 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
           )
         )}
 
-        {/* DOCUMENTOS */}
-        {tab === 'documentos' && (
-          <div className="flex flex-col items-center justify-center py-16 px-8 text-center">
-            <FileText size={28} className="text-gray-200 mb-3" />
-            <p className="text-[13px] text-gray-400 font-medium">Documentos de la causa</p>
-            <p className="text-[11px] text-gray-400 mt-1">
-              Los documentos vinculados a esta causa aparecerán aquí
-            </p>
-          </div>
-        )}
 
         {/* DILIGENCIAS Y OI */}
         {tab === 'diligencias' && (() => {

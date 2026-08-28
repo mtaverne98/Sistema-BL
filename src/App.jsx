@@ -20,7 +20,6 @@ import Tareas from './pages/Tareas'
 import Reuniones from './pages/Reuniones'
 import Entrevistas from './pages/Entrevistas'
 import SeguimientoSemanal from './pages/SeguimientoSemanal'
-import Documentos from './pages/Documentos'
 import Gastos from './pages/Gastos'
 import Apuntes from './pages/Apuntes'
 import Configuracion from './pages/Configuracion'
@@ -64,7 +63,6 @@ function AppInner() {
             <Route path="tareas"         element={<Tareas />} />
             <Route path="reuniones"      element={<Reuniones />} />
             <Route path="entrevistas"    element={<Entrevistas />} />
-            <Route path="documentos"     element={<Documentos />} />
             <Route path="gastos"         element={<Gastos />} />
             <Route path="apuntes"        element={<Apuntes />} />
             <Route path="configuracion"  element={<Configuracion />} />
