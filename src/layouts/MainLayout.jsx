@@ -9,8 +9,9 @@ import {
   Search, Plus, Command, ArrowRight, ChevronRight, ChevronLeft,
   FileText, Clock, RefreshCw, Star, Hash,
   CheckCircle2, CalendarCheck,
-  Menu, X,
+  Menu, X, Bell,
 } from 'lucide-react'
+import { useNotifications } from '../context/NotificationContext'
 import { useSistema }    from '../context/SistemaContext'
 import { useNavigation } from '../context/NavigationContext'
 import { useUser }       from '../context/UserContext'
@@ -19,6 +20,7 @@ import { useOrientation } from '../hooks/useOrientation'
 import QuickAdd          from '../components/QuickAdd'
 import SlashCommands     from '../components/SlashCommands'
 import SaveStatusBadge   from '../components/SaveStatusBadge'
+import NotificationBell  from '../components/NotificationBell'
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 const TODAY_LAYOUT = new Date().toISOString().slice(0, 10)
@@ -433,6 +435,75 @@ function GlobalCmdK({ open, onClose }) {
   )
 }
 
+// ── NotificationBellMobile (for mobile top bar) ───────────────────────────────
+function NotificationBellMobile() {
+  const { notifications } = useNotifications()
+  const [open, setOpen] = useState(false)
+  const btnRef = useRef(null)
+  const total = notifications.length
+
+  useEffect(() => {
+    if (!open) return
+    function onDown(e) {
+      if (!btnRef.current?.contains(e.target)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [open])
+
+  return (
+    <div className="relative flex-shrink-0">
+      <button
+        ref={btnRef}
+        onClick={() => setOpen(v => !v)}
+        className="p-2 rounded-md hover:bg-white/10 transition-colors relative"
+      >
+        <Bell size={16} className="text-white/60" />
+        {total > 0 && (
+          <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-red-400" />
+        )}
+      </button>
+      {open && (
+        <div
+          className="fixed z-[9980] bg-white rounded-2xl shadow-[0_12px_48px_rgba(0,0,0,0.18)] border border-gray-100 overflow-hidden flex flex-col"
+          style={{ top: 60, right: 8, width: 320, maxHeight: 460 }}
+          onClick={e => e.stopPropagation()}
+        >
+          <div className="flex-shrink-0 flex items-center justify-between px-4 py-3 border-b border-gray-100">
+            <div className="flex items-center gap-2">
+              <Bell size={13} className="text-[#1a2e4a]" />
+              <span className="text-[13px] font-bold text-[#1a2e4a]">Notificaciones</span>
+            </div>
+            {total > 0 && <span className="text-[11px] text-gray-400">{total} activo{total !== 1 ? 's' : ''}</span>}
+          </div>
+          <div className="overflow-y-auto flex-1">
+            {total === 0 ? (
+              <div className="flex flex-col items-center justify-center py-10 text-center px-4">
+                <Bell size={24} className="text-gray-200 mb-2" />
+                <p className="text-[12px] text-gray-400">Sin avisos activos</p>
+              </div>
+            ) : (
+              notifications.map(n => (
+                <button
+                  key={n.id}
+                  onClick={() => setOpen(false)}
+                  className="w-full flex items-start gap-2.5 px-4 py-2.5 border-b border-gray-50 hover:bg-gray-50 text-left"
+                >
+                  <span className={`mt-1.5 w-1.5 h-1.5 rounded-full flex-shrink-0 ${n.urgency === 'high' ? 'bg-red-400' : n.urgency === 'medium' ? 'bg-amber-400' : 'bg-gray-300'}`} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[12px] font-semibold text-gray-800 leading-tight">{n.title}</p>
+                    {n.subtitle && <p className="text-[11px] text-gray-400 truncate mt-0.5">{n.subtitle}</p>}
+                  </div>
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── MainLayout ────────────────────────────────────────────────────────────────
 export default function MainLayout() {
   const { plazos, tareas } = useSistema()
@@ -734,6 +805,11 @@ export default function MainLayout() {
           </div>
         </nav>
 
+        {/* Campana de notificaciones */}
+        <div className="flex-shrink-0" style={{ borderTop: '1px solid rgba(255,255,255,0.06)', padding: sbCollapsed ? '8px 4px' : '8px 6px' }}>
+          <NotificationBell collapsed={sbCollapsed} side="right" />
+        </div>
+
         {/* Configuración */}
         <div className="flex-shrink-0" style={{ borderTop: '1px solid rgba(255,255,255,0.06)', padding: sbCollapsed ? '8px 4px' : '8px 6px' }}>
           <NavItem to="/configuracion" icon={Settings} label="Configuración" collapsed={sbCollapsed} />
@@ -784,6 +860,7 @@ export default function MainLayout() {
               }
             </button>
             <img src="/logo.jpg" alt="Bianchi Leiva" className="h-8 object-contain rounded-md flex-1 min-w-0" style={{ maxWidth: 160 }} />
+            <NotificationBellMobile />
             <button
               onClick={() => setCmdOpen(true)}
               className="p-2 rounded-md hover:bg-white/10 transition-colors flex-shrink-0"

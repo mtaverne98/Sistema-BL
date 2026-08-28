@@ -4,7 +4,9 @@ import {
   Settings, Link2, RefreshCw, CheckCircle, XCircle,
   ChevronDown, ExternalLink, AlertCircle, Calendar,
   Loader, Unlink, Info,
+  Bell, Gavel, CheckSquare, ClipboardCheck, Clock,
 } from 'lucide-react'
+import { useNotifications } from '../context/NotificationContext'
 import {
   GCal, getAuthUrl, listCalendars,
   checkConnectionServer, disconnectServer, syncViaEdgeFunction,
@@ -313,6 +315,127 @@ function InfoRow({ label, value }) {
   )
 }
 
+// ── Toggle row ────────────────────────────────────────────────────────────────
+function ToggleRow({ label, description, checked, onChange }) {
+  return (
+    <div className="flex items-center justify-between py-3 px-5 border-b border-gray-50 last:border-0">
+      <div className="flex-1 min-w-0 pr-4">
+        <p className="text-xs font-semibold text-gray-700">{label}</p>
+        {description && <p className="text-[11px] text-gray-400 mt-0.5">{description}</p>}
+      </div>
+      <button
+        onClick={() => onChange(!checked)}
+        className={`relative flex-shrink-0 w-9 h-5 rounded-full transition-colors duration-200 ${checked ? 'bg-[#2570BA]' : 'bg-gray-200'}`}
+        aria-pressed={checked}
+      >
+        <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow-sm transition-transform duration-200 ${checked ? 'translate-x-4' : 'translate-x-0'}`} />
+      </button>
+    </div>
+  )
+}
+
+// ── Notificaciones card ───────────────────────────────────────────────────────
+function NotificacionesCard() {
+  const { notifications, permission, requestPermission, settings, saveSettings } = useNotifications()
+  const [requesting, setRequesting] = useState(false)
+
+  async function handleRequestPermission() {
+    setRequesting(true)
+    await requestPermission()
+    setRequesting(false)
+  }
+
+  const TIPOS = [
+    { key: 'plazo',     Icon: AlertCircle,    label: 'Plazos',     desc: '3 días antes y el día de vencimiento' },
+    { key: 'audiencia', Icon: Gavel,          label: 'Audiencias', desc: '7 días, 1 día antes y el mismo día'   },
+    { key: 'tarea',     Icon: CheckSquare,    label: 'Tareas',     desc: '2 días antes y mientras estén vencidas sin completar' },
+    { key: 'revision',  Icon: ClipboardCheck, label: 'Revisión de causas', desc: 'Período activo superado los 14 días' },
+    { key: 'pendiente', Icon: Clock,          label: 'Pendientes', desc: 'Sin resolver por más de 4 días'        },
+  ]
+
+  const total = notifications.length
+
+  return (
+    <div className="p-5 space-y-5">
+      {/* Estado general */}
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-xl bg-[#1a2e4a]/08 flex items-center justify-center flex-shrink-0">
+          <Bell size={18} className="text-[#1a2e4a]" />
+        </div>
+        <div className="flex-1">
+          <p className="text-sm font-bold text-[#1a2e4a]">Avisos activos</p>
+          <p className="text-xs text-gray-400">
+            {total === 0
+              ? 'Sin avisos pendientes en este momento'
+              : `${total} aviso${total !== 1 ? 's' : ''} activo${total !== 1 ? 's' : ''}`}
+          </p>
+        </div>
+        {total > 0 && (
+          <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-red-50 text-red-500 border border-red-100 flex-shrink-0">
+            {total}
+          </span>
+        )}
+      </div>
+
+      {/* Notificaciones del navegador */}
+      <div>
+        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Navegador</p>
+        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden shadow-sm">
+          <ToggleRow
+            label="Notificaciones del navegador"
+            description="Resumen al abrir el sistema y avisos urgentes durante la sesión"
+            checked={settings.browserEnabled}
+            onChange={v => saveSettings({ browserEnabled: v })}
+          />
+
+          {/* Permission status */}
+          <div className="px-5 py-3 bg-gray-50/50 flex items-center gap-3">
+            {permission === 'granted' ? (
+              <>
+                <CheckCircle size={13} className="text-emerald-500 flex-shrink-0" />
+                <span className="text-[11px] text-gray-500">Permiso concedido por el navegador</span>
+              </>
+            ) : permission === 'denied' ? (
+              <>
+                <XCircle size={13} className="text-red-400 flex-shrink-0" />
+                <span className="text-[11px] text-gray-500 flex-1">Permiso bloqueado — cambia el permiso en la configuración del navegador</span>
+              </>
+            ) : (
+              <>
+                <span className="w-2 h-2 rounded-full bg-gray-300 flex-shrink-0" />
+                <span className="text-[11px] text-gray-500 flex-1">Permiso no concedido aún</span>
+                <button
+                  onClick={handleRequestPermission}
+                  disabled={requesting}
+                  className="text-[11px] font-semibold text-[#2570BA] hover:underline flex-shrink-0 disabled:opacity-50"
+                >
+                  {requesting ? 'Solicitando…' : 'Solicitar permiso'}
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Por tipo */}
+      <div>
+        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Por tipo de aviso</p>
+        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden shadow-sm">
+          {TIPOS.map(({ key, Icon, label, desc }) => (
+            <ToggleRow
+              key={key}
+              label={label}
+              description={desc}
+              checked={settings.tipos[key] ?? true}
+              onChange={v => saveSettings({ tipos: { [key]: v } })}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function Configuracion() {
   return (
@@ -345,11 +468,9 @@ export default function Configuracion() {
           <GoogleCalendarCard />
         </Section>
 
-        {/* Notificaciones (placeholder) */}
-        <Section title="Notificaciones" description="Configura alertas y recordatorios">
-          <div className="px-5 py-8 text-center">
-            <p className="text-xs text-gray-300 font-medium">Próximamente</p>
-          </div>
+        {/* Notificaciones */}
+        <Section title="Notificaciones" description="Configura avisos y notificaciones del navegador">
+          <NotificacionesCard />
         </Section>
 
       </div>

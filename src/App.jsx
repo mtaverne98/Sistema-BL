@@ -3,6 +3,7 @@ import { SistemaProvider } from './context/SistemaContext'
 import { UserProvider, useUser } from './context/UserContext'
 import { QuickAddProvider } from './context/QuickAddContext'
 import { NavigationProvider } from './context/NavigationContext'
+import { NotificationProvider } from './context/NotificationContext'
 import UserSelector from './components/UserSelector'
 import MainLayout from './layouts/MainLayout'
 import Dashboard from './pages/Dashboard'
@@ -44,6 +45,7 @@ function AppInner() {
   return (
     <NavigationProvider>
     <QuickAddProvider>
+    <NotificationProvider>
     <SistemaProvider>
       <BrowserRouter>
         <Routes>
@@ -70,6 +72,7 @@ function AppInner() {
         </Routes>
       </BrowserRouter>
     </SistemaProvider>
+    </NotificationProvider>
     </QuickAddProvider>
     </NavigationProvider>
   )
