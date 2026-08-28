@@ -855,7 +855,7 @@ export default function SeguimientoSemanal() {
       )}
 
       {/* List */}
-      <div className="flex-1 overflow-y-auto px-6 py-5">
+      <div className="flex-1 overflow-y-auto px-6 py-5 fab-clear">
         {cargando ? (
           <div className="flex items-center justify-center py-20">
             <Loader2 size={24} className="animate-spin text-gray-300"/>

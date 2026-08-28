@@ -407,7 +407,7 @@ function PanelPlazo({ plazo, onClose, onUpdate, tareas }) {
       )}
 
       {/* ── Body ── */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto fab-clear">
 
         {/* Info */}
         <div className="px-5 py-4 border-b border-gray-100">

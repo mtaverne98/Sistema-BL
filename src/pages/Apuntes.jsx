@@ -1005,7 +1005,7 @@ export default function Apuntes() {
         </div>
 
         {/* Lista de días */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto fab-clear">
           {loading ? (
             <div className="flex items-center justify-center py-20 text-sm text-gray-300">
               Cargando…

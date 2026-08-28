@@ -1162,7 +1162,7 @@ export default function Audiencias() {
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-8 py-6 space-y-5">
+      <div className="flex-1 overflow-y-auto px-8 py-6 space-y-5 fab-clear">
 
         {/* Error */}
         {error && (

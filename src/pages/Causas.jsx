@@ -1738,7 +1738,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
 
 
       {/* ── TAB CONTENT ── */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto fab-clear">
 
         {/* RESUMEN — diseño completo */}
         {tab === 'resumen' && (() => {

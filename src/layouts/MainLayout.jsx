@@ -800,7 +800,7 @@ export default function MainLayout() {
         )}
 
         {/* ── Main content ── */}
-        <main className={`flex-1 overflow-y-auto bg-white min-w-0 ${isResponsive ? 'pb-16' : ''}`}>
+        <main className="flex-1 overflow-y-auto bg-white min-w-0 fab-clear">
           <Outlet />
         </main>
       </div>

@@ -320,7 +320,7 @@ function PanelCliente({ cliente, hasActiveCausas, onClose, onEstadoCambiar, onIn
       </div>
 
       {/* Contenido */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto fab-clear">
         {tab === 'causas' && (
           <div className="divide-y divide-gray-50">
             {loadingCausas ? (
@@ -923,7 +923,7 @@ export default function Clientes() {
         {error && <ErrorBanner mensaje={error} onRetry={fetchClientes} />}
 
         {/* Tabla */}
-        <div ref={scrollRef} className="flex-1 overflow-y-auto">
+        <div ref={scrollRef} className="flex-1 overflow-y-auto fab-clear">
           {loading ? (
             <LoadingRows />
           ) : agrupados.length === 0 ? (

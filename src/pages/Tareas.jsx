@@ -800,7 +800,7 @@ function PanelTarea({ tarea, onClose, onUpdate, clientesLista, allCausas }) {
       </div>
 
       {/* Body */}
-      <div className="flex-1 overflow-y-auto px-6 py-5">
+      <div className="flex-1 overflow-y-auto px-6 py-5 fab-clear">
 
         {/* ── Detalle ── */}
         {tab === 'detalle' && (
@@ -1350,7 +1350,7 @@ export default function Tareas() {
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4 fab-clear">
 
           {error && <ErrorBanner mensaje={`Error al cargar tareas: ${error}`} onRetry={fetchTareas} />}
 

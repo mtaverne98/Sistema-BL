@@ -592,7 +592,7 @@ export default function Reuniones() {
       </div>
 
       {/* ── Content ── */}
-      <div className="flex-1 overflow-y-auto px-6 py-5">
+      <div className="flex-1 overflow-y-auto px-6 py-5 fab-clear">
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <Loader2 size={24} className="animate-spin text-gray-300"/>

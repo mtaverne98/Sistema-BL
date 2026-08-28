@@ -78,7 +78,7 @@ export default function Entrevistas() {
       </div>
 
       {/* List */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto fab-clear">
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <div className="w-5 h-5 border-2 border-[#2570BA] border-t-transparent rounded-full animate-spin" />

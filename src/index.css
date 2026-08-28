@@ -2,6 +2,10 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Clearance para el botón flotante "+ Nuevo" (fixed bottom-6, ~64px desde el suelo).
+   Aplicar como clase 'fab-clear' a cada contenedor scrolleable principal. */
+.fab-clear { padding-bottom: 96px; }
+
 /* ── Paleta BL ─────────────────────────────────────────────────── */
 :root {
   --bl-navy:       #1A2E4A;   /* sidebar bg */

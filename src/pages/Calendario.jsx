@@ -477,7 +477,7 @@ function MonthView({ eventos, anchor, onEventClick, onDayClick, selectedDay }) {
   const DAY_HDRS = ['Lu','Ma','Mi','Ju','Vi','Sá','Do']
 
   return (
-    <div className="flex-1 overflow-y-auto px-5 py-4">
+    <div className="flex-1 overflow-y-auto px-5 py-4 fab-clear">
       <div className="grid grid-cols-7 mb-2">
         {DAY_HDRS.map(lbl => (
           <div key={lbl} className="text-center text-[9px] font-bold text-gray-300 uppercase tracking-widest py-1">{lbl}</div>
