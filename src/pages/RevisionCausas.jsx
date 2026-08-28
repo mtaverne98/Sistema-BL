@@ -555,47 +555,15 @@ function ClienteBlock({ clienteNombre, clienteEstado, causas, reviewMap, pKey, o
 // ── Main ───────────────────────────────────────────────────────────────────────
 export default function RevisionCausas() {
   const [causasDB,    setCausasDB]    = useState([])
-  const [revRows,     setRevRows]     = useState([])
+  const [revRows,     setRevRows]     = useState([])  // revisiones (historial)
   const [clientesDB,  setClientesDB]  = useState([])
+  const [revActiva,   setRevActiva]   = useState(null) // fila activa de revision_activa
+  const [rcRows,      setRcRows]      = useState([])   // filas de revision_causas
   const [cargando,    setCargando]    = useState(true)
   const [search,      setSearch]      = useState('')
   const [filtroClEst, setFiltroClEst] = useState('')
   const [showReset,          setShowReset]          = useState(false)
   const [editingFechaInicio, setEditingFechaInicio] = useState(false)
-
-  // Revisión activa — persiste en localStorage
-  // Fuente de verdad: qué causas están marcadas + cuándo empezó el período.
-  const STORAGE_KEY = 'revision_activa_state'
-
-  function loadStoredRevActiva() {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY)
-      if (stored) return JSON.parse(stored)
-    } catch {}
-    return null
-  }
-
-  function makeNewRevActiva() {
-    return { id: `local_${Date.now()}`, causas_revisadas: [], total_revisadas: 0, fecha_inicio: new Date().toISOString(), activa: true }
-  }
-
-  const [revActiva, setRevActivaState] = useState(() => loadStoredRevActiva() ?? makeNewRevActiva())
-
-  function setRevActiva(value) {
-    const next = typeof value === 'function' ? value(revActiva) : value
-    setRevActivaState(next)
-    if (next) localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
-  }
-
-  useEffect(() => {
-    const handleStorage = (e) => {
-      if (e.key === STORAGE_KEY && e.newValue) {
-        try { setRevActivaState(JSON.parse(e.newValue)) } catch {}
-      }
-    }
-    window.addEventListener('storage', handleStorage)
-    return () => window.removeEventListener('storage', handleStorage)
-  }, [])
 
   const periodStart   = revActiva?.fecha_inicio?.slice(0, 10) ?? TODAY
   const periodEnd     = addDays(periodStart, 14)
@@ -609,22 +577,63 @@ export default function RevisionCausas() {
         { data: causasData },
         { data: revData },
         { data: clientesData },
+        { data: activaData },
       ] = await Promise.all([
         supabase.from('causas')
           .select('id, rit, ruc, materia, area, tribunal, estado, cliente_nombre, cliente_id')
           .in('estado', ['Abierta', 'Revisar']),
         supabase.from('revisiones').select('*'),
         supabase.from('clientes').select('id, estado'),
+        supabase.from('revision_activa').select('*').eq('activa', true).limit(1),
       ])
 
       setCausasDB(causasData || [])
       setClientesDB(clientesData || [])
       setRevRows((revData || []).filter(r => r.semana_key != null && !r.semana_key.startsWith('SEG-')))
 
+      const activa = activaData?.[0] ?? null
+      setRevActiva(activa)
+
+      // Cargar revision_causas del período activo
+      if (activa?.id) {
+        const { data: rcData } = await supabase
+          .from('revision_causas')
+          .select('*')
+          .eq('periodo_id', activa.id)
+        setRcRows(rcData || [])
+      }
+
       setCargando(false)
     }
     fetchAll()
   }, [])
+
+  // ── Realtime: revision_causas ──────────────────────────────────────────────
+  useEffect(() => {
+    if (!revActiva?.id) return
+    const channel = supabase
+      .channel(`rc-${revActiva.id}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'revision_causas', filter: `periodo_id=eq.${revActiva.id}` },
+        (payload) => {
+          if (payload.eventType === 'INSERT') {
+            setRcRows(prev => {
+              // Reemplaza entrada optimista (mismo causa_id) o agrega nueva
+              const idx = prev.findIndex(r => String(r.causa_id) === String(payload.new.causa_id))
+              if (idx >= 0) return prev.map((r, i) => i === idx ? payload.new : r)
+              return [...prev, payload.new]
+            })
+          } else if (payload.eventType === 'DELETE') {
+            setRcRows(prev => prev.filter(r => String(r.causa_id) !== String(payload.old.causa_id)))
+          } else if (payload.eventType === 'UPDATE') {
+            setRcRows(prev => prev.map(r => r.id === payload.new.id ? payload.new : r))
+          }
+        }
+      )
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [revActiva?.id])
 
   const clienteEstadoMap = useMemo(() => {
     const m = {}
@@ -648,77 +657,89 @@ export default function RevisionCausas() {
       cliente_id:     c.cliente_id ? String(c.cliente_id) : null,
     })), [causasDB])
 
-  // ── Set de causas revisadas (desde revision_activa) ───────────────────────
+  // ── Set de causas revisadas (desde revision_causas) ───────────────────────
   const revisadasSet = useMemo(
-    () => new Set((revActiva?.causas_revisadas ?? []).map(String)),
-    [revActiva]
+    () => new Set(rcRows.map(r => String(r.causa_id))),
+    [rcRows]
   )
 
-  // ── Mapa de revisiones del período actual ──────────────────────────────────
+  // ── Mapa de revisiones ─────────────────────────────────────────────────────
   const reviewMap = useMemo(() => {
     const map = {}
-    // Detalle de cada causa revisada en este período (nota, proxima_accion, etc.)
-    revRows.filter(r => r.semana_key === pKey).forEach(r => {
+
+    // Período actual: fuente de verdad es revision_causas
+    rcRows.forEach(r => {
       const cid = String(r.causa_id)
       map[cid] = {
-        revisada:    revisadasSet.has(cid), // fuente de verdad: revision_activa
-        notas:       r.notas          || r.nota || '',
-        responsable: r.responsable    || 'MT',
-        fecha:       r.fecha          || TODAY,
-        semana_key:  r.semana_key,
+        revisada:    true,
+        notas:       r.notas       || '',
+        responsable: r.responsable || 'MT',
+        fecha:       r.fecha       || TODAY,
+        semana_key:  pKey,
         history:     [],
       }
     })
-    // Causas marcadas en revision_activa sin fila en revisiones aún
-    for (const cid of revisadasSet) {
-      if (!map[cid]) map[cid] = { revisada: true, notas: '', responsable: 'MT', fecha: TODAY, semana_key: pKey, history: [] }
-      else map[cid].revisada = true
-    }
-    // Historial (períodos anteriores)
+
+    // Historial (períodos anteriores — sigue en tabla revisiones)
     revRows.filter(r => r.semana_key !== pKey && r.revisada).forEach(r => {
       const cid = String(r.causa_id)
       if (!map[cid]) map[cid] = { revisada: false, notas: '', responsable: 'MT', fecha: null, semana_key: null, history: [] }
+      map[cid].history = map[cid].history || []
       map[cid].history.push({
-        fecha: r.fecha || null,
-        semana_key: r.semana_key,
-        notas: r.notas || r.nota || '',
+        fecha:       r.fecha       || null,
+        semana_key:  r.semana_key,
+        notas:       r.notas || r.nota || '',
         responsable: r.responsable || 'MT',
-        revisada: r.revisada,
+        revisada:    r.revisada,
       })
     })
     Object.values(map).forEach(m => m.history?.sort((a, b) => (b.fecha || '').localeCompare(a.fecha || '')))
     return map
-  }, [revRows, pKey, revisadasSet])
+  }, [rcRows, revRows, pKey])
 
   // ── CRUD ───────────────────────────────────────────────────────────────────
   const marcarRevision = useCallback(async (causaId, datos) => {
+    if (!revActiva?.id) return
     const cid = String(causaId)
 
-    // 1. Actualizar localStorage (persiste el checkbox inmediatamente)
-    const prevIds = revActiva?.causas_revisadas ?? []
-    if (!prevIds.map(String).includes(cid)) {
-      const newIds = [...prevIds, cid]
-      setRevActiva(prev => ({ ...prev, causas_revisadas: newIds, total_revisadas: newIds.length }))
-    }
+    // Optimista — agrega o actualiza la fila local
+    setRcRows(prev => {
+      const idx = prev.findIndex(r => String(r.causa_id) === cid)
+      const entry = { periodo_id: revActiva.id, causa_id: causaId, notas: datos.notas || '', responsable: datos.responsable || 'MT', fecha: datos.fecha || TODAY }
+      if (idx >= 0) return prev.map((r, i) => i === idx ? { ...r, ...entry } : r)
+      return [...prev, { id: `tmp_${Date.now()}`, ...entry }]
+    })
 
-    // 2. Guardar detalle en revisiones (para historial y nota)
+    // DB — revision_causas (fuente de verdad del período actual)
+    await supabase.from('revision_causas').upsert(
+      { periodo_id: revActiva.id, causa_id: causaId, notas: datos.notas || '', responsable: datos.responsable || 'MT', fecha: datos.fecha || TODAY },
+      { onConflict: 'periodo_id,causa_id' }
+    )
+
+    // revisiones — mantiene historial para períodos anteriores
     const payload = { semana_key: pKey, causa_id: causaId, revisada: true, ...datos }
     setRevRows(prev => {
       const exists = prev.find(r => r.semana_key === pKey && String(r.causa_id) === cid)
       if (exists) return prev.map(r => r.semana_key === pKey && String(r.causa_id) === cid ? { ...r, ...datos, revisada: true } : r)
-      return [...prev, { id: `tmp_${Date.now()}`, semana_key: pKey, causa_id: causaId, revisada: true, ...datos }]
+      return [...prev, { id: `tmp2_${Date.now()}`, semana_key: pKey, causa_id: causaId, revisada: true, ...datos }]
     })
     await supabase.from('revisiones').upsert(payload, { onConflict: 'semana_key,causa_id' })
   }, [pKey, revActiva])
 
   const desmarcarRevision = useCallback(async (causaId) => {
+    if (!revActiva?.id) return
     const cid = String(causaId)
 
-    // 1. Quitar de localStorage
-    const newIds = (revActiva?.causas_revisadas ?? []).filter(id => String(id) !== cid)
-    setRevActiva(prev => ({ ...prev, causas_revisadas: newIds, total_revisadas: newIds.length }))
+    // Optimista
+    setRcRows(prev => prev.filter(r => String(r.causa_id) !== cid))
 
-    // 2. Actualizar revisiones
+    // DB — borra de revision_causas
+    await supabase.from('revision_causas')
+      .delete()
+      .eq('periodo_id', revActiva.id)
+      .eq('causa_id', causaId)
+
+    // revisiones — marca como no revisada
     setRevRows(prev => prev.map(r =>
       r.semana_key === pKey && String(r.causa_id) === cid ? { ...r, revisada: false } : r
     ))
@@ -747,21 +768,32 @@ export default function RevisionCausas() {
     }
   }, [])
 
-  function handleReset() {
-    setRevActiva(makeNewRevActiva())
+  async function handleReset() {
+    // Desactiva el período actual
+    if (revActiva?.id) {
+      await supabase.from('revision_activa').update({ activa: false }).eq('id', revActiva.id)
+    }
+    // Crea nuevo período
+    const { data: newPeriod } = await supabase.from('revision_activa')
+      .insert({ fecha_inicio: TODAY, activa: true })
+      .select()
+      .single()
+    setRevActiva(newPeriod)
+    setRcRows([])
     setShowReset(false)
   }
 
-  function handleSaveFechaInicio(newDate) {
-    if (!newDate) return
+  async function handleSaveFechaInicio(newDate) {
+    if (!newDate || !revActiva?.id) return
+    await supabase.from('revision_activa').update({ fecha_inicio: newDate }).eq('id', revActiva.id)
     setRevActiva(prev => ({ ...prev, fecha_inicio: newDate }))
     setEditingFechaInicio(false)
   }
 
-  // ── Stats — desde revision_activa (no derivadas de reviewMap) ─────────────
-  const revisadasCount = revActiva?.total_revisadas ?? 0
-  const totalCausas = causasActivas.length
-  const pctRevisadas = totalCausas > 0 ? Math.round((revisadasCount / totalCausas) * 100) : 0
+  // ── Stats ─────────────────────────────────────────────────────────────────
+  const revisadasCount = rcRows.length
+  const totalCausas    = causasActivas.length
+  const pctRevisadas   = totalCausas > 0 ? Math.round((revisadasCount / totalCausas) * 100) : 0
 
   // ── Agrupación ────────────────────────────────────────────────────────────
   const clienteGroups = useMemo(() => {
