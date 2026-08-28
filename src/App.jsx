@@ -18,6 +18,7 @@ import RevisionCausas from './pages/RevisionCausas'
 import MiSemana from './pages/MiSemana'
 import Tareas from './pages/Tareas'
 import Reuniones from './pages/Reuniones'
+import Entrevistas from './pages/Entrevistas'
 import SeguimientoSemanal from './pages/SeguimientoSemanal'
 import Documentos from './pages/Documentos'
 import Gastos from './pages/Gastos'
@@ -62,6 +63,7 @@ function AppInner() {
             <Route path="seguimiento"    element={<SeguimientoSemanal />} />
             <Route path="tareas"         element={<Tareas />} />
             <Route path="reuniones"      element={<Reuniones />} />
+            <Route path="entrevistas"    element={<Entrevistas />} />
             <Route path="documentos"     element={<Documentos />} />
             <Route path="gastos"         element={<Gastos />} />
             <Route path="apuntes"        element={<Apuntes />} />

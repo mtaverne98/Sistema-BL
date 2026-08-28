@@ -48,8 +48,9 @@ const SECTIONS = [
     { to: '/audiencias',  icon: Gavel,         label: 'Audiencias' },
     { to: '/calendario',  icon: Calendar,      label: 'Calendario' },
     { to: '/tareas',      icon: CheckSquare,   label: 'Tareas'     },
-    { to: '/plazos',      icon: AlertCircle,   label: 'Plazos'     },
-    { to: '/reuniones',   icon: MessageSquare, label: 'Reuniones'  },
+    { to: '/plazos',       icon: AlertCircle,   label: 'Plazos'       },
+    { to: '/entrevistas',  icon: Users,         label: 'Entrevistas'  },
+    { to: '/reuniones',    icon: MessageSquare, label: 'Reuniones'    },
   ]},
   { key: 'gestion', label: 'Gestión', items: [
     { to: '/revision',   icon: ClipboardCheck, label: 'Revisión de causas' },
