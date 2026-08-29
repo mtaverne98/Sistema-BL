@@ -3094,7 +3094,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                         ? daysSince(dil.fecha_solicitud) : null
 
                       return (
-                        <div key={dil.id} className={`border-b border-gray-100 ${isExpanded ? 'bg-gray-50' : 'hover:bg-gray-50'} transition-colors`}>
+                        <div key={dil.id} className={`border-b border-gray-100 transition-colors ${isExpanded ? 'bg-gray-50/60 border-l-2 border-[#2570BA]' : 'hover:bg-gray-50 border-l-2 border-transparent'}`}>
                           {/* Row */}
                           <div
                             className="flex items-center gap-3 px-5 py-3 cursor-pointer select-none"
@@ -3104,7 +3104,18 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                               size={14}
                               className={`text-gray-300 flex-shrink-0 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
                             />
-                            <span className="flex-1 text-[12px] font-semibold text-gray-800 truncate">{dil.nombre || '—'}</span>
+                            <span
+                              className="flex-1 text-[12px] font-semibold text-gray-800 truncate"
+                              onClick={e => e.stopPropagation()}
+                              onDoubleClick={e => {
+                                e.stopPropagation()
+                                setDilExpandedId(dil.id)
+                                setEditingCell({ id: dil.id, field: 'nombre' })
+                                setCellDraft(dil.nombre ?? '')
+                              }}
+                            >
+                              {dil.nombre || '—'}
+                            </span>
                             <span className="text-[11px] text-gray-400 truncate max-w-[120px]">{dil.organismo || '—'}</span>
                             <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full border text-[10px] font-semibold flex-shrink-0 ${estadoChipCls[dil.estado] || 'bg-gray-50 text-gray-500 border-gray-200'}`}>
                               {dil.estado || 'Sin estado'}
@@ -3112,8 +3123,8 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                                 <span className="ml-0.5 text-amber-600 font-bold">{alertDays}d</span>
                               )}
                             </span>
+                            <span className="text-[11px] text-gray-400 flex-shrink-0 tabular-nums w-20 text-right">{fmtDilFecha(dil.fecha_solicitud) || '—'}</span>
                             <span className="text-[11px] text-gray-400 flex-shrink-0 tabular-nums w-20 text-right">{fmtDilFecha(dil.fecha_recepcion) || '—'}</span>
-                            <span className="text-[11px] text-gray-400 flex-shrink-0 tabular-nums w-20 text-right">{dil.folio || '—'}</span>
                           </div>
 
                           {/* Expanded detail */}
