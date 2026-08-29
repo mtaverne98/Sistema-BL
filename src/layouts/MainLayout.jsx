@@ -4,7 +4,7 @@ import {
   LayoutDashboard,
   Users, Scale, UserSearch,
   Gavel, Calendar, AlertCircle,
-  Shield, Database, ClipboardCheck, CheckSquare, MessageSquare, FolderOpen, Receipt,
+  Shield, Database, ClipboardCheck, CheckSquare, MessageSquare, FolderOpen, Receipt, Inbox,
   BookOpen, LogOut, Settings,
   Search, Plus, Command, ArrowRight, ChevronRight, ChevronLeft,
   FileText, Clock, RefreshCw, Star, Hash,
@@ -55,9 +55,10 @@ const SECTIONS = [
     { to: '/reuniones',    icon: MessageSquare, label: 'Reuniones'    },
   ]},
   { key: 'gestion', label: 'Gestión', items: [
-    { to: '/revision',   icon: ClipboardCheck, label: 'Revisión de causas' },
-    { to: '/siau',       icon: Database,       label: 'SIAU'               },
-    { to: '/pjud',       icon: Shield,         label: 'PJUD'               },
+    { to: '/revision',    icon: ClipboardCheck, label: 'Revisión de causas' },
+    { to: '/siau',        icon: Database,       label: 'SIAU'               },
+    { to: '/pjud',        icon: Shield,         label: 'PJUD'               },
+    { to: '/diligencias', icon: Inbox,          label: 'Diligencias'        },
   ]},
   { key: 'notas', label: 'Notas', items: [
     { to: '/mi-semana', icon: CalendarCheck, label: 'Mi semana'    },

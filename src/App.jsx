@@ -20,6 +20,7 @@ import MiSemana from './pages/MiSemana'
 import Tareas from './pages/Tareas'
 import Reuniones from './pages/Reuniones'
 import Entrevistas from './pages/Entrevistas'
+import Diligencias from './pages/Diligencias'
 import SeguimientoSemanal from './pages/SeguimientoSemanal'
 import Gastos from './pages/Gastos'
 import Apuntes from './pages/Apuntes'
@@ -65,6 +66,7 @@ function AppInner() {
             <Route path="tareas"         element={<Tareas />} />
             <Route path="reuniones"      element={<Reuniones />} />
             <Route path="entrevistas"    element={<Entrevistas />} />
+            <Route path="diligencias"    element={<Diligencias />} />
             <Route path="gastos"         element={<Gastos />} />
             <Route path="apuntes"        element={<Apuntes />} />
             <Route path="configuracion"  element={<Configuracion />} />
