@@ -13,16 +13,20 @@ function normId(s) {
   return (s || '').replace(/[\s\-]/g, '').toLowerCase()
 }
 
+function deaccent(s) {
+  return (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+}
+
 function matchCausas(text, causas) {
   if (!text || text.trim().length < 2) return []
   const tNorm = normId(text)
-  const tLow  = text.toLowerCase()
+  const tDe   = deaccent(text)
   return causas.filter(c => {
     if (c.rit && normId(c.rit).length >= 3 && tNorm.includes(normId(c.rit))) return true
     if (c.ruc && normId(c.ruc).length >= 4 && tNorm.includes(normId(c.ruc))) return true
     if (c.cliente_nombre) {
       const tokens = c.cliente_nombre.split(/\s+/).filter(w => w.length >= 3)
-      if (tokens.some(tok => tLow.includes(tok.toLowerCase()))) return true
+      if (tokens.some(tok => tDe.includes(deaccent(tok)))) return true
     }
     return false
   }).slice(0, 5)
@@ -308,6 +312,7 @@ export function PendientesPanel({
   causas, onLink, onUnlink,
 }) {
   const isSidebar = variant !== 'section'
+  const inputRef  = useRef(null)
 
   // Suggestion state (only for the main input, not simpleMode)
   const [pendingCausa, setPendingCausa] = useState(null)
@@ -334,10 +339,11 @@ export function PendientesPanel({
       if (!pendingCausa) {
         setPendingCausa(suggestions[0])
       } else {
-        // cycle through suggestions
         const idx = suggestions.findIndex(c => c.id === pendingCausa.id)
         setPendingCausa(suggestions[(idx + 1) % suggestions.length])
       }
+      // Keep focus on the input after re-render (the chip's X button grabs it otherwise)
+      requestAnimationFrame(() => inputRef.current?.focus())
     }
   }
 
@@ -357,6 +363,7 @@ export function PendientesPanel({
           </div>
         )}
         <input
+          ref={inputRef}
           value={input}
           onChange={e => { onInputChange(e.target.value); setPendingCausa(null) }}
           onKeyDown={handleInputKeyDown}
