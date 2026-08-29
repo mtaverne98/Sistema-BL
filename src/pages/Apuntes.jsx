@@ -795,14 +795,30 @@ export default function Apuntes() {
     Object.values(resolveBatches.current).forEach(b => clearTimeout(b.timer))
   }, [])
 
-  async function handleAddPendiente() {
+  async function handleAddPendiente(causaId = null) {
     const texto = pendienteInput.trim()
     if (!texto) return
     setPendienteInput('')
+    const row = { texto, resuelto: false, parent_id: null }
+    if (causaId) row.causa_id = causaId
     const { data, error } = await supabase.from('agenda_pendientes')
-      .insert([{ texto, resuelto: false, parent_id: null }]).select().single()
+      .insert([row]).select().single()
     if (error) { console.error('[agenda_pendientes] insert error:', error.message); return }
     if (data) setPendientes(prev => [...prev, data])
+  }
+
+  async function handleLinkPendiente(p, causaId) {
+    const { error } = await supabase.from('agenda_pendientes')
+      .update({ causa_id: causaId }).eq('id', p.id)
+    if (error) { console.error('[agenda_pendientes] link error:', error.message); return }
+    setPendientes(prev => prev.map(x => x.id === p.id ? { ...x, causa_id: causaId } : x))
+  }
+
+  async function handleUnlinkPendiente(p) {
+    const { error } = await supabase.from('agenda_pendientes')
+      .update({ causa_id: null }).eq('id', p.id)
+    if (error) { console.error('[agenda_pendientes] unlink error:', error.message); return }
+    setPendientes(prev => prev.map(x => x.id === p.id ? { ...x, causa_id: null } : x))
   }
 
   function handleStartAddChild(parentId) {
@@ -1069,6 +1085,9 @@ export default function Apuntes() {
         onChildInputChange={setChildInput}
         onAddChild={handleAddChild}
         onCancelAddChild={handleCancelAddChild}
+        causas={causas}
+        onLink={handleLinkPendiente}
+        onUnlink={handleUnlinkPendiente}
       />
     </div>
   )
