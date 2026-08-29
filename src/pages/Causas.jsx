@@ -2969,6 +2969,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                 autoFocus: true,
                 value: cellDraft,
                 onChange: e => setCellDraft(e.target.value),
+                onFocus: e => e.target.select(),
                 onBlur: () => commitDilField(id, field, cellDraft),
                 onKeyDown: e => {
                   if (!multiline && e.key === 'Enter') { e.preventDefault(); commitDilField(id, field, cellDraft) }
