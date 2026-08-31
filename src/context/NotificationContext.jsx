@@ -49,7 +49,7 @@ export function NotificationProvider({ children }) {
   const [plazos,     setPlazos]     = useState([])
   const [audiencias, setAudiencias] = useState([])
   const [tareas,     setTareas]     = useState([])
-  const [causas,     setCausas]     = useState([])
+  const [revActiva,  setRevActiva]  = useState(null)
   const [pendientes, setPendientes] = useState([])
   const [settings,   setSettingsState] = useState(loadSettings)
   const [permission, setPermission] = useState(() => {
@@ -63,20 +63,22 @@ export function NotificationProvider({ children }) {
       { data: p },
       { data: a },
       { data: t },
-      { data: c },
+      { data: rev },
       { data: pend },
     ] = await Promise.all([
       supabase.from('plazos')
-        .select('id, titulo, fecha_vencimiento, estado, cliente')
+        .select('id, titulo, fecha_vencimiento, estado, cliente_nombre')
         .eq('estado', 'Activo'),
       supabase.from('audiencias')
-        .select('id, tipo, fecha, causa_rit, cliente'),
+        .select('id, tipo, fecha, causa_rit, cliente_nombre'),
       supabase.from('tareas')
-        .select('id, titulo, fecha, estado')
+        .select('id, titulo, fecha_vencimiento, estado')
         .neq('estado', 'Completada'),
-      supabase.from('causas')
-        .select('id, ruc, rit, materia, cliente_nombre, revision_activa, fecha_inicio')
-        .eq('revision_activa', true),
+      supabase.from('revision_activa')
+        .select('id, fecha_inicio, activa')
+        .eq('activa', true)
+        .limit(1)
+        .maybeSingle(),
       supabase.from('agenda_pendientes')
         .select('id, texto, created_at, causa_id')
         .eq('resuelto', false),
@@ -84,7 +86,7 @@ export function NotificationProvider({ children }) {
     setPlazos(p || [])
     setAudiencias(a || [])
     setTareas(t || [])
-    setCausas(c || [])
+    setRevActiva(rev || null)
     setPendientes(pend || [])
   }
 
@@ -108,12 +110,12 @@ export function NotificationProvider({ children }) {
         if (d === 0) {
           items.push({ id: `plazo-${p.id}-hoy`, type: 'plazo', urgency: 'high',
             title: 'Plazo vence hoy',
-            subtitle: [p.titulo, p.cliente].filter(Boolean).join(' · '),
+            subtitle: [p.titulo, p.cliente_nombre].filter(Boolean).join(' · '),
             navigateTo: '/plazos' })
         } else if (d > 0 && d <= 3) {
           items.push({ id: `plazo-${p.id}-${d}d`, type: 'plazo', urgency: 'medium',
             title: `Plazo en ${d} día${d !== 1 ? 's' : ''}`,
-            subtitle: [p.titulo, p.cliente].filter(Boolean).join(' · '),
+            subtitle: [p.titulo, p.cliente_nombre].filter(Boolean).join(' · '),
             navigateTo: '/plazos' })
         }
       })
@@ -126,17 +128,17 @@ export function NotificationProvider({ children }) {
         if (d === 0) {
           items.push({ id: `aud-${a.id}-hoy`, type: 'audiencia', urgency: 'high',
             title: 'Audiencia hoy',
-            subtitle: [a.tipo, a.causa_rit, a.cliente].filter(Boolean).join(' · '),
+            subtitle: [a.tipo, a.causa_rit, a.cliente_nombre].filter(Boolean).join(' · '),
             navigateTo: '/audiencias' })
         } else if (d === 1) {
           items.push({ id: `aud-${a.id}-manana`, type: 'audiencia', urgency: 'high',
             title: 'Audiencia mañana',
-            subtitle: [a.tipo, a.causa_rit, a.cliente].filter(Boolean).join(' · '),
+            subtitle: [a.tipo, a.causa_rit, a.cliente_nombre].filter(Boolean).join(' · '),
             navigateTo: '/audiencias' })
         } else if (d > 1 && d <= 7) {
           items.push({ id: `aud-${a.id}-semana`, type: 'audiencia', urgency: 'medium',
             title: `Audiencia en ${d} días`,
-            subtitle: [a.tipo, a.causa_rit, a.cliente].filter(Boolean).join(' · '),
+            subtitle: [a.tipo, a.causa_rit, a.cliente_nombre].filter(Boolean).join(' · '),
             navigateTo: '/audiencias' })
         }
       })
@@ -144,8 +146,8 @@ export function NotificationProvider({ children }) {
 
     if (settings.tipos.tarea) {
       tareas.forEach(t => {
-        if (!t.fecha) return
-        const d = daysDiff(t.fecha)
+        if (!t.fecha_vencimiento) return
+        const d = daysDiff(t.fecha_vencimiento)
         if (d === null) return
         if (d < 0) {
           items.push({ id: `tarea-${t.id}-vencida`, type: 'tarea', urgency: 'high',
@@ -164,16 +166,14 @@ export function NotificationProvider({ children }) {
       })
     }
 
-    if (settings.tipos.revision) {
-      causas.forEach(c => {
-        if (!c.fecha_inicio) return
-        const d = daysSinceISO(c.fecha_inicio + 'T00:00:00')
-        if (d === null || d < 14) return
-        items.push({ id: `rev-${c.id}`, type: 'revision', urgency: 'medium',
+    if (settings.tipos.revision && revActiva?.fecha_inicio) {
+      const d = daysSinceISO(revActiva.fecha_inicio)
+      if (d !== null && d >= 14) {
+        items.push({ id: `rev-${revActiva.id}`, type: 'revision', urgency: 'medium',
           title: `Período de revisión vencido (${d} días)`,
-          subtitle: [c.ruc || c.rit, c.materia, c.cliente_nombre].filter(Boolean).join(' · '),
+          subtitle: 'El período de revisión activo lleva más de 14 días abierto',
           navigateTo: '/revision' })
-      })
+      }
     }
 
     if (settings.tipos.pendiente) {
@@ -188,7 +188,7 @@ export function NotificationProvider({ children }) {
     }
 
     return items
-  }, [plazos, audiencias, tareas, causas, pendientes, settings])
+  }, [plazos, audiencias, tareas, revActiva, pendientes, settings])
 
   // Browser notifications
   useEffect(() => {
