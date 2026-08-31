@@ -18,8 +18,12 @@ function fmt(iso) {
 }
 
 // ── inline-edit components ────────────────────────────────────────────────────
-function IText({ rowId, field, value, placeholder = '—', multi = false, ec, setEc, draft, setDraft, commit }) {
+// Draft vive DENTRO de cada componente para evitar re-render del padre en cada tecla.
+function IText({ rowId, field, value, placeholder = '—', multi = false, ec, setEc, commit }) {
   const active = ec?.id === rowId && ec?.field === field
+  const [draft, setDraft] = useState(value ?? '')
+  useEffect(() => { if (!active) setDraft(value ?? '') }, [value, active])
+
   if (active) {
     const p = {
       autoFocus: true,
@@ -29,7 +33,7 @@ function IText({ rowId, field, value, placeholder = '—', multi = false, ec, se
       onBlur: () => commit(rowId, field, draft),
       onKeyDown: e => {
         if (!multi && e.key === 'Enter') { e.preventDefault(); commit(rowId, field, draft) }
-        if (e.key === 'Escape') setEc(null)
+        if (e.key === 'Escape') { setDraft(value ?? ''); setEc(null) }
       },
       className: 'w-full text-xs bg-white border border-blue-300 rounded px-1.5 py-0.5 outline-none text-gray-700',
     }
@@ -37,7 +41,7 @@ function IText({ rowId, field, value, placeholder = '—', multi = false, ec, se
   }
   return (
     <span
-      onClick={() => { setEc({ id: rowId, field }); setDraft(value ?? '') }}
+      onClick={() => setEc({ id: rowId, field })}
       className={`cursor-text text-xs rounded px-0.5 ${value ? 'text-gray-700' : 'text-gray-300 italic'} hover:bg-gray-50`}
     >
       {value || placeholder}
@@ -45,8 +49,11 @@ function IText({ rowId, field, value, placeholder = '—', multi = false, ec, se
   )
 }
 
-function ISel({ rowId, field, value, ec, setEc, draft, setDraft, commit }) {
+function ISel({ rowId, field, value, ec, setEc, commit }) {
   const active = ec?.id === rowId && ec?.field === field
+  const [draft, setDraft] = useState(value ?? 'Solicitada')
+  useEffect(() => { if (!active) setDraft(value ?? 'Solicitada') }, [value, active])
+
   if (active) {
     return (
       <select
@@ -62,7 +69,7 @@ function ISel({ rowId, field, value, ec, setEc, draft, setDraft, commit }) {
   }
   return (
     <span
-      onClick={() => { setEc({ id: rowId, field }); setDraft(value ?? 'Solicitada') }}
+      onClick={() => setEc({ id: rowId, field })}
       className={`cursor-pointer inline-flex items-center px-1.5 py-0.5 rounded-full border text-[10px] font-semibold ${ESTADO_CLS[value] || 'bg-gray-50 text-gray-500 border-gray-200'}`}
     >
       {value || 'Sin estado'}
@@ -70,8 +77,11 @@ function ISel({ rowId, field, value, ec, setEc, draft, setDraft, commit }) {
   )
 }
 
-function IDate({ rowId, field, value, placeholder = '—', ec, setEc, draft, setDraft, commit }) {
+function IDate({ rowId, field, value, placeholder = '—', ec, setEc, commit }) {
   const active = ec?.id === rowId && ec?.field === field
+  const [draft, setDraft] = useState(value ?? '')
+  useEffect(() => { if (!active) setDraft(value ?? '') }, [value, active])
+
   if (active) {
     return (
       <input
@@ -80,14 +90,14 @@ function IDate({ rowId, field, value, placeholder = '—', ec, setEc, draft, set
         value={draft}
         onChange={e => setDraft(e.target.value)}
         onBlur={() => commit(rowId, field, draft)}
-        onKeyDown={e => { if (e.key === 'Escape') setEc(null) }}
+        onKeyDown={e => { if (e.key === 'Escape') { setDraft(value ?? ''); setEc(null) } }}
         className="text-xs bg-white border border-blue-300 rounded px-1.5 py-0.5 outline-none"
       />
     )
   }
   return (
     <span
-      onClick={() => { setEc({ id: rowId, field }); setDraft(value ?? '') }}
+      onClick={() => setEc({ id: rowId, field })}
       className={`cursor-text text-xs rounded px-0.5 ${value ? 'text-gray-700' : 'text-gray-300 italic'} hover:bg-gray-50`}
     >
       {value ? fmt(value) : placeholder}
@@ -109,7 +119,6 @@ export default function Diligencias() {
   // expand / inline edit
   const [expId,     setExpId]     = useState(null)
   const [ec,        setEc]        = useState(null)
-  const [draft,     setDraft]     = useState('')
 
   // new-diligencia modal
   const [newModal,  setNewModal]  = useState(false)
@@ -202,7 +211,7 @@ export default function Diligencias() {
     }
   }
 
-  const ep = { ec, setEc, draft, setDraft, commit: commitField }
+  const ep = { ec, setEc, commit: commitField }
 
   const FILTER_TABS = [
     { key: 'todas',       label: 'Todas'       },

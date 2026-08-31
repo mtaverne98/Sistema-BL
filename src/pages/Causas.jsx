@@ -64,6 +64,102 @@ const ESTADOS  = ['Abierta', 'Revisar', 'Suspendida', 'Cerrada']
 const CERRADAS = new Set(['Cerrada', 'Suspendida'])
 const ACTIVAS  = new Set(['Abierta', 'Revisar'])
 
+// ── Diligencias inline-edit helpers (módulo, no dentro de render) ─────────────
+const DIL_ESTADOS = ['Recibida', 'Solicitada', 'No recibida']
+const DIL_ESTADO_CLS = {
+  'Recibida':    'bg-emerald-50 text-emerald-700 border-emerald-200',
+  'Solicitada':  'bg-amber-50 text-amber-700 border-amber-200',
+  'No recibida': 'bg-red-50 text-red-600 border-red-200',
+}
+function fmtDilFecha(iso) {
+  if (!iso) return null
+  const [y, m, d] = iso.split('-')
+  return `${d}/${m}/${y}`
+}
+
+function DilInlineText({ id, field, value, placeholder = '—', multiline = false, ec, setEc, commit }) {
+  const active = ec?.id === id && ec?.field === field
+  const [draft, setDraft] = useState(value ?? '')
+  useEffect(() => { if (!active) setDraft(value ?? '') }, [value, active])
+  if (active) {
+    const props = {
+      autoFocus: true,
+      value: draft,
+      onChange: e => setDraft(e.target.value),
+      onFocus: e => e.target.select(),
+      onBlur: () => commit(id, field, draft),
+      onKeyDown: e => {
+        if (!multiline && e.key === 'Enter') { e.preventDefault(); commit(id, field, draft) }
+        if (e.key === 'Escape') { setDraft(value ?? ''); setEc(null) }
+      },
+      className: 'w-full text-xs text-gray-700 bg-white border border-blue-300 rounded px-1.5 py-0.5 outline-none',
+    }
+    return multiline ? <textarea rows={3} {...props} /> : <input {...props} />
+  }
+  return (
+    <span
+      onClick={() => setEc({ id, field })}
+      className={`cursor-text text-xs ${value ? 'text-gray-700' : 'text-gray-300 italic'} hover:bg-gray-50 rounded px-0.5`}
+    >
+      {value || placeholder}
+    </span>
+  )
+}
+
+function DilInlineSelect({ id, field, value, ec, setEc, commit }) {
+  const active = ec?.id === id && ec?.field === field
+  const [draft, setDraft] = useState(value ?? 'Solicitada')
+  useEffect(() => { if (!active) setDraft(value ?? 'Solicitada') }, [value, active])
+  if (active) {
+    return (
+      <select
+        autoFocus
+        value={draft}
+        onChange={e => setDraft(e.target.value)}
+        onBlur={() => commit(id, field, draft)}
+        className="text-xs text-gray-700 bg-white border border-blue-300 rounded px-1.5 py-0.5 outline-none"
+      >
+        {DIL_ESTADOS.map(e => <option key={e} value={e}>{e}</option>)}
+      </select>
+    )
+  }
+  return (
+    <span
+      onClick={() => setEc({ id, field })}
+      className={`cursor-pointer inline-flex items-center px-1.5 py-0.5 rounded-full border text-[10px] font-semibold ${DIL_ESTADO_CLS[value] || 'bg-gray-50 text-gray-500 border-gray-200'}`}
+    >
+      {value || 'Sin estado'}
+    </span>
+  )
+}
+
+function DilInlineDate({ id, field, value, placeholder = '—', ec, setEc, commit }) {
+  const active = ec?.id === id && ec?.field === field
+  const [draft, setDraft] = useState(value ?? '')
+  useEffect(() => { if (!active) setDraft(value ?? '') }, [value, active])
+  if (active) {
+    return (
+      <input
+        autoFocus
+        type="date"
+        value={draft}
+        onChange={e => setDraft(e.target.value)}
+        onBlur={() => commit(id, field, draft)}
+        onKeyDown={e => { if (e.key === 'Escape') { setDraft(value ?? ''); setEc(null) } }}
+        className="text-xs text-gray-700 bg-white border border-blue-300 rounded px-1.5 py-0.5 outline-none"
+      />
+    )
+  }
+  return (
+    <span
+      onClick={() => setEc({ id, field })}
+      className={`cursor-text text-xs ${value ? 'text-gray-700' : 'text-gray-300 italic'} hover:bg-gray-50 rounded px-0.5`}
+    >
+      {value ? fmtDilFecha(value) : placeholder}
+    </span>
+  )
+}
+
 // Mapeo de estados legacy → nuevo estándar (para filtrado sin esperar SQL)
 function normalizeEstado(e) {
   if (e === 'En tramitación' || e === 'Administrativa') return 'Abierta'
@@ -2930,21 +3026,9 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
 
         {/* DILIGENCIAS Y OI */}
         {tab === 'diligencias' && (() => {
-          function fmtDilFecha(iso) {
-            if (!iso) return null
-            const [y, m, d] = iso.split('-')
-            return `${d}/${m}/${y}`
-          }
           function daysSince(iso) {
             if (!iso) return 0
             return Math.floor((Date.now() - new Date(iso + 'T00:00:00').getTime()) / 86400000)
-          }
-
-          const ESTADOS = ['Recibida', 'Solicitada', 'No recibida']
-          const estadoChipCls = {
-            'Recibida':    'bg-emerald-50 text-emerald-700 border-emerald-200',
-            'Solicitada':  'bg-amber-50 text-amber-700 border-amber-200',
-            'No recibida': 'bg-red-50 text-red-600 border-red-200',
           }
 
           const filtered = diligencias.filter(d => {
@@ -2987,7 +3071,6 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
               setDiligencias(prev => [data, ...prev])
               setDilExpandedId(data.id)
               setEditingCell({ id: data.id, field: 'nombre' })
-              setCellDraft('Nueva diligencia')
             }
           }
 
@@ -2998,82 +3081,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
             { key: 'no_recibidas', label: 'No recibidas' },
           ]
 
-          function DilInlineText({ id, field, value, placeholder = '—', multiline = false }) {
-            const isEdit = editingCell?.id === id && editingCell?.field === field
-            if (isEdit) {
-              const props = {
-                autoFocus: true,
-                value: cellDraft,
-                onChange: e => setCellDraft(e.target.value),
-                onFocus: e => e.target.select(),
-                onBlur: () => commitDilField(id, field, cellDraft),
-                onKeyDown: e => {
-                  if (!multiline && e.key === 'Enter') { e.preventDefault(); commitDilField(id, field, cellDraft) }
-                  if (e.key === 'Escape') setEditingCell(null)
-                },
-                className: 'w-full text-xs text-gray-700 bg-white border border-blue-300 rounded px-1.5 py-0.5 outline-none',
-              }
-              return multiline ? <textarea rows={3} {...props} /> : <input {...props} />
-            }
-            return (
-              <span
-                onClick={() => { setEditingCell({ id, field }); setCellDraft(value ?? '') }}
-                className={`cursor-text text-xs ${value ? 'text-gray-700' : 'text-gray-300 italic'} hover:bg-gray-50 rounded px-0.5`}
-              >
-                {value || placeholder}
-              </span>
-            )
-          }
-
-          function DilInlineSelect({ id, field, value }) {
-            const isEdit = editingCell?.id === id && editingCell?.field === field
-            if (isEdit) {
-              return (
-                <select
-                  autoFocus
-                  value={cellDraft}
-                  onChange={e => setCellDraft(e.target.value)}
-                  onBlur={() => commitDilField(id, field, cellDraft)}
-                  className="text-xs text-gray-700 bg-white border border-blue-300 rounded px-1.5 py-0.5 outline-none"
-                >
-                  {ESTADOS.map(e => <option key={e} value={e}>{e}</option>)}
-                </select>
-              )
-            }
-            return (
-              <span
-                onClick={() => { setEditingCell({ id, field }); setCellDraft(value ?? 'Solicitada') }}
-                className={`cursor-pointer inline-flex items-center px-1.5 py-0.5 rounded-full border text-[10px] font-semibold ${estadoChipCls[value] || 'bg-gray-50 text-gray-500 border-gray-200'}`}
-              >
-                {value || 'Sin estado'}
-              </span>
-            )
-          }
-
-          function DilInlineDate({ id, field, value, placeholder = '—' }) {
-            const isEdit = editingCell?.id === id && editingCell?.field === field
-            if (isEdit) {
-              return (
-                <input
-                  autoFocus
-                  type="date"
-                  value={cellDraft}
-                  onChange={e => setCellDraft(e.target.value)}
-                  onBlur={() => commitDilField(id, field, cellDraft)}
-                  onKeyDown={e => { if (e.key === 'Escape') setEditingCell(null) }}
-                  className="text-xs text-gray-700 bg-white border border-blue-300 rounded px-1.5 py-0.5 outline-none"
-                />
-              )
-            }
-            return (
-              <span
-                onClick={() => { setEditingCell({ id, field }); setCellDraft(value ?? '') }}
-                className={`cursor-text text-xs ${value ? 'text-gray-700' : 'text-gray-300 italic'} hover:bg-gray-50 rounded px-0.5`}
-              >
-                {value ? fmtDilFecha(value) : placeholder}
-              </span>
-            )
-          }
+          const dilEc = { ec: editingCell, setEc: setEditingCell, commit: commitDilField }
 
           return (
             <div className="flex flex-col h-full">
@@ -3148,13 +3156,12 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                                 e.stopPropagation()
                                 setDilExpandedId(dil.id)
                                 setEditingCell({ id: dil.id, field: 'nombre' })
-                                setCellDraft(dil.nombre ?? '')
                               }}
                             >
                               {dil.nombre || '—'}
                             </span>
                             <span className="text-[11px] text-gray-400 truncate max-w-[120px]">{dil.organismo || '—'}</span>
-                            <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full border text-[10px] font-semibold flex-shrink-0 ${estadoChipCls[dil.estado] || 'bg-gray-50 text-gray-500 border-gray-200'}`}>
+                            <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full border text-[10px] font-semibold flex-shrink-0 ${DIL_ESTADO_CLS[dil.estado] || 'bg-gray-50 text-gray-500 border-gray-200'}`}>
                               {dil.estado || 'Sin estado'}
                               {alertDays && (
                                 <span className="ml-0.5 text-amber-600 font-bold">{alertDays}d</span>
@@ -3170,33 +3177,33 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                               <div className="pt-3 pb-2">
                                 {/* Title editable */}
                                 <div className="mb-3">
-                                  <DilInlineText id={dil.id} field="nombre" value={dil.nombre} placeholder="Nombre de la diligencia" />
+                                  <DilInlineText id={dil.id} field="nombre" value={dil.nombre} placeholder="Nombre de la diligencia" {...dilEc} />
                                 </div>
                                 {/* 2-col grid */}
                                 <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-[11px]">
                                   <div>
                                     <span className="text-gray-400 font-medium block mb-0.5">Organismo</span>
-                                    <DilInlineText id={dil.id} field="organismo" value={dil.organismo} />
+                                    <DilInlineText id={dil.id} field="organismo" value={dil.organismo} {...dilEc} />
                                   </div>
                                   <div>
                                     <span className="text-gray-400 font-medium block mb-0.5">Instrucción</span>
-                                    <DilInlineText id={dil.id} field="instruccion" value={dil.instruccion} />
+                                    <DilInlineText id={dil.id} field="instruccion" value={dil.instruccion} {...dilEc} />
                                   </div>
                                   <div>
                                     <span className="text-gray-400 font-medium block mb-0.5">Solicitada</span>
-                                    <DilInlineDate id={dil.id} field="fecha_solicitud" value={dil.fecha_solicitud} />
+                                    <DilInlineDate id={dil.id} field="fecha_solicitud" value={dil.fecha_solicitud} {...dilEc} />
                                   </div>
                                   <div>
                                     <span className="text-gray-400 font-medium block mb-0.5">Estado</span>
-                                    <DilInlineSelect id={dil.id} field="estado" value={dil.estado} />
+                                    <DilInlineSelect id={dil.id} field="estado" value={dil.estado} {...dilEc} />
                                   </div>
                                   <div>
                                     <span className="text-gray-400 font-medium block mb-0.5">Recepción</span>
-                                    <DilInlineDate id={dil.id} field="fecha_recepcion" value={dil.fecha_recepcion} />
+                                    <DilInlineDate id={dil.id} field="fecha_recepcion" value={dil.fecha_recepcion} {...dilEc} />
                                   </div>
                                   <div>
                                     <span className="text-gray-400 font-medium block mb-0.5">Folio</span>
-                                    <DilInlineText id={dil.id} field="folio" value={dil.folio} />
+                                    <DilInlineText id={dil.id} field="folio" value={dil.folio} {...dilEc} />
                                   </div>
                                 </div>
                                 {/* Dotted separator */}
@@ -3204,7 +3211,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                                 {/* Notas */}
                                 <div>
                                   <span className="text-gray-400 font-medium text-[11px] block mb-1">Notas</span>
-                                  <DilInlineText id={dil.id} field="notas" value={dil.notas} placeholder="Agregar notas…" multiline />
+                                  <DilInlineText id={dil.id} field="notas" value={dil.notas} placeholder="Agregar notas…" multiline {...dilEc} />
                                 </div>
                               </div>
                             </div>
