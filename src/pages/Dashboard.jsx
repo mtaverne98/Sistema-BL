@@ -146,7 +146,7 @@ export default function Dashboard() {
 
   const fetchPlazos = useCallback(async () => {
     const { data } = await supabase.from('plazos')
-      .select('id, titulo, fecha_vencimiento, estado, tipo, causa_rit, responsable, causas(cliente_nombre)')
+      .select('id, titulo, fecha_vencimiento, estado, tipo, causa_rit, abogada, causas(cliente_nombre)')
     if (data) setPlazos(data.map(r => ({ ...r, cliente_nombre: r.causas?.cliente_nombre || '' })))
   }, [])
 
