@@ -9,7 +9,7 @@ import {
   Loader2, AlertTriangle, RefreshCw, Trash2, Check,
   Calendar, Activity, Flame, PlusSquare,
   UserCheck, Upload, Table2, Database, Shield, ExternalLink,
-  ListTodo, Inbox,
+  ListTodo, Inbox, FileSearch, Link2,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 
@@ -883,6 +883,15 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
   const [dilExpandedId,    setDilExpandedId]    = useState(null)
   const [dilNewDraft,      setDilNewDraft]      = useState(null)
 
+  // Análisis Investigativo (Drive → IA → Sistema BL)
+  const [analisisMeta,     setAnalisisMeta]     = useState(null)
+  const [instrucciones,    setInstrucciones]    = useState([])
+  const [faltantes,        setFaltantes]        = useState([])
+  const [alertasAnalisis,  setAlertasAnalisis]  = useState([])
+  const [contradicciones,  setContradicciones]  = useState([])
+  const [recomendaciones,  setRecomendaciones]  = useState([])
+  const [documentosDrive,  setDocumentosDrive]  = useState([])
+
   // Entrevistas
   const [entrevistas,      setEntrevistas]      = useState([])
   const [entPuntos,        setEntPuntos]        = useState({}) // { [entrevista_id]: punto[] }
@@ -1145,6 +1154,31 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
       .select('*').eq('causa_id', causa.id)
       .order('created_at', { ascending: false })
       .then(({ data }) => setDiligencias(data || []))
+  }, [causa?.id])
+
+  // Análisis Investigativo — carga todas las tablas alimentadas por el análisis Drive → IA
+  useEffect(() => {
+    if (!causa?.id) return
+    supabase.from('causa_analisis_meta').select('*').eq('causa_id', causa.id).maybeSingle()
+      .then(({ data }) => setAnalisisMeta(data || null))
+    supabase.from('causa_instrucciones').select('*').eq('causa_id', causa.id)
+      .order('fecha', { ascending: true })
+      .then(({ data }) => setInstrucciones(data || []))
+    supabase.from('causa_faltantes').select('*').eq('causa_id', causa.id)
+      .order('created_at', { ascending: false })
+      .then(({ data }) => setFaltantes(data || []))
+    supabase.from('causa_alertas').select('*').eq('causa_id', causa.id)
+      .order('created_at', { ascending: false })
+      .then(({ data }) => setAlertasAnalisis(data || []))
+    supabase.from('causa_contradicciones').select('*').eq('causa_id', causa.id)
+      .order('created_at', { ascending: false })
+      .then(({ data }) => setContradicciones(data || []))
+    supabase.from('causa_recomendaciones').select('*').eq('causa_id', causa.id)
+      .order('created_at', { ascending: false })
+      .then(({ data }) => setRecomendaciones(data || []))
+    supabase.from('documentos').select('*').eq('causa_id', causa.id).eq('fuente', 'drive_auto')
+      .order('fecha_creacion', { ascending: false })
+      .then(({ data }) => setDocumentosDrive(data || []))
   }, [causa?.id])
 
   useEffect(() => {
@@ -1688,8 +1722,10 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
             return dias >= 0 && dias <= 7
           }).length
           const revCount = revisiones.filter(isTeamRev).length
+          const alertasSinResolver = alertasAnalisis.filter(a => !a.resuelta)
           const chips = [
             { key: 'resumen',     Icon: AlignLeft,   label: 'Resumen',     count: null,                    urgent: false },
+            { key: 'analisis',    Icon: FileSearch,  label: 'Análisis',    count: alertasSinResolver.length || null, urgent: alertasSinResolver.some(a => a.tipo === 'rojo') },
             { key: 'siau',        Icon: Database,    label: 'SIAU',        count: siauRows.length || null, urgent: siauRows.some(r => r.estado === 'Urgente') },
             { key: 'pjud',        Icon: Shield,      label: 'PJUD',        count: pjudRows.length || null, urgent: pjudRows.some(r => r.estado === 'Urgente') },
             { key: 'audiencias',  Icon: Gavel,       label: 'Audiencias',  count: audiencias.length,       urgent: audProximas > 0 },
@@ -3178,6 +3214,371 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                     })}
                   </div>
                 )}
+              </div>
+            </div>
+          )
+        })()}
+
+        {/* ANÁLISIS INVESTIGATIVO — Drive → IA → Sistema BL */}
+        {tab === 'analisis' && (() => {
+          function fmtFA(iso) {
+            if (!iso) return null
+            const datePart = String(iso).slice(0, 10)
+            const [y, m, d] = datePart.split('-')
+            if (!y || !m || !d) return null
+            return `${d}-${m}-${y}`
+          }
+
+          const NIVEL_CFG = {
+            cumplida:          { label: 'Cumplida',                       cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+            parcial:           { label: 'Parcialmente cumplida',          cls: 'bg-amber-50 text-amber-700 border-amber-200' },
+            sin_cumplimiento:  { label: 'Sin cumplimiento identificado',  cls: 'bg-red-50 text-red-600 border-red-200' },
+            pendiente:         { label: 'Pendiente',                     cls: 'bg-blue-50 text-blue-600 border-blue-200' },
+            no_determinable:   { label: 'No determinable',                cls: 'bg-gray-100 text-gray-500 border-gray-200' },
+            no_aplicable:      { label: 'No aplicable',                   cls: 'bg-gray-50 text-gray-400 border-gray-200' },
+          }
+          function NivelChip({ value }) {
+            const cfg = NIVEL_CFG[value] || { label: value || 'Sin evaluar', cls: 'bg-gray-50 text-gray-400 border-gray-200' }
+            return <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full border text-[10px] font-semibold ${cfg.cls}`}>{cfg.label}</span>
+          }
+
+          const ALERTA_CFG = {
+            rojo:     { emoji: '🔴', label: 'Urgente',    cls: 'bg-red-50 border-red-200' },
+            amarillo: { emoji: '🟡', label: 'Pendiente',  cls: 'bg-amber-50 border-amber-200' },
+            verde:    { emoji: '🟢', label: 'Recibido',   cls: 'bg-emerald-50 border-emerald-200' },
+            azul:     { emoji: '🔵', label: 'Doc. faltante', cls: 'bg-blue-50 border-blue-200' },
+            naranja:  { emoji: '⚠️', label: 'Estratégica', cls: 'bg-orange-50 border-orange-200' },
+          }
+
+          async function toggleAlertaResuelta(a) {
+            const nuevo = !a.resuelta
+            setAlertasAnalisis(prev => prev.map(x => x.id === a.id ? { ...x, resuelta: nuevo } : x))
+            await supabase.from('causa_alertas').update({ resuelta: nuevo }).eq('id', a.id)
+          }
+
+          const RECO_ESTADOS = ['evaluando', 'aceptada', 'descartada']
+          const RECO_ESTADO_CLS = {
+            evaluando: 'bg-blue-50 text-blue-600 border-blue-200',
+            aceptada:  'bg-emerald-50 text-emerald-700 border-emerald-200',
+            descartada:'bg-gray-100 text-gray-400 border-gray-200',
+          }
+          async function commitRecoEstado(id, value) {
+            setEditingCell(null)
+            setRecomendaciones(prev => prev.map(r => r.id === id ? { ...r, estado: value } : r))
+            await supabase.from('causa_recomendaciones').update({ estado: value }).eq('id', id)
+          }
+
+          const docsById = {}
+          for (const d of documentosDrive) docsById[d.id] = d
+          function DocLink({ id, fallback = '—' }) {
+            const d = docsById[id]
+            if (!d) return <span className="text-gray-300 italic">{fallback}</span>
+            return (
+              <a href={d.url || undefined} target="_blank" rel="noreferrer"
+                 className="inline-flex items-center gap-1 text-[#2570BA] hover:underline">
+                <Link2 size={10} /> {d.nombre}
+              </a>
+            )
+          }
+
+          const rojas    = alertasAnalisis.filter(a => a.tipo === 'rojo' && !a.resuelta)
+          const amarillas= alertasAnalisis.filter(a => a.tipo === 'amarillo' && !a.resuelta)
+
+          // Matriz de trazabilidad: agrupa diligencias por instrucción
+          const dilByInstr = {}
+          const dilSinInstr = []
+          for (const dl of diligencias) {
+            if (dl.instruccion_id) (dilByInstr[dl.instruccion_id] ||= []).push(dl)
+            else dilSinInstr.push(dl)
+          }
+
+          // Línea de tiempo: eventos con fecha real conocida (instrucciones + documentos)
+          const eventos = []
+          for (const i of instrucciones) {
+            if (i.fecha) eventos.push({ fecha: i.fecha, tipo: 'Instrucción/solicitud', label: `${i.numero_oficio || 'Sin número de oficio'} — ${i.autoridad || 'Autoridad no identificada'}`, documento_id: i.documento_origen_id })
+          }
+          for (const d of documentosDrive) {
+            if (d.fecha_creacion) eventos.push({ fecha: d.fecha_creacion, tipo: 'Documento incorporado', label: d.tipo || '—', documento_id: d.id })
+          }
+          eventos.sort((a, b) => a.fecha.localeCompare(b.fecha))
+
+          if (!causa?.id) return null
+
+          return (
+            <div className="flex flex-col h-full overflow-y-auto">
+              <div className="p-5 space-y-6">
+
+                {/* RESUMEN INVESTIGATIVO */}
+                <section>
+                  <h3 className="text-[12px] font-bold text-[#1A2E4A] uppercase tracking-wide mb-2">Resumen investigativo</h3>
+                  {analisisMeta ? (
+                    <div className="bg-white border border-[#E3E7EC] rounded-lg p-4">
+                      <p className="text-[12px] text-gray-700 leading-relaxed whitespace-pre-wrap">{analisisMeta.resumen_ejecutivo || 'Sin resumen registrado.'}</p>
+                      <div className="mt-3 pt-3 border-t border-dashed border-gray-200 text-[10px] text-gray-400">
+                        Última sincronización: {fmtFA(analisisMeta.fecha_ultima_sincronizacion) || 'no registrada'}
+                        {analisisMeta.drive_folder_id && (
+                          <> · <a className="text-[#2570BA] hover:underline" target="_blank" rel="noreferrer" href={`https://drive.google.com/drive/folders/${analisisMeta.drive_folder_id}`}>Ver carpeta en Drive</a></>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-[12px] text-gray-400 italic">Todavía no hay un análisis sincronizado para esta causa.</p>
+                  )}
+                </section>
+
+                {/* URGENTE / PENDIENTES — highlights */}
+                {(rojas.length > 0 || amarillas.length > 0) && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <section>
+                      <h3 className="text-[11px] font-bold text-red-600 uppercase tracking-wide mb-2">🔴 Urgente</h3>
+                      <div className="space-y-1.5">
+                        {rojas.length === 0 && <p className="text-[11px] text-gray-300 italic">Nada urgente sin resolver.</p>}
+                        {rojas.map(a => (
+                          <div key={a.id} className="bg-red-50 border border-red-200 rounded-md px-2.5 py-1.5">
+                            <p className="text-[11px] font-semibold text-red-700">{a.titulo}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+                    <section>
+                      <h3 className="text-[11px] font-bold text-amber-600 uppercase tracking-wide mb-2">🟡 Pendientes</h3>
+                      <div className="space-y-1.5">
+                        {amarillas.length === 0 && <p className="text-[11px] text-gray-300 italic">Sin pendientes de cumplimiento parcial.</p>}
+                        {amarillas.map(a => (
+                          <div key={a.id} className="bg-amber-50 border border-amber-200 rounded-md px-2.5 py-1.5">
+                            <p className="text-[11px] font-semibold text-amber-700">{a.titulo}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+                  </div>
+                )}
+
+                {/* ÚLTIMOS DOCUMENTOS / DOCUMENTOS FALTANTES */}
+                <div className="grid grid-cols-2 gap-3">
+                  <section>
+                    <h3 className="text-[11px] font-bold text-emerald-700 uppercase tracking-wide mb-2">🟢 Últimos documentos</h3>
+                    <div className="space-y-1">
+                      {documentosDrive.length === 0 && <p className="text-[11px] text-gray-300 italic">Sin documentos de Drive vinculados.</p>}
+                      {documentosDrive.slice(0, 6).map(d => (
+                        <div key={d.id} className="flex items-center justify-between text-[11px] py-1 border-b border-gray-100 last:border-0">
+                          <a href={d.url || undefined} target="_blank" rel="noreferrer" className="text-[#2570BA] hover:underline truncate pr-2">{d.nombre}</a>
+                          <span className="text-gray-400 flex-shrink-0">{fmtFA(d.fecha_creacion) || '—'}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                  <section>
+                    <h3 className="text-[11px] font-bold text-blue-600 uppercase tracking-wide mb-2">🔵 Documentos faltantes</h3>
+                    <div className="space-y-1.5">
+                      {faltantes.length === 0 && <p className="text-[11px] text-gray-300 italic">Sin faltantes identificados.</p>}
+                      {faltantes.map(f => (
+                        <div key={f.id} className="bg-blue-50 border border-blue-200 rounded-md px-2.5 py-1.5">
+                          <p className="text-[11px] text-blue-800">{f.descripcion}</p>
+                          <p className="text-[10px] text-blue-500 mt-0.5">Relevancia: {f.relevancia || '—'} · {f.accion_sugerida}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                </div>
+
+                {/* ALERTAS — listado completo */}
+                <section>
+                  <h3 className="text-[12px] font-bold text-[#1A2E4A] uppercase tracking-wide mb-2">⚠️ Alertas ({alertasAnalisis.filter(a => !a.resuelta).length} activas)</h3>
+                  <div className="space-y-1.5">
+                    {alertasAnalisis.length === 0 && <p className="text-[11px] text-gray-300 italic">Sin alertas registradas.</p>}
+                    {alertasAnalisis.map(a => {
+                      const cfg = ALERTA_CFG[a.tipo] || { emoji: '•', label: a.tipo, cls: 'bg-gray-50 border-gray-200' }
+                      return (
+                        <div key={a.id} className={`flex items-start gap-2 border rounded-md px-2.5 py-1.5 ${cfg.cls} ${a.resuelta ? 'opacity-40' : ''}`}>
+                          <input type="checkbox" checked={!!a.resuelta} onChange={() => toggleAlertaResuelta(a)}
+                                 className="mt-0.5 w-3 h-3 accent-[#2570BA] flex-shrink-0" title="Marcar como resuelta" />
+                          <div className="min-w-0">
+                            <p className={`text-[11px] font-semibold ${a.resuelta ? 'line-through text-gray-400' : 'text-gray-800'}`}>{cfg.emoji} {a.titulo}</p>
+                            {a.detalle && <p className="text-[10.5px] text-gray-500 mt-0.5">{a.detalle}</p>}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </section>
+
+                {/* DILIGENCIAS */}
+                <section>
+                  <h3 className="text-[12px] font-bold text-[#1A2E4A] uppercase tracking-wide mb-2">Diligencias</h3>
+                  <div className="space-y-1.5">
+                    {diligencias.length === 0 && <p className="text-[11px] text-gray-300 italic">Sin diligencias registradas — ver pestaña Diligencias.</p>}
+                    {diligencias.map(dl => (
+                      <div key={dl.id} className="bg-white border border-[#E3E7EC] rounded-md px-3 py-2">
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <p className="text-[11.5px] font-semibold text-gray-800">{dl.nombre}</p>
+                          <NivelChip value={dl.nivel_cumplimiento} />
+                        </div>
+                        {dl.fundamento && <p className="text-[10.5px] text-gray-500 mt-1 leading-relaxed">{dl.fundamento}</p>}
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                {/* MATRIZ DE TRAZABILIDAD */}
+                <section>
+                  <h3 className="text-[12px] font-bold text-[#1A2E4A] uppercase tracking-wide mb-2">Matriz de trazabilidad</h3>
+                  <p className="text-[10px] text-gray-400 mb-2">Instrucción → diligencia → documento que la ordena → nivel de cumplimiento.</p>
+                  <div className="space-y-3">
+                    {instrucciones.map(i => (
+                      <div key={i.id} className="border border-[#E3E7EC] rounded-lg overflow-hidden">
+                        <div className="bg-[#F7F8FA] px-3 py-2 flex items-center justify-between flex-wrap gap-1">
+                          <div>
+                            <span className="text-[11px] font-semibold text-gray-800">{i.numero_oficio || 'Sin número de oficio'}</span>
+                            <span className="text-[10px] text-gray-400 ml-2">{fmtFA(i.fecha)} · {i.autoridad}</span>
+                          </div>
+                          <DocLink id={i.documento_origen_id} fallback="Documento origen no encontrado" />
+                        </div>
+                        <div className="divide-y divide-gray-100">
+                          {(dilByInstr[i.id] || []).length === 0 && (
+                            <p className="text-[10.5px] text-gray-300 italic px-3 py-2">Sin diligencias vinculadas todavía.</p>
+                          )}
+                          {(dilByInstr[i.id] || []).map(dl => (
+                            <div key={dl.id} className="px-3 py-2 flex items-center justify-between gap-2 flex-wrap">
+                              <span className="text-[11px] text-gray-700">{dl.nombre}</span>
+                              <div className="flex items-center gap-2">
+                                <DocLink id={dl.documento_respuesta_id} fallback="Sin documento de respuesta" />
+                                <NivelChip value={dl.nivel_cumplimiento} />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                    {dilSinInstr.length > 0 && (
+                      <div className="border border-dashed border-gray-300 rounded-lg overflow-hidden">
+                        <div className="bg-[#F7F8FA] px-3 py-2 text-[11px] font-semibold text-gray-500">
+                          Diligencias sin instrucción particular (gestión propia de la defensa)
+                        </div>
+                        <div className="divide-y divide-gray-100">
+                          {dilSinInstr.map(dl => (
+                            <div key={dl.id} className="px-3 py-2 flex items-center justify-between gap-2 flex-wrap">
+                              <span className="text-[11px] text-gray-700">{dl.nombre}</span>
+                              <NivelChip value={dl.nivel_cumplimiento} />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </section>
+
+                {/* LÍNEA DE TIEMPO */}
+                <section>
+                  <h3 className="text-[12px] font-bold text-[#1A2E4A] uppercase tracking-wide mb-2">Línea de tiempo</h3>
+                  <p className="text-[10px] text-gray-400 mb-2">Construida solo a partir de fechas registradas en la base de datos (instrucciones y documentos). La cronología narrativa completa vive en el documento de análisis de Drive.</p>
+                  <div className="space-y-1">
+                    {eventos.length === 0 && <p className="text-[11px] text-gray-300 italic">Sin eventos con fecha registrada.</p>}
+                    {eventos.map((e, idx) => (
+                      <div key={idx} className="flex items-start gap-3 text-[11px] py-1 border-b border-gray-100 last:border-0">
+                        <span className="text-gray-400 tabular-nums w-20 flex-shrink-0">{fmtFA(e.fecha)}</span>
+                        <span className="text-gray-500 w-40 flex-shrink-0">{e.tipo}</span>
+                        <span className="text-gray-700 flex-1">{e.label}</span>
+                        <DocLink id={e.documento_id} fallback="" />
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                {/* CONTRADICCIONES / VACÍOS */}
+                <section>
+                  <h3 className="text-[12px] font-bold text-[#1A2E4A] uppercase tracking-wide mb-2">Contradicciones / vacíos</h3>
+                  <div className="space-y-2">
+                    {contradicciones.length === 0 && <p className="text-[11px] text-gray-300 italic">Sin contradicciones o vacíos registrados.</p>}
+                    {contradicciones.map(c => (
+                      <div key={c.id} className={`border rounded-md px-3 py-2 ${c.materia === 'Vacío investigativo' ? 'bg-orange-50 border-orange-200' : 'bg-red-50 border-red-200'}`}>
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 mb-1">{c.materia}</p>
+                        {c.fuente_1_version && (
+                          <p className="text-[11px] text-gray-700"><DocLink id={c.fuente_1_documento_id} fallback="Fuente 1" />: {c.fuente_1_version}</p>
+                        )}
+                        {c.fuente_2_version && (
+                          <p className="text-[11px] text-gray-700 mt-0.5"><DocLink id={c.fuente_2_documento_id} fallback="Fuente 2" />: {c.fuente_2_version}</p>
+                        )}
+                        {!c.fuente_1_version && !c.fuente_2_version && (
+                          <p className="text-[11px] text-gray-700">{c.descripcion}</p>
+                        )}
+                        {c.relevancia && <p className="text-[10px] text-gray-400 mt-1">Relevancia: {c.relevancia}</p>}
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                {/* NUEVAS DILIGENCIAS RECOMENDADAS */}
+                <section>
+                  <h3 className="text-[12px] font-bold text-[#1A2E4A] uppercase tracking-wide mb-2">Nuevas diligencias recomendadas</h3>
+                  <div className="space-y-2">
+                    {recomendaciones.length === 0 && <p className="text-[11px] text-gray-300 italic">Sin recomendaciones registradas.</p>}
+                    {recomendaciones.map(r => {
+                      const isEdit = editingCell?.id === r.id && editingCell?.field === 'estado'
+                      return (
+                        <div key={r.id} className="bg-white border border-[#E3E7EC] rounded-lg px-3 py-2.5">
+                          <div className="flex items-center justify-between gap-2 flex-wrap">
+                            <p className="text-[11.5px] font-semibold text-gray-800">{r.diligencia_propuesta}</p>
+                            <div className="flex items-center gap-2 flex-shrink-0">
+                              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${r.prioridad === 'ALTA' ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-500'}`}>{r.prioridad}</span>
+                              {isEdit ? (
+                                <select autoFocus value={cellDraft} onChange={e => setCellDraft(e.target.value)}
+                                        onBlur={() => commitRecoEstado(r.id, cellDraft)}
+                                        className="text-[10px] border border-blue-300 rounded px-1 py-0.5 outline-none">
+                                  {RECO_ESTADOS.map(s => <option key={s} value={s}>{s}</option>)}
+                                </select>
+                              ) : (
+                                <span onClick={() => { setEditingCell({ id: r.id, field: 'estado' }); setCellDraft(r.estado || 'evaluando') }}
+                                      className={`cursor-pointer text-[9px] font-semibold px-1.5 py-0.5 rounded-full border ${RECO_ESTADO_CLS[r.estado] || RECO_ESTADO_CLS.evaluando}`}>
+                                  {r.estado || 'evaluando'}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          {r.fundamento && <p className="text-[10.5px] text-gray-500 mt-1"><span className="font-medium text-gray-600">Fundamento:</span> {r.fundamento}</p>}
+                          {r.objetivo && <p className="text-[10.5px] text-gray-500 mt-0.5"><span className="font-medium text-gray-600">Objetivo:</span> {r.objetivo}</p>}
+                          {r.relacion_estrategia && <p className="text-[10.5px] text-gray-500 mt-0.5"><span className="font-medium text-gray-600">Estrategia:</span> {r.relacion_estrategia}</p>}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </section>
+
+                {/* CHECKLIST — reutiliza agenda_pendientes, no duplica el módulo de Pendientes */}
+                <section>
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-[12px] font-bold text-[#1A2E4A] uppercase tracking-wide">Checklist</h3>
+                    <button onClick={() => setTab('pendientes')} className="text-[10px] text-[#2570BA] hover:underline">Ir a Pendientes →</button>
+                  </div>
+                  <div className="space-y-1">
+                    {pendientes.length === 0 && <p className="text-[11px] text-gray-300 italic">Sin pendientes abiertos.</p>}
+                    {pendientes.filter(p => !p.parent_id).slice(0, 8).map(p => (
+                      <div key={p.id} className="flex items-center gap-2 text-[11px] text-gray-700 py-0.5">
+                        <span className="w-3 h-3 border border-gray-300 rounded-sm flex-shrink-0" />
+                        {p.texto}
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                {/* PRÓXIMA ACCIÓN */}
+                <section>
+                  <h3 className="text-[12px] font-bold text-[#1A2E4A] uppercase tracking-wide mb-2">Próxima acción</h3>
+                  {analisisMeta?.proxima_accion ? (
+                    <div className="bg-[#1A2E4A] text-white rounded-lg p-4">
+                      <p className="text-[12px] leading-relaxed">{analisisMeta.proxima_accion}</p>
+                      {analisisMeta.proxima_accion_fundamento && (
+                        <p className="text-[10.5px] text-white/70 mt-2 leading-relaxed">{analisisMeta.proxima_accion_fundamento}</p>
+                      )}
+                      {analisisMeta.proxima_accion_prioridad && (
+                        <span className="inline-block mt-2 text-[9px] font-bold px-1.5 py-0.5 rounded bg-white/20">Prioridad {analisisMeta.proxima_accion_prioridad}</span>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-gray-300 italic">Sin próxima acción registrada.</p>
+                  )}
+                </section>
+
               </div>
             </div>
           )
