@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef } from 'react'
-import { ChevronLeft, ChevronRight, Save, CheckCircle2, CalendarCheck } from 'lucide-react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { ChevronLeft, ChevronRight, CalendarCheck, Plus, Check, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react'
 import { supabase } from '../lib/supabase'
+import { useNavigate } from 'react-router-dom'
 
 // ── ISO week helpers ───────────────────────────────────────────────────────────
 function getISOYearWeek(date) {
@@ -30,188 +31,643 @@ function fmtIso(date) {
   return date.toISOString().slice(0, 10)
 }
 
-const MESES = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic']
+function semanaLabel({ year, week }) {
+  const monday = getMondayOfWeek(year, week)
+  const sunday = new Date(monday)
+  sunday.setUTCDate(monday.getUTCDate() + 6)
+  const MESES = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic']
+  const fmt = d => `${d.getUTCDate()} ${MESES[d.getUTCMonth()]}`
+  return `Semana ${week} · ${fmt(monday)} – ${fmt(sunday)}`
+}
 
-function fmtDay(iso) {
-  if (!iso) return ''
+function getWeekDays(year, week) {
+  const monday = getMondayOfWeek(year, week)
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(monday)
+    d.setUTCDate(monday.getUTCDate() + i)
+    return fmtIso(d)
+  })
+}
+
+const DIAS_FULL = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
+const MESES_FULL = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre']
+
+function fmtDayHeader(iso) {
   const [, m, d] = iso.split('-')
-  return `${parseInt(d)} ${MESES[parseInt(m) - 1]}`
+  return `${parseInt(d)} de ${MESES_FULL[parseInt(m) - 1]}`
 }
 
-function semanaKey(year, week) {
-  return `SEG-${year}-W${String(week).padStart(2, '0')}`
+function fmtHora(hora) {
+  if (!hora) return ''
+  return hora.slice(0, 5)
 }
 
-// ── Component ─────────────────────────────────────────────────────────────────
+// ── Type config ────────────────────────────────────────────────────────────────
+const TIPOS = {
+  audiencia: { label: 'Audiencia', color: '#2570BA', bg: '#EBF3FB' },
+  plazo:     { label: 'Plazo',     color: '#C0392B', bg: '#FDECEA' },
+  tarea:     { label: 'Tarea',     color: '#C8862B', bg: '#FDF3E7' },
+  reunion:   { label: 'Reunión',   color: '#7C3AED', bg: '#F3EFFE' },
+}
+
+// ── Item row in a day ──────────────────────────────────────────────────────────
+function EventoItem({ tipo, label, sub, hora }) {
+  const t = TIPOS[tipo]
+  return (
+    <div className="flex items-start gap-2 py-1.5 group">
+      <div className="w-0.5 self-stretch rounded-full flex-shrink-0 mt-0.5" style={{ background: t.color }} />
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          {hora && <span className="text-[11px] font-mono text-gray-400 flex-shrink-0">{fmtHora(hora)}</span>}
+          <span
+            className="text-[10px] font-bold px-1.5 py-0.5 rounded flex-shrink-0"
+            style={{ color: t.color, background: t.bg }}
+          >
+            {t.label.toUpperCase()}
+          </span>
+          <span className="text-[12px] text-gray-700 font-medium truncate">{label}</span>
+        </div>
+        {sub && <p className="text-[11px] text-gray-400 truncate pl-[calc(0px)] ml-[0px] mt-0.5">{sub}</p>}
+      </div>
+    </div>
+  )
+}
+
+// ── Nota con checkbox ──────────────────────────────────────────────────────────
+function NotaRow({ nota, onToggle }) {
+  return (
+    <div className="flex items-center gap-2 py-1 group">
+      <button
+        onClick={() => onToggle(nota)}
+        className="flex-shrink-0 w-4 h-4 rounded border flex items-center justify-center transition-colors"
+        style={{
+          borderColor: nota.completada ? '#1E9E6A' : '#CBD5E1',
+          background: nota.completada ? '#1E9E6A' : 'transparent',
+        }}
+      >
+        {nota.completada && <Check size={10} color="white" strokeWidth={3} />}
+      </button>
+      <span
+        className="text-[12px] text-gray-600 leading-snug"
+        style={{ textDecoration: nota.completada ? 'line-through' : 'none', color: nota.completada ? '#9CA3AF' : undefined }}
+      >
+        {nota.texto}
+      </span>
+    </div>
+  )
+}
+
+// ── Inline anotar input ────────────────────────────────────────────────────────
+function AnotarInput({ date, onSave }) {
+  const [visible, setVisible] = useState(false)
+  const [val, setVal] = useState('')
+  const inputRef = useRef(null)
+
+  function show() {
+    setVisible(true)
+    setTimeout(() => inputRef.current?.focus(), 30)
+  }
+
+  async function save() {
+    const t = val.trim()
+    if (!t) { setVisible(false); return }
+    await onSave(date, t)
+    setVal('')
+    setTimeout(() => inputRef.current?.focus(), 30)
+  }
+
+  if (!visible) {
+    return (
+      <button
+        onClick={show}
+        className="flex items-center gap-1 text-[11px] text-gray-300 hover:text-[#2570BA] transition-colors mt-1 py-0.5 group"
+      >
+        <Plus size={11} />
+        <span>anotar</span>
+      </button>
+    )
+  }
+
+  return (
+    <div className="flex items-center gap-1.5 mt-1">
+      <div className="w-4 h-4 rounded border border-gray-200 flex-shrink-0" />
+      <input
+        ref={inputRef}
+        type="text"
+        value={val}
+        onChange={e => setVal(e.target.value)}
+        onKeyDown={e => {
+          if (e.key === 'Enter') { e.preventDefault(); save() }
+          if (e.key === 'Escape') { setVisible(false); setVal('') }
+        }}
+        onBlur={() => { if (!val.trim()) setVisible(false) }}
+        placeholder="Anotar…"
+        className="flex-1 text-[12px] bg-transparent border-0 outline-none placeholder:text-gray-300 text-gray-700"
+      />
+      <span className="text-[10px] text-gray-300">↵</span>
+    </div>
+  )
+}
+
+// ── Day block ──────────────────────────────────────────────────────────────────
+function DayBlock({ iso, dayIndex, isToday, audiencias, plazos, tareas, reuniones, notas, onToggleNota, onAddNota }) {
+  const hasItems = (audiencias.length + plazos.length + tareas.length + reuniones.length + notas.length) > 0
+  const isEmpty = !hasItems
+
+  const [,, d] = iso.split('-')
+  const dayLabel = `${DIAS_FULL[dayIndex]}, ${fmtDayHeader(iso)}`
+
+  // Días vacíos que no son hoy: línea compacta
+  if (isEmpty && !isToday) {
+    return (
+      <div
+        className="flex items-center gap-4 px-4 py-2 border-b border-gray-100"
+        style={{ minHeight: 36 }}
+      >
+        <span className="text-[11px] text-gray-300 w-48 flex-shrink-0">{dayLabel}</span>
+        <AnotarInput date={iso} onSave={onAddNota} />
+      </div>
+    )
+  }
+
+  // Día con contenido o hoy
+  return (
+    <div
+      className="border-b border-gray-100"
+      style={isToday ? { background: '#F0F7FF' } : undefined}
+    >
+      {/* Header del día */}
+      <div className="flex items-center gap-2 px-4 pt-3 pb-1">
+        {isToday && (
+          <span
+            className="text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0"
+            style={{ background: '#2570BA', color: 'white' }}
+          >
+            HOY
+          </span>
+        )}
+        <span
+          className="text-[12px] font-semibold"
+          style={{ color: isToday ? '#1A2E4A' : '#374151' }}
+        >
+          {dayLabel}
+        </span>
+      </div>
+
+      {/* Eventos del sistema */}
+      {(audiencias.length + plazos.length + tareas.length + reuniones.length) > 0 && (
+        <div className="px-4 pb-1">
+          {audiencias.map(a => (
+            <EventoItem
+              key={a.id}
+              tipo="audiencia"
+              label={a.cliente_nombre}
+              sub={a.causa_rit ? `${a.causa_rit}${a.tipo ? ' · ' + a.tipo : ''}` : a.tipo}
+              hora={a.hora}
+            />
+          ))}
+          {plazos.map(p => (
+            <EventoItem
+              key={p.id}
+              tipo="plazo"
+              label={p.descripcion}
+              sub={p.cliente_nombre}
+            />
+          ))}
+          {tareas.map(t => (
+            <EventoItem
+              key={t.id}
+              tipo="tarea"
+              label={t.titulo}
+              sub={t.cliente_nombre}
+            />
+          ))}
+          {reuniones.map(r => (
+            <EventoItem
+              key={r.id}
+              tipo="reunion"
+              label={r.titulo || 'Reunión'}
+              sub={null}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Notas sueltas */}
+      {notas.length > 0 && (
+        <div className="px-4 pb-1">
+          {notas.map(n => (
+            <NotaRow key={n.id} nota={n} onToggle={onToggleNota} />
+          ))}
+        </div>
+      )}
+
+      {/* Anotar */}
+      <div className="px-4 pb-3">
+        <AnotarInput date={iso} onSave={onAddNota} />
+      </div>
+    </div>
+  )
+}
+
+// ── Pendiente row (expandible) ─────────────────────────────────────────────────
+function PendienteRow({ p, children, causas, expanded, onToggleExpand, onToggle, onAddChild, onEditNota }) {
+  const [childInput, setChildInput] = useState('')
+  const [showChildInput, setShowChildInput] = useState(false)
+  const [notaDraft, setNotaDraft] = useState(p.notas || '')
+  const childRef = useRef(null)
+  const notaRef = useRef(null)
+
+  const { year: yw, week: ww } = useMemo(() => {
+    const d = p.created_at ? new Date(p.created_at) : new Date()
+    return getISOYearWeek(d)
+  }, [p.created_at])
+
+  const causa = causas.find(c => c.id === p.causa_id)
+
+  function handleChildKeyDown(e) {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      const t = childInput.trim()
+      if (!t) return
+      onAddChild(p.id, t)
+      setChildInput('')
+    }
+    if (e.key === 'Escape') {
+      setShowChildInput(false)
+      setChildInput('')
+    }
+  }
+
+  function handleNotaBlur() {
+    const t = notaDraft.trim()
+    if (t !== (p.notas || '').trim()) {
+      onEditNota(p.id, t)
+    }
+  }
+
+  return (
+    <div
+      className="border-b border-gray-100"
+      style={expanded ? { background: '#F8FAFC', borderLeft: '2px solid #2570BA' } : { borderLeft: '2px solid transparent' }}
+    >
+      {/* Fila principal */}
+      <div className="flex items-center gap-2 px-4 py-2 group">
+        {/* Checkbox */}
+        <button
+          onClick={() => onToggle(p)}
+          className="flex-shrink-0 w-4 h-4 rounded border flex items-center justify-center transition-colors"
+          style={{
+            borderColor: '#CBD5E1',
+            background: 'transparent',
+          }}
+        >
+        </button>
+
+        {/* Texto */}
+        <span className="flex-1 text-[12px] text-gray-700 leading-snug">{p.texto}</span>
+
+        {/* Chips */}
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          {causa && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 font-medium truncate max-w-[120px]">
+              {causa.cliente_nombre}
+            </span>
+          )}
+          {(children.length > 0 || p.notas) && (
+            <span className="text-[10px] text-gray-400">{children.length > 0 ? `${children.length} punto${children.length > 1 ? 's' : ''}` : ''}</span>
+          )}
+        </div>
+
+        {/* Toggle expand */}
+        <button
+          onClick={onToggleExpand}
+          className="p-1 text-gray-300 hover:text-gray-500 transition-colors"
+        >
+          {expanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+        </button>
+      </div>
+
+      {/* Expansión */}
+      {expanded && (
+        <div className="px-8 pb-3 space-y-1">
+          {/* Punteo (children) */}
+          {children.map(c => (
+            <div key={c.id} className="flex items-center gap-2 py-0.5">
+              <button
+                onClick={() => onToggle(c)}
+                className="flex-shrink-0 w-3.5 h-3.5 rounded border flex items-center justify-center"
+                style={{ borderColor: '#CBD5E1' }}
+              />
+              <span className="text-[11px] text-gray-600">{c.texto}</span>
+            </div>
+          ))}
+
+          {/* Input nuevo punto */}
+          {showChildInput ? (
+            <div className="flex items-center gap-2 py-0.5">
+              <div className="w-3.5 h-3.5 rounded border border-gray-200 flex-shrink-0" />
+              <input
+                ref={childRef}
+                type="text"
+                value={childInput}
+                onChange={e => setChildInput(e.target.value)}
+                onKeyDown={handleChildKeyDown}
+                onBlur={() => { if (!childInput.trim()) setShowChildInput(false) }}
+                placeholder="Nuevo punto…"
+                autoFocus
+                className="flex-1 text-[11px] bg-transparent border-0 outline-none placeholder:text-gray-300 text-gray-700"
+              />
+            </div>
+          ) : (
+            <button
+              onClick={() => { setShowChildInput(true); setTimeout(() => childRef.current?.focus(), 20) }}
+              className="flex items-center gap-1 text-[10px] text-gray-300 hover:text-[#2570BA] transition-colors mt-0.5"
+            >
+              <Plus size={10} />
+              <span>añadir punto</span>
+            </button>
+          )}
+
+          {/* Línea separadora */}
+          <div className="border-t border-dashed border-gray-200 my-2" />
+
+          {/* Notas libres */}
+          <textarea
+            ref={notaRef}
+            value={notaDraft}
+            onChange={e => setNotaDraft(e.target.value)}
+            onBlur={handleNotaBlur}
+            placeholder="Notas…"
+            rows={2}
+            className="w-full text-[11px] text-gray-600 bg-transparent border-0 outline-none resize-none placeholder:text-gray-300 leading-relaxed"
+          />
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Main component ─────────────────────────────────────────────────────────────
 export default function MiSemana() {
+  const navigate = useNavigate()
   const todayAnchor = getISOYearWeek(new Date())
+  const TODAY = fmtIso(new Date())
+
   const [anchor, setAnchor] = useState(todayAnchor)
-  const [causas,  setCausas]  = useState([])
-  const [rows,    setRows]    = useState({})
-  const rowsRef = useRef({}) // siempre tiene el valor más reciente de rows
   const [loading, setLoading] = useState(true)
-  const [saving,  setSaving]  = useState(false)
-  const [saved,   setSaved]   = useState(false)
+
+  // Semana: items por fecha
+  const [audByDate,     setAudByDate]     = useState({})
+  const [plazosByDate,  setPlazosByDate]  = useState({})
+  const [tareasByDate,  setTareasByDate]  = useState({})
+  const [reunByDate,    setReunByDate]    = useState({})
+  const [notasByDate,   setNotasByDate]   = useState({})
+
+  // Pendientes
+  const [pendientes,    setPendientes]    = useState([])
+  const [pendInput,     setPendInput]     = useState('')
+  const [pendTab,       setPendTab]       = useState('lista')
+  const [expandedPend,  setExpandedPend]  = useState(null)
+
+  // Causas (para labels en pendientes)
+  const [causas, setCausas] = useState([])
+
+  // Resolving animation
+  const [resolvingIds, setResolvingIds]   = useState(new Set())
+  const resolveBatches = useRef({})
+  const idToBatch      = useRef({})
 
   const { year, week } = anchor
-  const monday    = getMondayOfWeek(year, week)
-  const sunday    = new Date(monday)
-  sunday.setUTCDate(monday.getUTCDate() + 6)
-  const mondayIso = fmtIso(monday)
-  const sundayIso = fmtIso(sunday)
-  const key       = semanaKey(year, week)
+  const weekDays = useMemo(() => getWeekDays(year, week), [year, week])
+  const mondayIso = weekDays[0]
+  const sundayIso = weekDays[6]
   const isCurrentWeek = year === todayAnchor.year && week === todayAnchor.week
 
-  // Load causas once
+  // ── Fetch week data ─────────────────────────────────────────────────────────
   useEffect(() => {
-    supabase
-      .from('causas')
-      .select('id, materia, rit, ruc, cliente_nombre, estado')
-      .in('estado', ['Abierta', 'Revisar'])
-      .order('cliente_nombre', { ascending: true })
-      .then(({ data }) => setCausas(data || []))
-  }, [])
-
-  // Mantiene rowsRef sincronizado y persiste en localStorage
-  useEffect(() => {
-    rowsRef.current = rows
-    if (Object.keys(rows).length === 0) return
-    localStorage.setItem(`mi_semana_${key}`, JSON.stringify(rows))
-  }, [rows, key])
-
-  const notaKey  = `NOTA-${key}` // semana_key para filas de nota (distintas de SIAU/PJUD)
-  const notaTimers = useRef({}) // debounce timers por causa_id
-
-  // Load week data when anchor or causas change
-  useEffect(() => {
-    if (causas.length === 0) return
     setLoading(true)
 
+    function groupBy(arr, key) {
+      return (arr || []).reduce((m, r) => {
+        const k = r[key]
+        if (!m[k]) m[k] = []
+        m[k].push(r)
+        return m
+      }, {})
+    }
+
     Promise.all([
-      // Fila SIAU/PJUD (es_revision_semanal = true)
-      supabase.from('revisiones')
-        .select('id, causa_id, siau_revisado, pjud_revisado')
-        .eq('semana_key', key)
-        .eq('es_revision_semanal', true),
-      // Fila nota (seguimiento normal, semana_key = 'NOTA-...')
-      supabase.from('revisiones')
-        .select('id, causa_id, por_hacer')
-        .eq('semana_key', notaKey),
-    ]).then(([{ data: siauData }, { data: notaData }]) => {
-      const initial = {}
-      for (const c of causas) {
-        const siauRow = (siauData || []).find(r => r.causa_id === c.id)
-        const notaRow = (notaData || []).find(r => r.causa_id === c.id)
-        initial[c.id] = {
-          siau:       siauRow?.siau_revisado ?? false,
-          pjud:       siauRow?.pjud_revisado ?? false,
-          nota:       notaRow?.por_hacer ?? '',
-          existingId: siauRow?.id ?? null,
-          notaId:     notaRow?.id ?? null,
-        }
-      }
-      setRows(initial)
+      supabase.from('audiencias')
+        .select('id, fecha, hora, rit, causa_rit, cliente_nombre, tipo')
+        .gte('fecha', mondayIso).lte('fecha', sundayIso)
+        .order('hora'),
+      supabase.from('plazos')
+        .select('id, descripcion, fecha_limite, causa_rit, cliente_nombre, urgente')
+        .gte('fecha_limite', mondayIso).lte('fecha_limite', sundayIso),
+      supabase.from('tareas')
+        .select('id, titulo, fecha_vencimiento, cliente_nombre, estado, prioridad')
+        .eq('estado', 'Pendiente')
+        .gte('fecha_vencimiento', mondayIso).lte('fecha_vencimiento', sundayIso),
+      supabase.from('reuniones')
+        .select('id, fecha_jueves, titulo')
+        .gte('fecha_jueves', mondayIso).lte('fecha_jueves', sundayIso),
+      supabase.from('agenda_notas')
+        .select('*')
+        .gte('fecha', mondayIso).lte('fecha', sundayIso)
+        .order('hora'),
+    ]).then(([
+      { data: audData },
+      { data: plazosData },
+      { data: tareasData },
+      { data: reunData },
+      { data: notasData },
+    ]) => {
+      setAudByDate(groupBy(audData, 'fecha'))
+      setPlazosByDate(groupBy(plazosData, 'fecha_limite'))
+      setTareasByDate(groupBy(tareasData, 'fecha_vencimiento'))
+      setReunByDate(groupBy(reunData, 'fecha_jueves'))
+      setNotasByDate(groupBy(notasData, 'fecha'))
       setLoading(false)
     })
-  }, [key, causas.length])
+  }, [mondayIso, sundayIso])
 
-  // Persiste localStorage para UI veloz (solo lectura, Supabase es la fuente de verdad)
+  // ── Fetch pendientes and causas (once) ─────────────────────────────────────
   useEffect(() => {
-    if (Object.keys(rows).length === 0) return
-    localStorage.setItem(`mi_semana_${key}`, JSON.stringify(rows))
-  }, [rows, key])
+    Promise.all([
+      supabase.from('agenda_pendientes')
+        .select('*')
+        .eq('resuelto', false)
+        .order('created_at', { ascending: true }),
+      supabase.from('causas')
+        .select('id, rit, cliente_nombre')
+        .in('estado', ['Abierta', 'Revisar', 'En tramitación']),
+    ]).then(([{ data: pData }, { data: cData }]) => {
+      setPendientes(pData || [])
+      setCausas(cData || [])
+    })
+  }, [])
 
-  // Guarda SIAU/PJUD de una causa
-  async function saveSiauPjud(causa, r) {
-    const hasDirty = r.siau || r.pjud
-    if (r.existingId) {
-      await supabase.from('revisiones').update({
-        siau_revisado: r.siau,
-        pjud_revisado: r.pjud,
-      }).eq('id', r.existingId)
-    } else if (hasDirty) {
-      const { data } = await supabase.from('revisiones').insert({
-        causa_id:            causa.id,
-        causa_rit:           causa.rit ?? null,
-        cliente_nombre:      causa.cliente_nombre,
-        semana_key:          key,
-        fecha:               mondayIso,
-        fecha_revision:      mondayIso,
-        siau_revisado:       r.siau,
-        pjud_revisado:       r.pjud,
-        es_revision_semanal: true,
-        responsable:         'MT',
-      }).select('id').single()
-      if (data?.id)
-        setRows(prev => ({ ...prev, [causa.id]: { ...prev[causa.id], existingId: data.id } }))
+  // ── Conversión de notas sin marcar de semana anterior → pendientes ──────────
+  // Al montar, si hay notas sin marcar de la semana pasada, las convierte
+  useEffect(() => {
+    const prevWeek = shiftWeeks(todayAnchor, -1)
+    const prevDays = getWeekDays(prevWeek.year, prevWeek.week)
+    const prevMonday = prevDays[0]
+    const prevSunday = prevDays[6]
+
+    supabase.from('agenda_notas')
+      .select('*')
+      .eq('completada', false)
+      .gte('fecha', prevMonday).lte('fecha', prevSunday)
+      .then(async ({ data }) => {
+        if (!data || data.length === 0) return
+        // Convertir a pendientes
+        const rows = data.map(n => ({
+          texto: n.texto,
+          resuelto: false,
+          parent_id: null,
+          origen_nota_fecha: n.fecha,
+        }))
+        const { data: inserted } = await supabase.from('agenda_pendientes')
+          .insert(rows).select()
+        // Marcar las notas como completadas para no convertirlas de nuevo
+        await supabase.from('agenda_notas')
+          .update({ completada: true })
+          .in('id', data.map(n => n.id))
+        if (inserted?.length) {
+          setPendientes(prev => [...prev, ...inserted])
+        }
+      })
+  }, []) // solo al montar
+
+  // ── Handlers: semana ────────────────────────────────────────────────────────
+  const handleAddNota = useCallback(async (date, texto) => {
+    const { data, error } = await supabase.from('agenda_notas')
+      .insert([{ fecha: date, texto, tipo: 'checkbox', completada: false }])
+      .select().single()
+    if (error) { console.error('[agenda_notas] insert:', error.message); return }
+    if (data) {
+      setNotasByDate(prev => ({ ...prev, [date]: [...(prev[date] || []), data] }))
     }
-  }
+  }, [])
 
-  // Guarda la nota de una causa como entrada de seguimiento normal
-  async function saveNota(causa, r) {
-    const texto = (r.nota ?? '').trim()
-    if (r.notaId) {
-      if (texto) {
-        await supabase.from('revisiones').update({ por_hacer: texto }).eq('id', r.notaId)
-      } else {
-        await supabase.from('revisiones').delete().eq('id', r.notaId)
-        setRows(prev => ({ ...prev, [causa.id]: { ...prev[causa.id], notaId: null } }))
-      }
-    } else if (texto) {
-      const { data, error } = await supabase.from('revisiones').insert({
-        causa_id:       causa.id,
-        causa_rit:      causa.rit ?? null,
-        cliente_nombre: causa.cliente_nombre,
-        semana_key:     notaKey,
-        fecha_revision: mondayIso,
-        fecha:          mondayIso,
-        por_hacer:      texto,
-        que_se_hizo:    'Pendiente',
-        revisada:       false,
-      }).select('id').single()
-      if (error) console.error('[saveNota] insert error:', error.message, error.details)
-      if (data?.id)
-        setRows(prev => ({ ...prev, [causa.id]: { ...prev[causa.id], notaId: data.id } }))
+  const handleToggleNota = useCallback(async (nota) => {
+    const { error } = await supabase.from('agenda_notas')
+      .update({ completada: !nota.completada }).eq('id', nota.id)
+    if (!error) {
+      setNotasByDate(prev => ({
+        ...prev,
+        [nota.fecha]: (prev[nota.fecha] || []).map(n =>
+          n.id === nota.id ? { ...n, completada: !n.completada } : n),
+      }))
     }
+  }, [])
+
+  // ── Handlers: pendientes ────────────────────────────────────────────────────
+  async function handleAddPendiente() {
+    const texto = pendInput.trim()
+    if (!texto) return
+    setPendInput('')
+    const { data, error } = await supabase.from('agenda_pendientes')
+      .insert([{ texto, resuelto: false, parent_id: null }]).select().single()
+    if (error) { console.error('[agenda_pendientes] insert:', error.message); return }
+    if (data) setPendientes(prev => [...prev, data])
   }
 
-  // Guarda la nota con debounce (800ms) — evita guardados en cada tecla
-  function scheduleNotaSave(causa, texto) {
-    clearTimeout(notaTimers.current[causa.id])
-    notaTimers.current[causa.id] = setTimeout(() => {
-      const r = rowsRef.current[causa.id]
-      if (r) saveNota(causa, { ...r, nota: texto })
-    }, 800)
+  function handleTogglePendiente(p) {
+    const children = pendientes.filter(x => x.parent_id === p.id)
+    const ids = p.parent_id ? [p.id] : [p.id, ...children.map(c => c.id)]
+
+    setResolvingIds(prev => { const n = new Set(prev); ids.forEach(id => n.add(id)); return n })
+    ids.forEach(id => { idToBatch.current[id] = ids[0] })
+
+    supabase.from('agenda_pendientes')
+      .update({ resuelto: true, resuelto_at: new Date().toISOString() }).in('id', ids)
+      .then(({ error }) => { if (error) console.error('[agenda_pendientes] toggle:', error.message) })
+
+    const timer = setTimeout(() => {
+      setPendientes(prev => prev.filter(x => !ids.includes(x.id)))
+      setResolvingIds(prev => { const n = new Set(prev); ids.forEach(id => n.delete(id)); return n })
+      ids.forEach(id => delete idToBatch.current[id])
+      delete resolveBatches.current[ids[0]]
+    }, 3000)
+    resolveBatches.current[ids[0]] = { ids, timer }
   }
 
-  async function saveCausa(causa, rowOverride) {
-    const r = rowOverride ?? rows[causa.id]
-    if (!r) return
-    await Promise.all([saveSiauPjud(causa, r), saveNota(causa, r)])
+  function handleUndoPendiente(batchKey) {
+    const batch = resolveBatches.current[batchKey]
+    if (!batch) return
+    clearTimeout(batch.timer)
+    delete resolveBatches.current[batchKey]
+    supabase.from('agenda_pendientes')
+      .update({ resuelto: false, resuelto_at: null }).in('id', batch.ids)
+      .then(({ error }) => { if (error) console.error('[agenda_pendientes] undo:', error.message) })
+    setResolvingIds(prev => { const n = new Set(prev); batch.ids.forEach(id => n.delete(id)); return n })
+    batch.ids.forEach(id => delete idToBatch.current[id])
   }
 
-  async function saveWeek(silent = false) {
-    if (!silent) setSaving(true)
-    for (const causa of causas) {
-      await saveCausa(causa)
+  async function handleAddChild(parentId, texto) {
+    const { data, error } = await supabase.from('agenda_pendientes')
+      .insert([{ texto, resuelto: false, parent_id: parentId }]).select().single()
+    if (error) { console.error('[agenda_pendientes] insert child:', error.message); return }
+    if (data) setPendientes(prev => [...prev, data])
+  }
+
+  async function handleEditNota(id, notas) {
+    await supabase.from('agenda_pendientes').update({ notas: notas || null }).eq('id', id)
+    setPendientes(prev => prev.map(p => p.id === id ? { ...p, notas } : p))
+  }
+
+  // ── Derived pendientes data ─────────────────────────────────────────────────
+  const mondayDate = new Date(mondayIso + 'T00:00:00Z')
+
+  const rootPendientes    = useMemo(() => pendientes.filter(p => !p.parent_id), [pendientes])
+  const childrenByParent  = useMemo(() => {
+    const m = {}
+    pendientes.filter(p => p.parent_id).forEach(c => {
+      if (!m[c.parent_id]) m[c.parent_id] = []
+      m[c.parent_id].push(c)
+    })
+    return m
+  }, [pendientes])
+
+  // Split: de semanas anteriores vs esta semana
+  const [pendAntes, pendEsta] = useMemo(() => {
+    const antes = [], esta = []
+    for (const p of rootPendientes) {
+      const created = p.created_at ? new Date(p.created_at) : new Date()
+      if (created < mondayDate) antes.push(p)
+      else esta.push(p)
     }
-    if (!silent) {
-      setSaving(false)
-      setSaved(true)
-      setTimeout(() => setSaved(false), 2500)
-    }
+    return [antes, esta]
+  }, [rootPendientes, mondayDate])
+
+  // Filtros por tab
+  function filterByTab(list) {
+    if (pendTab === 'por-causa') return list.filter(p => p.causa_id)
+    if (pendTab === 'sin-causa') return list.filter(p => !p.causa_id)
+    return list
   }
 
-  async function navigate(delta) {
-    await saveWeek(true)
+  const antesFiltered = filterByTab(pendAntes)
+  const estaFiltered  = filterByTab(pendEsta)
+
+  // Chip de semana para los de antes
+  function semChip(p) {
+    const d = p.created_at ? new Date(p.created_at) : new Date()
+    const { year: y, week: w } = getISOYearWeek(d)
+    return `Sem ${w}`
+  }
+
+  // ── Navigate ────────────────────────────────────────────────────────────────
+  function handleNav(delta) {
     setAnchor(prev => shiftWeeks(prev, delta))
   }
 
-  const siauCount = Object.values(rows).filter(r => r.siau).length
-  const pjudCount = Object.values(rows).filter(r => r.pjud).length
-
+  // ── Render ──────────────────────────────────────────────────────────────────
   return (
-    <div className="h-full flex flex-col bg-[#fafafa]">
+    <div className="h-full flex flex-col bg-[#F5F6F8] overflow-hidden">
 
       {/* ── Header ── */}
       <div className="bg-[#1a2e4a] px-6 py-4 flex items-center justify-between gap-4 flex-shrink-0">
@@ -221,45 +677,26 @@ export default function MiSemana() {
           </div>
           <div>
             <h1 className="text-white font-bold text-[14px] leading-tight">Mi Semana</h1>
-            <p className="text-white/40 text-[11px]">Revisión semanal de causas activas</p>
+            <p className="text-white/40 text-[11px]">Agenda y pendientes</p>
           </div>
         </div>
 
         <div className="flex items-center gap-3">
-          {/* Resumen badges */}
-          {(siauCount > 0 || pjudCount > 0) && (
-            <div className="flex items-center gap-1.5">
-              {siauCount > 0 && (
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/10 text-white/60">
-                  {siauCount} SIAU
-                </span>
-              )}
-              {pjudCount > 0 && (
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/10 text-white/60">
-                  {pjudCount} PJUD
-                </span>
-              )}
-            </div>
-          )}
-
-          {/* Week navigation */}
           <div className="flex items-center gap-0.5 bg-white/10 rounded-xl px-1 py-1">
             <button
-              onClick={() => navigate(-1)}
+              onClick={() => handleNav(-1)}
               className="p-1.5 rounded-lg text-white/50 hover:text-white hover:bg-white/10 transition-colors"
             >
               <ChevronLeft size={14} />
             </button>
-            <div className="px-3 text-center" style={{ minWidth: 200 }}>
-              <p className="text-white font-semibold text-[12px]">
-                Semana {week} · {fmtDay(mondayIso)} – {fmtDay(sundayIso)}
-              </p>
+            <div className="px-4 text-center" style={{ minWidth: 220 }}>
+              <p className="text-white font-semibold text-[12px]">{semanaLabel(anchor)}</p>
               {!isCurrentWeek && (
                 <p className="text-white/30 text-[10px] leading-tight">{year}</p>
               )}
             </div>
             <button
-              onClick={() => navigate(1)}
+              onClick={() => handleNav(1)}
               className="p-1.5 rounded-lg text-white/50 hover:text-white hover:bg-white/10 transition-colors"
             >
               <ChevronRight size={14} />
@@ -268,7 +705,7 @@ export default function MiSemana() {
 
           {!isCurrentWeek && (
             <button
-              onClick={() => { saveWeek(true); setAnchor(todayAnchor) }}
+              onClick={() => setAnchor(todayAnchor)}
               className="text-white/40 hover:text-white text-[11px] font-medium transition-colors"
             >
               Semana actual
@@ -277,130 +714,180 @@ export default function MiSemana() {
         </div>
       </div>
 
-      {/* ── Table ── */}
-      <div className="flex-1 overflow-auto">
-        {loading ? (
-          <div className="flex items-center justify-center h-64">
-            <div className="w-5 h-5 border-2 border-[#1a2e4a]/20 border-t-[#1a2e4a] rounded-full animate-spin" />
+      {/* ── Content (scrollable) ── */}
+      <div className="flex-1 overflow-y-auto">
+
+        {/* ── Sección semana ── */}
+        <div className="bg-white border-b border-gray-200">
+          {/* Label sección */}
+          <div className="px-4 py-2 border-b border-gray-100 bg-gray-50">
+            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">La semana</span>
           </div>
-        ) : causas.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-64 text-center">
-            <CalendarCheck size={32} className="text-gray-200 mb-3" strokeWidth={1.5} />
-            <p className="text-[13px] text-gray-400 font-medium">Sin causas activas</p>
-            <p className="text-[11px] text-gray-300 mt-1">Las causas con estado "Abierta" o "Revisar" aparecen aquí</p>
-          </div>
-        ) : (
-          <table className="w-full text-left" style={{ borderCollapse: 'collapse' }}>
-            <colgroup>
-              <col style={{ width: '44%' }} />
-              <col style={{ width: 80 }} />
-              <col style={{ width: 80 }} />
-              <col />
-            </colgroup>
-            <thead className="sticky top-0 z-10 bg-gray-50/95" style={{ backdropFilter: 'blur(4px)', borderBottom: '1px solid #e5e7eb' }}>
-              <tr>
-                <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Causa</th>
-                <th className="px-4 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest text-center">SIAU</th>
-                <th className="px-4 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest text-center">PJUD</th>
-                <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Nota de la semana</th>
-              </tr>
-            </thead>
-            <tbody>
-              {causas.map((causa, i) => {
-                const r = rows[causa.id] ?? { siau: false, pjud: false, nota: '', existingId: null }
-                const touched = r.siau || r.pjud || r.nota.trim()
-                return (
-                  <tr
-                    key={causa.id}
-                    className="group transition-colors hover:bg-blue-50/20"
-                    style={{ borderBottom: '1px solid #f0f0f0', background: touched ? 'rgba(37,112,186,0.02)' : i % 2 === 0 ? '#fff' : 'rgba(250,250,250,0.8)' }}
-                  >
-                    {/* Causa */}
-                    <td className="px-6 py-3 align-middle">
-                      <p className="text-[13px] font-semibold text-[#1a2e4a] leading-tight">{causa.cliente_nombre}</p>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        {causa.rit && (
-                          <span className="text-[10px] text-gray-400 font-mono">{causa.rit}</span>
-                        )}
-                        {causa.materia && (
-                          <span className="text-[10px] text-gray-400 truncate max-w-[260px]">{causa.materia}</span>
-                        )}
-                      </div>
-                      {causa.ruc && (
-                        <p className="text-[10px] text-gray-400 font-mono mt-0.5 select-all">{causa.ruc}</p>
-                      )}
-                    </td>
 
-                    {/* SIAU */}
-                    <td className="px-4 py-3 align-middle text-center">
-                      <input
-                        type="checkbox"
-                        checked={r.siau}
-                        onChange={e => {
-                          const next = { ...r, siau: e.target.checked }
-                          setRows(prev => ({ ...prev, [causa.id]: next }))
-                          saveSiauPjud(causa, next)
-                        }}
-                        style={{ accentColor: '#1a2e4a', width: 16, height: 16, cursor: 'pointer' }}
-                      />
-                    </td>
-
-                    {/* PJUD */}
-                    <td className="px-4 py-3 align-middle text-center">
-                      <input
-                        type="checkbox"
-                        checked={r.pjud}
-                        onChange={e => {
-                          const next = { ...r, pjud: e.target.checked }
-                          setRows(prev => ({ ...prev, [causa.id]: next }))
-                          saveSiauPjud(causa, next)
-                        }}
-                        style={{ accentColor: '#1a2e4a', width: 16, height: 16, cursor: 'pointer' }}
-                      />
-                    </td>
-
-                    {/* Nota */}
-                    <td className="px-6 py-3 align-middle">
-                      <input
-                        type="text"
-                        value={r.nota}
-                        onChange={e => {
-                          const texto = e.target.value
-                          setRows(prev => ({ ...prev, [causa.id]: { ...prev[causa.id], nota: texto } }))
-                          scheduleNotaSave(causa, texto)
-                        }}
-                        onBlur={e => saveNota(causa, { ...r, nota: e.target.value })}
-                        placeholder="Nota de la semana…"
-                        className="w-full text-[12px] text-gray-700 bg-transparent border-0 outline-none placeholder:text-gray-300 py-1 px-2 -mx-2 rounded-lg focus:bg-white focus:border focus:border-blue-200 transition-all"
-                      />
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        )}
-      </div>
-
-      {/* ── Footer ── */}
-      <div className="flex-shrink-0 border-t border-gray-100 bg-white px-6 py-4 flex items-center justify-between">
-        <p className="text-[11px] text-gray-400">
-          {causas.length} causas activas · Notas y checkboxes se guardan automáticamente
-        </p>
-        <button
-          onClick={() => saveWeek(false)}
-          disabled={saving}
-          className="flex items-center gap-2 bg-[#1a2e4a] text-white text-[12px] font-semibold px-5 py-2.5 rounded-xl hover:bg-[#1a2e4a]/90 transition-colors disabled:opacity-50 shadow-sm"
-        >
-          {saving ? (
-            <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-          ) : saved ? (
-            <CheckCircle2 size={13} />
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="w-5 h-5 border-2 border-[#1a2e4a]/20 border-t-[#1a2e4a] rounded-full animate-spin" />
+            </div>
           ) : (
-            <Save size={13} />
+            <div>
+              {weekDays.map((iso, i) => (
+                <DayBlock
+                  key={iso}
+                  iso={iso}
+                  dayIndex={i}
+                  isToday={iso === TODAY}
+                  audiencias={audByDate[iso] || []}
+                  plazos={plazosByDate[iso] || []}
+                  tareas={tareasByDate[iso] || []}
+                  reuniones={reunByDate[iso] || []}
+                  notas={notasByDate[iso] || []}
+                  onToggleNota={handleToggleNota}
+                  onAddNota={handleAddNota}
+                />
+              ))}
+            </div>
           )}
-          {saved ? 'Guardado ✓' : 'Guardar semana →'}
-        </button>
+        </div>
+
+        {/* ── Sección pendientes ── */}
+        <div className="bg-white">
+          {/* Label sección */}
+          <div className="px-4 py-2 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
+            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Pendientes</span>
+            <span className="text-[10px] text-gray-300">{rootPendientes.length} sin resolver</span>
+          </div>
+
+          {/* Input nuevo pendiente */}
+          <div className="px-4 py-3 border-b border-gray-100">
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-4 rounded border border-gray-200 flex-shrink-0" />
+              <input
+                type="text"
+                value={pendInput}
+                onChange={e => setPendInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddPendiente() } }}
+                placeholder="Anotar pendiente…"
+                className="flex-1 text-[12px] text-gray-700 bg-transparent border-0 outline-none placeholder:text-gray-300"
+              />
+              <span className="text-[10px] text-gray-300">↵</span>
+            </div>
+          </div>
+
+          {/* Tabs */}
+          <div className="flex border-b border-gray-100">
+            {[['lista', 'Lista'], ['por-causa', 'Por causa'], ['sin-causa', 'Sin causa']].map(([k, label]) => (
+              <button
+                key={k}
+                onClick={() => setPendTab(k)}
+                className="px-4 py-2 text-[11px] font-medium transition-colors border-b-2"
+                style={{
+                  color: pendTab === k ? '#2570BA' : '#9CA3AF',
+                  borderBottomColor: pendTab === k ? '#2570BA' : 'transparent',
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {/* Resolving undo chips */}
+          {resolvingIds.size > 0 && (() => {
+            const batches = Object.entries(resolveBatches.current)
+              .filter(([, b]) => b.ids.some(id => !pendientes.find(p => p.id === id && !resolvingIds.has(id))))
+            return batches.length > 0 ? (
+              <div className="px-4 py-2 flex flex-wrap gap-2 border-b border-gray-100 bg-green-50">
+                {batches.map(([key, batch]) => (
+                  <button
+                    key={key}
+                    onClick={() => handleUndoPendiente(key)}
+                    className="text-[11px] text-green-700 font-medium hover:underline"
+                  >
+                    Deshacer
+                  </button>
+                ))}
+              </div>
+            ) : null
+          })()}
+
+          {/* Pendientes de semanas anteriores */}
+          {antesFiltered.length > 0 && (
+            <div>
+              <div className="px-4 py-2 bg-amber-50 border-b border-amber-100">
+                <span className="text-[10px] font-bold text-amber-600 uppercase tracking-widest">
+                  Vienen de semanas anteriores · {antesFiltered.length}
+                </span>
+              </div>
+              {antesFiltered
+                .filter(p => !resolvingIds.has(p.id))
+                .map(p => (
+                  <div key={p.id} className="relative">
+                    <PendienteRow
+                      p={p}
+                      children={childrenByParent[p.id] || []}
+                      causas={causas}
+                      expanded={expandedPend === p.id}
+                      onToggleExpand={() => setExpandedPend(prev => prev === p.id ? null : p.id)}
+                      onToggle={handleTogglePendiente}
+                      onAddChild={handleAddChild}
+                      onEditNota={handleEditNota}
+                    />
+                    <span
+                      className="absolute right-10 top-2.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+                      style={{ background: '#FEF3C7', color: '#92400E' }}
+                    >
+                      {semChip(p)}
+                    </span>
+                  </div>
+                ))}
+            </div>
+          )}
+
+          {/* Pendientes de esta semana */}
+          {estaFiltered.length > 0 && (
+            <div>
+              {antesFiltered.length > 0 && (
+                <div className="px-4 py-2 bg-gray-50 border-b border-gray-100">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Esta semana</span>
+                </div>
+              )}
+              {estaFiltered
+                .filter(p => !resolvingIds.has(p.id))
+                .map(p => (
+                  <PendienteRow
+                    key={p.id}
+                    p={p}
+                    children={childrenByParent[p.id] || []}
+                    causas={causas}
+                    expanded={expandedPend === p.id}
+                    onToggleExpand={() => setExpandedPend(prev => prev === p.id ? null : p.id)}
+                    onToggle={handleTogglePendiente}
+                    onAddChild={handleAddChild}
+                    onEditNota={handleEditNota}
+                  />
+                ))}
+            </div>
+          )}
+
+          {rootPendientes.length === 0 && (
+            <div className="px-4 py-8 text-center">
+              <p className="text-[12px] text-gray-300">Sin pendientes · todo en orden</p>
+            </div>
+          )}
+
+          {/* Link a página completa */}
+          <div className="px-4 py-3 border-t border-gray-100 flex justify-end">
+            <button
+              onClick={() => navigate('/apuntes')}
+              className="flex items-center gap-1.5 text-[11px] text-[#2570BA] hover:underline"
+            >
+              Ver todos los pendientes
+              <ExternalLink size={11} />
+            </button>
+          </div>
+        </div>
+
+        {/* Espacio al pie */}
+        <div className="h-8" />
       </div>
     </div>
   )
