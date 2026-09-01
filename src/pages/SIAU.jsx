@@ -61,6 +61,7 @@ function mapRow(row) {
     causa_rit:        row.causa_rit         || '',
     causa_ruc:        row.causa_ruc         || '',
     cliente_nombre:   row.cliente_nombre    || '',
+    causa_id:         row.causa_id          || null,
   }
 }
 
@@ -658,285 +659,257 @@ export function SolicitudesTable({ grupo, registrosAll, onUpdate, onAdd, onDelet
   )
 }
 
-// ── Siau-specific accordion row (wraps shared ClienteAccordionRow) ────────────
-function ClienteRow({ grupo, registrosAll, isExpanded, onToggle, onSelectCausa, onOpenCausa, hasActiveCausas }) {
-  const { clienteNombre, causasGrupos } = grupo
-  const total      = registrosAll.filter(r => r.cliente_nombre === clienteNombre).length
-  const pendientes = registrosAll.filter(r => r.cliente_nombre === clienteNombre && r.estado === 'Pendiente').length
+// ── CausaGroupRow: one row per causa, lazy-loads records on expand ────────────
+function CausaGroupRow({ causa, metaRows, records, isLoading, isExpanded, onToggle, onUpdate, onAdd, onDelete, allCausas, onOpenCausa }) {
+  const meta  = useMemo(() => metaRows.filter(m => m.causa_id === causa.id), [metaRows, causa.id])
+  const total = meta.length
+  const pend  = meta.filter(m => m.estado === 'Pendiente').length
+  const urg   = meta.filter(m => m.estado === 'Urgente').length
+  const ini   = (causa.cliente_nombre || '?').trim().split(/\s+/).slice(0, 2).map(w => w[0] || '').join('').toUpperCase()
+
+  const grupo = useMemo(() => ({
+    causa_rit:      causa.rit || null,
+    causa_ruc:      causa.ruc || null,
+    causa_key:      causa.id,
+    causaInfo:      causa,
+    cliente_nombre: causa.cliente_nombre || '',
+  }), [causa])
+
+  const localOnAdd = useCallback((newReg) => onAdd(causa.id, newReg), [causa.id, onAdd])
 
   return (
-    <ClienteAccordionRow
-      clienteNombre={clienteNombre}
-      hasActiveCausas={hasActiveCausas}
-      isExpanded={isExpanded}
-      onToggle={onToggle}
-      subtitle={`${causasGrupos.length} causa${causasGrupos.length !== 1 ? 's' : ''}${total > 0 ? ` · ${total} solicitud${total !== 1 ? 'es' : ''}` : ''}`}
-      badge={pendientes > 0 ? (
-        <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-100">
-          {pendientes} pendiente{pendientes !== 1 ? 's' : ''}
-        </span>
-      ) : null}
-    >
-      {causasGrupos.map(g => {
-        const count = registrosAll.filter(r => matchCausa(r, g, clienteNombre)).length
-        const pend  = registrosAll.filter(r => matchCausa(r, g, clienteNombre) && r.estado === 'Pendiente').length
-        return (
-          <CausaAccordionCard
-            key={g.causa_key}
-            rit={g.causa_rit}
-            ruc={g.causa_ruc}
-            materia={g.causaInfo?.materia}
-            rightContent={<>
-              {pend > 0 && (
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-100">
-                  {pend} pend.
-                </span>
-              )}
-              <span className="text-[10px] text-gray-400">{count} sol.</span>
-            </>}
-            onClick={() => onSelectCausa(clienteNombre, g)}
-            linkLabel={g.causa_key ? 'Ver causa →' : undefined}
-            onLinkClick={g.causa_key ? () => onOpenCausa?.(g) : undefined}
-          />
-        )
-      })}
-    </ClienteAccordionRow>
+    <div className={`border border-gray-100 rounded-2xl overflow-hidden transition-shadow ${isExpanded ? 'shadow-sm' : ''}`}>
+      <button onClick={() => onToggle(causa.id)}
+        className={`w-full flex items-center gap-3 px-5 py-3.5 text-left transition-colors ${isExpanded ? 'bg-[#1a2e4a]/[0.04]' : 'bg-white hover:bg-gray-50'}`}>
+        <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-[11px] font-bold bg-[#2570BA] flex-shrink-0 select-none">{ini}</div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[12px] text-gray-400 font-medium">{causa.cliente_nombre}</span>
+            <CausaIdentChip rit={causa.rit} ruc={causa.ruc} size="sm" />
+          </div>
+          {causa.materia && <p className="text-[11px] text-gray-400 mt-0.5 truncate">{causa.materia}</p>}
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {urg  > 0 && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-100">{urg} urg.</span>}
+          {pend > 0 && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-100">{pend} pend.</span>}
+          <span className="text-[11px] text-gray-400 tabular-nums">{total} sol.</span>
+          <button onDoubleClick={e => e.stopPropagation()}
+            onClick={e => { e.stopPropagation(); onOpenCausa?.(causa) }}
+            className="text-[10px] text-gray-300 hover:text-[#2570BA] transition-colors px-1">
+            ↗
+          </button>
+          <ChevronDown size={15} className={`text-gray-400 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
+        </div>
+      </button>
+
+      {isExpanded && (
+        <div className="border-t border-gray-100">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 size={18} className="animate-spin text-gray-300" />
+            </div>
+          ) : (
+            <SolicitudesTable
+              grupo={grupo}
+              registrosAll={records}
+              onUpdate={onUpdate}
+              onAdd={localOnAdd}
+              onDelete={onDelete}
+              causasInfo={allCausas}
+              onBack={() => {}}
+              clienteNombre={causa.cliente_nombre || ''}
+              embedded
+            />
+          )}
+        </div>
+      )}
+    </div>
   )
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function SIAU() {
-  const navigate = useNavigate()
+  const navigate  = useNavigate()
   const { activeCausa, setActiveCausa } = useNavigation()
 
-  const [_ps] = useState(() => {
-    try { return JSON.parse(sessionStorage.getItem('ps.siau') ?? 'null') ?? {} }
-    catch { return {} }
+  const [allCausas,   setAllCausas]   = useState([])
+  const [metaRows,    setMetaRows]    = useState([])    // {id, causa_id, estado}
+  const [recordsMap,  setRecordsMap]  = useState({})    // {causaId: SIAURow[]}
+  const [loadingIds,  setLoadingIds]  = useState(new Set())
+  const [cargando,    setCargando]    = useState(true)
+  const [showForm,    setShowForm]    = useState(false)
+  const [updateError, setUpdateError] = useState(null)
+  const [search,      setSearch]      = useState('')
+
+  const loadingRef = useRef(new Set())
+  const loadedRef  = useRef(new Set())
+
+  const [expandedIds, setExpandedIds] = useState(() => {
+    try { return new Set(JSON.parse(sessionStorage.getItem('siau.expandedIds') || '[]')) }
+    catch { return new Set() }
   })
 
-  const [registros,  setRegistros]  = useState([])
-  const [allCausas,  setAllCausas]  = useState([])
-  const [cargando,   setCargando]   = useState(true)
-  const [clienteHasActiveCausasMap, setClienteHasActiveCausasMap] = useState({})
-  const [expandedSet,    setExpanded]       = useState(new Set())
-  const [search,         setSearch]         = useState(_ps.search ?? '')
-  const [showForm,       setShowForm]       = useState(false)
-  const [updateError,    setUpdateError]    = useState(null)
-
-  // Navigation
-  const [view,           setView]            = useState(_ps.view ?? 'clientes')
-  const [selCliente,     setSelCliente]      = useState(_ps.selCliente ?? null) // string
-  const [selCausaKey,    setSelCausaKey]     = useState(_ps.selCausaKey ?? null) // UUID (causa.id)
-  const [fromCausa,      setFromCausa]       = useState(false)
-
-  const fetchRegistros = useCallback(async () => {
+  // ── Mount ──────────────────────────────────────────────────────────────────
+  useEffect(() => {
     setCargando(true)
-    const { data } = await supabase.from('siau').select('*').order('fecha', { ascending: false })
-    setRegistros((data || []).map(mapRow))
-    setCargando(false)
-  }, [])
-
-  const fetchCausas = useCallback(async () => {
-    const { data } = await supabase
-      .from('causas')
-      .select('id,rit,ruc,materia,area,fiscalia,tribunal,cliente_nombre,cliente_id,estado')
-      .order('rit')
-    const activas = (data || []).filter(c => c.estado === 'Abierta' || c.estado === 'En tramitación')
-    setAllCausas(activas)
-    // Mapa nombre→hasActiveCausas para color de avatar
-    const map = {}
-    ;(data || []).forEach(c => {
-      if (!c.cliente_nombre) return
-      if (!map[c.cliente_nombre]) map[c.cliente_nombre] = false
-      if (c.estado === 'Abierta' || c.estado === 'Revisar') map[c.cliente_nombre] = true
+    Promise.all([
+      supabase.from('causas')
+        .select('id,rit,ruc,materia,area,fiscalia,tribunal,cliente_nombre,cliente_id,estado')
+        .in('estado', ['Abierta', 'En tramitación'])
+        .order('cliente_nombre'),
+      supabase.from('siau').select('id,causa_id,estado').order('fecha', { ascending: false }),
+    ]).then(([{ data: cs }, { data: meta }]) => {
+      setAllCausas(cs || [])
+      setMetaRows((meta || []).filter(m => m.causa_id))
+      setCargando(false)
     })
-    setClienteHasActiveCausasMap(map)
   }, [])
 
-  useEffect(() => { fetchRegistros(); fetchCausas() }, [fetchRegistros, fetchCausas])
-
-  // Esc closes open form
   useEffect(() => {
     const fn = () => { if (showForm) setShowForm(false) }
     window.addEventListener('modal:close', fn)
     return () => window.removeEventListener('modal:close', fn)
   }, [showForm])
 
+  useEffect(() => {
+    sessionStorage.setItem('siau.expandedIds', JSON.stringify([...expandedIds]))
+  }, [expandedIds])
+
+  // ── Auto-expand desde CausaView ────────────────────────────────────────────
+  useEffect(() => {
+    if (!activeCausa?.id || !allCausas.length) return
+    setExpandedIds(prev => {
+      if (prev.has(activeCausa.id)) return prev
+      const next = new Set(prev)
+      next.add(activeCausa.id)
+      return next
+    })
+    ensureLoaded(activeCausa.id)
+  }, [activeCausa?.id, allCausas.length]) // eslint-disable-line
+
+  // ── Lazy load ──────────────────────────────────────────────────────────────
+  async function ensureLoaded(causaId) {
+    if (loadedRef.current.has(causaId) || loadingRef.current.has(causaId)) return
+    loadingRef.current.add(causaId)
+    setLoadingIds(prev => new Set([...prev, causaId]))
+    const { data } = await supabase.from('siau').select('*')
+      .eq('causa_id', causaId).order('fecha', { ascending: false })
+    setRecordsMap(prev => ({ ...prev, [causaId]: (data || []).map(mapRow) }))
+    loadingRef.current.delete(causaId)
+    loadedRef.current.add(causaId)
+    setLoadingIds(prev => { const n = new Set(prev); n.delete(causaId); return n })
+  }
+
+  function toggleCausa(causaId) {
+    setExpandedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(causaId)) { next.delete(causaId) }
+      else { next.add(causaId); ensureLoaded(causaId) }
+      return next
+    })
+  }
+
+  // ── Handlers ───────────────────────────────────────────────────────────────
   const handleUpdate = useCallback(async (id, cambios) => {
-    const prev = registros.find(r => r.id === id)
-    setRegistros(p => p.map(r => r.id === id ? { ...r, ...cambios } : r))
+    setRecordsMap(prev => {
+      const next = {}
+      for (const [cid, recs] of Object.entries(prev)) {
+        next[cid] = recs.map(r => r.id === id ? { ...r, ...cambios } : r)
+      }
+      return next
+    })
+    if ('estado' in cambios) {
+      setMetaRows(prev => prev.map(m => m.id === id ? { ...m, estado: cambios.estado } : m))
+    }
     const dbCambios = Object.fromEntries(Object.entries(cambios).filter(([k]) => DB_FIELDS.has(k)))
     if (!Object.keys(dbCambios).length) return
     const { error } = await supabase.from('siau').update(dbCambios).eq('id', id)
     if (error) {
       console.error('Error actualizando SIAU:', error.message, error)
-      if (prev) setRegistros(p => p.map(r => r.id === id ? prev : r))
       setUpdateError(`No se pudo guardar: ${error.message}`)
       setTimeout(() => setUpdateError(null), 5000)
     }
-  }, [registros])
+  }, [])
 
-  const handleAdd = useCallback((newReg) => setRegistros(prev => [newReg, ...prev]), [])
-  const handleDeleteReg = useCallback((id) => setRegistros(prev => prev.filter(r => r.id !== id)), [])
+  const handleAdd = useCallback((causaId, newReg) => {
+    setRecordsMap(prev => ({ ...prev, [causaId]: [newReg, ...(prev[causaId] || [])] }))
+    setMetaRows(prev => [{ id: newReg.id, causa_id: causaId, estado: newReg.estado }, ...prev])
+  }, [])
 
-  // Build client → causas tree
-  const clienteGrupos = useMemo(() => {
-    const clienteSet = new Set()
-    allCausas.forEach(c => { if (c.cliente_nombre) clienteSet.add(c.cliente_nombre) })
+  // handleAdd for global form (no causaId arg — newReg.causa_id carries it)
+  const handleAddGlobal = useCallback((newReg) => {
+    const cid = newReg.causa_id
+    if (!cid) return
+    setRecordsMap(prev => ({ ...prev, [cid]: [newReg, ...(prev[cid] || [])] }))
+    setMetaRows(prev => [{ id: newReg.id, causa_id: cid, estado: newReg.estado }, ...prev])
+    setExpandedIds(prev => { const n = new Set(prev); n.add(cid); return n })
+    loadedRef.current.add(cid)
+  }, [])
 
-    return [...clienteSet].sort().map(clienteNombre => {
-      const causasCliente = allCausas.filter(c => c.cliente_nombre === clienteNombre)
-      const byId = {}
-      registros.filter(r => r.cliente_nombre === clienteNombre).forEach(r => {
-        let cid = r.causa_id
-        if (!cid && r.causa_rit) cid = causasCliente.find(c => c.rit === r.causa_rit)?.id || null
-        if (cid) { if (!byId[cid]) byId[cid] = []; byId[cid].push(r) }
-      })
-      const grupos = causasCliente.map(ci => ({
-        causa_rit: ci.rit || null,
-        causa_ruc: ci.ruc || null,
-        causa_key: ci.id,
-        causaInfo: ci,
-        cliente_nombre: clienteNombre,
-      })).sort((a, b) => (a.causa_rit||'').localeCompare(b.causa_rit||''))
-      return { clienteNombre, causasGrupos: grupos }
+  const handleDeleteReg = useCallback((id) => {
+    setRecordsMap(prev => {
+      const next = {}
+      for (const [cid, recs] of Object.entries(prev)) {
+        next[cid] = recs.filter(r => r.id !== id)
+      }
+      return next
     })
-  }, [registros, allCausas])
+    setMetaRows(prev => prev.filter(m => m.id !== id))
+  }, [])
 
-  // Filter by search
-  const filteredGrupos = useMemo(() => {
-    if (!search.trim()) return clienteGrupos
-    const q = search.toLowerCase()
-    return clienteGrupos.filter(cl =>
-      cl.clienteNombre.toLowerCase().includes(q) ||
-      cl.causasGrupos.some(g =>
-        (g.causa_rit||'').toLowerCase().includes(q) ||
-        (g.causa_ruc||'').toLowerCase().includes(q) ||
-        (g.causaInfo?.materia||'').toLowerCase().includes(q)
-      )
-    )
-  }, [clienteGrupos, search])
-
-  // Group A-Z
-  const byLetter = useMemo(() => {
-    const map = {}
-    filteredGrupos.forEach(cl => {
-      const l = cl.clienteNombre.charAt(0).toUpperCase() || '#'
-      if (!map[l]) map[l] = []
-      map[l].push(cl)
-    })
-    return Object.entries(map).sort(([a],[b]) => a.localeCompare(b))
-  }, [filteredGrupos])
-
-  // Selected grupo (derived)
-  const selectedGrupo = useMemo(() => {
-    if (!selCausaKey || !selCliente) return null
-    const cl = clienteGrupos.find(g => g.clienteNombre === selCliente)
-    return cl?.causasGrupos.find(g => g.causa_key === selCausaKey) || null
-  }, [clienteGrupos, selCausaKey, selCliente])
-
-  // ── Auto-seleccionar causa al venir desde CausaView ──────────────────────
-  useEffect(() => {
-    if (!activeCausa?.id || !clienteGrupos.length) return
-    if (selCausaKey === activeCausa.id) return // ya seleccionada
-    const grupo = clienteGrupos.find(g => g.clienteNombre === activeCausa.cliente_nombre)
-    const causaGrupo = grupo?.causasGrupos.find(g => g.causa_key === activeCausa.id)
-    if (grupo && causaGrupo) {
-      setSelCliente(activeCausa.cliente_nombre)
-      setSelCausaKey(activeCausa.id)
-      setView('tabla')
-      setFromCausa(true)
-    }
-  }, [clienteGrupos, activeCausa?.id])  // eslint-disable-line
-
-  function handleSelectCausa(clienteNombre, grupo) {
-    setSelCliente(clienteNombre)
-    setSelCausaKey(grupo.causa_key)
-    setView('tabla')
-  }
-
-  /** Navega directamente a la ficha de la causa */
-  function handleOpenCausa(grupo) {
-    if (!grupo.causa_key) return
+  function handleOpenCausa(causa) {
+    if (!causa?.id) return
     setActiveCausa({
-      id:             grupo.causa_key,
-      rit:            grupo.causa_rit || null,
-      ruc:            grupo.causa_ruc || null,
-      materia:        grupo.causaInfo?.materia || '',
-      cliente_nombre: grupo.causaInfo?.cliente_nombre || selCliente || '',
-      cliente_id:     grupo.causaInfo?.cliente_id || null,
-      causa_key:      grupo.causa_key,
+      id:             causa.id,
+      rit:            causa.rit || null,
+      ruc:            causa.ruc || null,
+      materia:        causa.materia || '',
+      cliente_nombre: causa.cliente_nombre || '',
+      cliente_id:     causa.cliente_id || null,
+      causa_key:      causa.id,
     })
     navigate('/causas')
   }
 
-  function handleBack(to) {
-    setView('clientes')
-    if (to === 'clientes') { setSelCliente(null); setSelCausaKey(null) }
-  }
-
-  // Keep state ref synced for the unmount closure
-  const _stRef = useRef({})
-  useEffect(() => {
-    _stRef.current = { search, view, selCliente, selCausaKey }
-  }, [search, view, selCliente, selCausaKey])
-
-  // Save on unmount
-  useEffect(() => () => {
-    sessionStorage.setItem('ps.siau', JSON.stringify(_stRef.current))
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const toggleExpanded = (nombre) => setExpanded(prev => {
-    const next = new Set(prev); next.has(nombre) ? next.delete(nombre) : next.add(nombre); return next
-  })
-
+  // ── Stats (from meta) ──────────────────────────────────────────────────────
   const stats = useMemo(() => ({
-    clientes:    clienteGrupos.length,
-    solicitudes: registros.length,
-    pendientes:  registros.filter(r => r.estado === 'Pendiente').length,
-    respondidas: registros.filter(r => r.estado === 'Respondida').length,
-    urgentes:    registros.filter(r => r.estado === 'Urgente').length,
-  }), [clienteGrupos, registros])
+    solicitudes: metaRows.length,
+    pendientes:  metaRows.filter(m => m.estado === 'Pendiente').length,
+    respondidas: metaRows.filter(m => m.estado === 'Respondida').length,
+    urgentes:    metaRows.filter(m => m.estado === 'Urgente').length,
+  }), [metaRows])
 
-  // ── Tabla view ──
-  if (view === 'tabla' && selectedGrupo) {
-    return (
-      <div className="flex flex-col h-full">
-        {/* Breadcrumb de retorno a causa */}
-        {fromCausa && activeCausa && (
-          <div className="bg-white border-b border-gray-100 px-5 py-2 flex items-center gap-1.5 flex-shrink-0">
-            <button
-              onClick={() => navigate('/causas')}
-              className="flex items-center gap-1 text-[12px] text-gray-400 hover:text-[#2570ba] transition-colors group"
-            >
-              <ChevronLeft size={13} className="group-hover:-translate-x-0.5 transition-transform" />
-              <span>Causa</span>
-            </button>
-            <span className="text-gray-200 text-[12px]">›</span>
-            <span className="text-[12px] text-gray-500 truncate max-w-[280px]" title={activeCausa.materia}>
-              {activeCausa.materia}
-            </span>
-            <span className="text-gray-200 mx-0.5">›</span>
-            <span className="text-[12px] font-semibold text-[#1a2e4a]">SIAU</span>
-          </div>
-        )}
-        <div className="flex-1 min-h-0">
-      <SolicitudesTable
-        grupo={selectedGrupo}
-        registrosAll={registros}
-        onUpdate={handleUpdate}
-        onAdd={handleAdd}
-        onDelete={handleDeleteReg}
-        causasInfo={allCausas}
-        onBack={handleBack}
-        clienteNombre={selCliente}
-      />
-        </div>
-      </div>
+  // ── Causas con SIAU (filter allCausas to those that have meta records) ─────
+  const causaIds = useMemo(() => new Set(metaRows.map(m => m.causa_id).filter(Boolean)), [metaRows])
+
+  const causasConSiau = useMemo(() =>
+    allCausas.filter(c => causaIds.has(c.id))
+  , [allCausas, causaIds])
+
+  // ── Filter by search ───────────────────────────────────────────────────────
+  const causasFiltradas = useMemo(() => {
+    if (!search.trim()) return causasConSiau
+    const q = search.toLowerCase()
+    return causasConSiau.filter(c =>
+      (c.cliente_nombre || '').toLowerCase().includes(q) ||
+      (c.rit || '').toLowerCase().includes(q) ||
+      (c.ruc || '').toLowerCase().includes(q) ||
+      (c.materia || '').toLowerCase().includes(q)
     )
-  }
+  }, [causasConSiau, search])
 
-  // ── Client list view ──
+  // ── A-Z grouping ───────────────────────────────────────────────────────────
+  const byLetter = useMemo(() => {
+    const map = {}
+    causasFiltradas.forEach(c => {
+      const l = (c.cliente_nombre || '?').charAt(0).toUpperCase()
+      if (!map[l]) map[l] = []
+      map[l].push(c)
+    })
+    return Object.entries(map).sort(([a], [b]) => a.localeCompare(b))
+  }, [causasFiltradas])
+
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="flex flex-col h-full bg-[#fafafa]">
       {updateError && (
@@ -944,6 +917,7 @@ export default function SIAU() {
           ⚠ {updateError}
         </div>
       )}
+
       {/* Header */}
       <div className="bg-white border-b border-gray-100 px-6 py-5 flex-shrink-0">
         <div className="flex items-center justify-between mb-4">
@@ -954,14 +928,13 @@ export default function SIAU() {
           </button>
         </div>
 
-        {/* Stat cards */}
         {!cargando && (
           <div className="grid grid-cols-4 gap-2.5 mb-4">
             {[
-              { label: 'Solicitudes',  value: stats.solicitudes, bg: 'bg-gray-50',    ic: 'text-gray-500',    Icon: FileText     },
-              { label: 'Pendientes',   value: stats.pendientes,  bg: 'bg-amber-50',   ic: 'text-amber-500',   Icon: Clock        },
-              { label: 'Respondidas',  value: stats.respondidas, bg: 'bg-green-50',   ic: 'text-green-500',   Icon: CheckCircle2 },
-              { label: 'Urgentes',     value: stats.urgentes,    bg: 'bg-red-50',     ic: 'text-red-500',     Icon: AlertCircle  },
+              { label: 'Solicitudes',  value: stats.solicitudes, bg: 'bg-gray-50',  ic: 'text-gray-500',  Icon: FileText     },
+              { label: 'Pendientes',   value: stats.pendientes,  bg: 'bg-amber-50', ic: 'text-amber-500', Icon: Clock        },
+              { label: 'Respondidas',  value: stats.respondidas, bg: 'bg-green-50', ic: 'text-green-500', Icon: CheckCircle2 },
+              { label: 'Urgentes',     value: stats.urgentes,    bg: 'bg-red-50',   ic: 'text-red-500',   Icon: AlertCircle  },
             ].map(({ label, value, bg, ic, Icon }) => (
               <div key={label} className="bg-white border border-gray-100 rounded-xl px-4 py-3 flex items-center gap-3">
                 <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 ${bg}`}>
@@ -992,22 +965,28 @@ export default function SIAU() {
           </div>
         ) : byLetter.length === 0 ? (
           <div className="text-center py-20">
-            <p className="text-sm text-gray-400">{search ? `Sin resultados para "${search}"` : 'Sin clientes con causas activas'}</p>
+            <p className="text-sm text-gray-400">{search ? `Sin resultados para "${search}"` : 'Sin solicitudes SIAU registradas'}</p>
           </div>
         ) : (
           <div className="space-y-6 max-w-3xl">
-            {byLetter.map(([letra, grupos]) => (
+            {byLetter.map(([letra, causas]) => (
               <div key={letra}>
                 <p className="text-[11px] font-bold text-gray-300 uppercase tracking-widest mb-2.5 px-1">{letra}</p>
                 <div className="space-y-2">
-                  {grupos.map(grupo => (
-                    <ClienteRow key={grupo.clienteNombre}
-                      grupo={grupo} registrosAll={registros}
-                      isExpanded={expandedSet.has(grupo.clienteNombre)}
-                      onToggle={() => toggleExpanded(grupo.clienteNombre)}
-                      onSelectCausa={handleSelectCausa}
+                  {causas.map(causa => (
+                    <CausaGroupRow
+                      key={causa.id}
+                      causa={causa}
+                      metaRows={metaRows}
+                      records={recordsMap[causa.id] || []}
+                      isLoading={loadingIds.has(causa.id)}
+                      isExpanded={expandedIds.has(causa.id)}
+                      onToggle={toggleCausa}
+                      onUpdate={handleUpdate}
+                      onAdd={handleAdd}
+                      onDelete={handleDeleteReg}
+                      allCausas={allCausas}
                       onOpenCausa={handleOpenCausa}
-                      hasActiveCausas={clienteHasActiveCausasMap[grupo.clienteNombre] ?? true}
                     />
                   ))}
                 </div>
@@ -1020,11 +999,10 @@ export default function SIAU() {
       {showForm && (
         <FormNuevaSolicitud
           causa={null} causasInfo={allCausas} globalMode
-          onSave={handleAdd}
+          onSave={handleAddGlobal}
           onClose={() => setShowForm(false)}
         />
       )}
-
     </div>
   )
 }

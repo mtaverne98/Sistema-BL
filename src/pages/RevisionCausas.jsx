@@ -711,10 +711,16 @@ export default function RevisionCausas() {
     })
 
     // DB — revision_causas (fuente de verdad del período actual)
-    await supabase.from('revision_causas').upsert(
+    const { error: rcErr } = await supabase.from('revision_causas').upsert(
       { periodo_id: revActiva.id, causa_id: causaId, notas: datos.notas || '', responsable: datos.responsable || 'MT', fecha: datos.fecha || TODAY },
       { onConflict: 'periodo_id,causa_id' }
     )
+    if (rcErr) {
+      console.error('revision_causas upsert error:', rcErr)
+      // Revertir optimista
+      setRcRows(prev => prev.filter(r => r.causa_id !== causaId || !String(r.id).startsWith('tmp_')))
+      return
+    }
 
     // revisiones — mantiene historial para períodos anteriores
     const payload = { semana_key: pKey, causa_id: causaId, revisada: true, ...datos }
@@ -734,10 +740,11 @@ export default function RevisionCausas() {
     setRcRows(prev => prev.filter(r => String(r.causa_id) !== cid))
 
     // DB — borra de revision_causas
-    await supabase.from('revision_causas')
+    const { error: delErr } = await supabase.from('revision_causas')
       .delete()
       .eq('periodo_id', revActiva.id)
       .eq('causa_id', causaId)
+    if (delErr) console.error('revision_causas delete error:', delErr)
 
     // revisiones — marca como no revisada
     setRevRows(prev => prev.map(r =>
