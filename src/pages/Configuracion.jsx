@@ -294,19 +294,23 @@ function NotificacionesCard() {
 
   async function handleTestNotif() {
     setTestStatus(null)
-    if (!('Notification' in window)) { setTestStatus('no-api'); return }
-    if (Notification.permission !== 'granted') { setTestStatus('no-perm'); return }
+    console.log('[NotifTest] Notification in window:', 'Notification' in window)
+    console.log('[NotifTest] permission:', typeof Notification !== 'undefined' ? Notification.permission : 'N/A')
+    if (!('Notification' in window)) { setTestStatus('Sin API'); return }
+    if (Notification.permission !== 'granted') { setTestStatus('Permiso: ' + Notification.permission); return }
     try {
       const n = new Notification('Sistema BL — Prueba', {
         body: 'Las notificaciones están funcionando correctamente.',
         icon: '/logo.jpg',
       })
       n.onclick = () => window.focus()
+      console.log('[NotifTest] Notification created OK')
       setTestStatus('sent')
     } catch (e) {
-      setTestStatus('error:' + e.message)
+      console.error('[NotifTest] Error:', e)
+      setTestStatus('Error: ' + e.message)
     }
-    setTimeout(() => setTestStatus(null), 4000)
+    setTimeout(() => setTestStatus(null), 5000)
   }
 
   const TIPOS = [
@@ -365,14 +369,10 @@ function NotificacionesCard() {
                   Enviar prueba
                 </button>
                 {testStatus === 'sent' && (
-                  <span className="text-[10px] text-emerald-600 flex-shrink-0">
-                    ✓ Enviada — si no aparece, minimiza Chrome
-                  </span>
+                  <span className="text-[10px] text-emerald-600 flex-shrink-0">✓ Enviada — minimiza Chrome</span>
                 )}
-                {testStatus && testStatus.startsWith('error:') && (
-                  <span className="text-[10px] text-red-500 flex-shrink-0">
-                    Error: {testStatus.slice(6)}
-                  </span>
+                {testStatus && testStatus !== 'sent' && (
+                  <span className="text-[10px] text-red-500 flex-shrink-0">{testStatus}</span>
                 )}
               </>
             ) : permission === 'denied' ? (
