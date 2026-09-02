@@ -3293,6 +3293,91 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
             )
           }
 
+          // ── Edición y CRUD manual del análisis (alertas / faltantes / contradicciones / recomendaciones / resumen) ──
+          async function commitAnalisisField(table, id, field, rawValue) {
+            setEditingCell(null)
+            const value = typeof rawValue === 'string' ? (rawValue.trim() || null) : rawValue
+            if (table === 'causa_analisis_meta') {
+              setAnalisisMeta(prev => prev ? { ...prev, [field]: value } : prev)
+              await supabase.from('causa_analisis_meta').update({ [field]: value }).eq('causa_id', causa.id)
+              return
+            }
+            const setter = REVISADO_SETTERS[table]
+            setter(prev => prev.map(x => x.id === id ? { ...x, [field]: value, revisado: true } : x))
+            await supabase.from(table).update({ [field]: value, revisado: true }).eq('id', id)
+          }
+          async function deleteAnalisisRow(table, id) {
+            if (!window.confirm('¿Eliminar este elemento del análisis? Esta acción no se puede deshacer.')) return
+            const setter = REVISADO_SETTERS[table]
+            setter(prev => prev.filter(x => x.id !== id))
+            await supabase.from(table).delete().eq('id', id)
+          }
+          async function addAnalisisRow(table, defaults, focusField) {
+            const { data, error } = await supabase.from(table)
+              .insert({ causa_id: causa.id, revisado: true, ...defaults })
+              .select().single()
+            if (!error && data) {
+              REVISADO_SETTERS[table](prev => [data, ...prev])
+              if (focusField) { setEditingCell({ id: data.id, field: focusField }); setCellDraft(defaults[focusField] ?? '') }
+            }
+          }
+          function DeleteRowBtn({ table, id }) {
+            return (
+              <button
+                onClick={(e) => { e.stopPropagation(); deleteAnalisisRow(table, id) }}
+                title="Eliminar"
+                className="flex-shrink-0 text-gray-300 hover:text-red-500 transition-colors"
+              >
+                <X size={12} />
+              </button>
+            )
+          }
+          function AnalisisText({ table, id, field, value, multiline = false, rows = 3, placeholder = '—', className = '' }) {
+            const isEdit = editingCell?.id === id && editingCell?.field === field
+            if (isEdit) {
+              const props = {
+                autoFocus: true,
+                value: cellDraft,
+                onChange: e => setCellDraft(e.target.value),
+                onBlur: () => commitAnalisisField(table, id, field, cellDraft),
+                onKeyDown: e => {
+                  if (!multiline && e.key === 'Enter') { e.preventDefault(); commitAnalisisField(table, id, field, cellDraft) }
+                  if (e.key === 'Escape') setEditingCell(null)
+                },
+                onClick: e => e.stopPropagation(),
+                className: `w-full bg-white border border-blue-300 rounded px-1.5 py-0.5 outline-none ${className}`,
+              }
+              return multiline ? <textarea rows={rows} {...props} /> : <input {...props} />
+            }
+            return (
+              <span
+                onClick={(e) => { e.stopPropagation(); setEditingCell({ id, field }); setCellDraft(value ?? '') }}
+                className={`cursor-text hover:bg-gray-50 rounded px-0.5 ${!value ? 'text-gray-300 italic' : ''} ${className}`}
+              >
+                {value || placeholder}
+              </span>
+            )
+          }
+          function AnalisisSelect({ table, id, field, value, options }) {
+            const isEdit = editingCell?.id === id && editingCell?.field === field
+            if (isEdit) {
+              return (
+                <select autoFocus value={cellDraft} onChange={e => setCellDraft(e.target.value)}
+                        onBlur={() => commitAnalisisField(table, id, field, cellDraft)}
+                        onClick={e => e.stopPropagation()}
+                        className="text-[10px] border border-blue-300 rounded px-1 py-0.5 outline-none">
+                  {options.map(o => <option key={o} value={o}>{o}</option>)}
+                </select>
+              )
+            }
+            return (
+              <span onClick={(e) => { e.stopPropagation(); setEditingCell({ id, field }); setCellDraft(value || options[0]) }}
+                    className="cursor-pointer text-[9px] font-semibold px-1.5 py-0.5 rounded-full border bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100">
+                {value || options[0]}
+              </span>
+            )
+          }
+
           const RECO_ESTADOS = ['evaluando', 'aceptada', 'descartada']
           const RECO_ESTADO_CLS = {
             evaluando: 'bg-blue-50 text-blue-600 border-blue-200',
@@ -3350,7 +3435,9 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                   <h3 className="text-[12px] font-bold text-[#1A2E4A] uppercase tracking-wide mb-2">Resumen investigativo</h3>
                   {analisisMeta ? (
                     <div className="bg-white border border-[#E3E7EC] rounded-lg p-4">
-                      <p className="text-[12px] text-gray-700 leading-relaxed whitespace-pre-wrap">{analisisMeta.resumen_ejecutivo || 'Sin resumen registrado.'}</p>
+                      <AnalisisText table="causa_analisis_meta" id="meta" field="resumen_ejecutivo" multiline rows={8}
+                        value={analisisMeta.resumen_ejecutivo} placeholder="Sin resumen registrado."
+                        className="text-[12px] text-gray-700 leading-relaxed whitespace-pre-wrap block" />
                       <div className="mt-3 pt-3 border-t border-dashed border-gray-200 text-[10px] text-gray-400">
                         Última sincronización: {fmtFA(analisisMeta.fecha_ultima_sincronizacion) || 'no registrada'}
                         {analisisMeta.drive_folder_id && (
@@ -3406,16 +3493,27 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                     </div>
                   </section>
                   <section>
-                    <h3 className="text-[11px] font-bold text-blue-600 uppercase tracking-wide mb-2">🔵 Documentos faltantes</h3>
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="text-[11px] font-bold text-blue-600 uppercase tracking-wide">🔵 Documentos faltantes</h3>
+                      <button onClick={() => addAnalisisRow('causa_faltantes', { descripcion: 'Nuevo faltante', relevancia: 'MEDIA', accion_sugerida: '', estado: 'pendiente' }, 'descripcion')}
+                              className="text-[10px] text-[#2570BA] hover:underline">+ agregar</button>
+                    </div>
                     <div className="space-y-1.5">
                       {faltantes.length === 0 && <p className="text-[11px] text-gray-300 italic">Sin faltantes identificados.</p>}
                       {faltantes.map(f => (
                         <div key={f.id} className="bg-blue-50 border border-blue-200 rounded-md px-2.5 py-1.5">
                           <div className="flex items-start justify-between gap-2">
-                            <p className="text-[11px] text-blue-800">{f.descripcion}</p>
-                            {f.revisado === false && <NuevoTag table="causa_faltantes" id={f.id} />}
+                            <AnalisisText table="causa_faltantes" id={f.id} field="descripcion" multiline rows={2}
+                              value={f.descripcion} className="text-[11px] text-blue-800 flex-1 block" />
+                            <div className="flex items-center gap-1.5 flex-shrink-0">
+                              {f.revisado === false && <NuevoTag table="causa_faltantes" id={f.id} />}
+                              <DeleteRowBtn table="causa_faltantes" id={f.id} />
+                            </div>
                           </div>
-                          <p className="text-[10px] text-blue-500 mt-0.5">Relevancia: {f.relevancia || '—'} · {f.accion_sugerida}</p>
+                          <p className="text-[10px] text-blue-500 mt-0.5 flex items-center gap-1 flex-wrap">
+                            Relevancia: <AnalisisSelect table="causa_faltantes" id={f.id} field="relevancia" value={f.relevancia} options={['ALTA', 'MEDIA', 'BAJA']} /> ·
+                            <AnalisisText table="causa_faltantes" id={f.id} field="accion_sugerida" value={f.accion_sugerida} placeholder="Sin acción sugerida." className="flex-1" />
+                          </p>
                         </div>
                       ))}
                     </div>
@@ -3424,7 +3522,11 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
 
                 {/* ALERTAS — listado completo */}
                 <section>
-                  <h3 className="text-[12px] font-bold text-[#1A2E4A] uppercase tracking-wide mb-2">⚠️ Alertas ({alertasAnalisis.filter(a => !a.resuelta).length} activas)</h3>
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-[12px] font-bold text-[#1A2E4A] uppercase tracking-wide">⚠️ Alertas ({alertasAnalisis.filter(a => !a.resuelta).length} activas)</h3>
+                    <button onClick={() => addAnalisisRow('causa_alertas', { tipo: 'azul', titulo: 'Nueva alerta', detalle: '', resuelta: false }, 'titulo')}
+                            className="text-[10px] text-[#2570BA] hover:underline">+ agregar</button>
+                  </div>
                   <div className="space-y-1.5">
                     {alertasAnalisis.length === 0 && <p className="text-[11px] text-gray-300 italic">Sin alertas registradas.</p>}
                     {alertasAnalisis.map(a => {
@@ -3435,10 +3537,18 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                                  className="mt-0.5 w-3 h-3 accent-[#2570BA] flex-shrink-0" title="Marcar como resuelta" />
                           <div className="min-w-0 flex-1">
                             <div className="flex items-start justify-between gap-2">
-                              <p className={`text-[11px] font-semibold ${a.resuelta ? 'line-through text-gray-400' : 'text-gray-800'}`}>{cfg.emoji} {a.titulo}</p>
-                              {a.revisado === false && <NuevoTag table="causa_alertas" id={a.id} />}
+                              <div className="flex items-start gap-1 min-w-0">
+                                <AnalisisSelect table="causa_alertas" id={a.id} field="tipo" value={a.tipo} options={['rojo', 'amarillo', 'verde', 'azul', 'naranja']} />
+                                <AnalisisText table="causa_alertas" id={a.id} field="titulo" value={a.titulo}
+                                  className={`text-[11px] font-semibold ${a.resuelta ? 'line-through text-gray-400' : 'text-gray-800'}`} />
+                              </div>
+                              <div className="flex items-center gap-1.5 flex-shrink-0">
+                                {a.revisado === false && <NuevoTag table="causa_alertas" id={a.id} />}
+                                <DeleteRowBtn table="causa_alertas" id={a.id} />
+                              </div>
                             </div>
-                            {a.detalle && <p className="text-[10.5px] text-gray-500 mt-0.5">{a.detalle}</p>}
+                            <AnalisisText table="causa_alertas" id={a.id} field="detalle" multiline rows={2} value={a.detalle}
+                              placeholder="Sin detalle." className="text-[10.5px] text-gray-500 mt-0.5 block" />
                           </div>
                         </div>
                       )
@@ -3530,25 +3640,38 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
 
                 {/* CONTRADICCIONES / VACÍOS */}
                 <section>
-                  <h3 className="text-[12px] font-bold text-[#1A2E4A] uppercase tracking-wide mb-2">Contradicciones / vacíos</h3>
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-[12px] font-bold text-[#1A2E4A] uppercase tracking-wide">Contradicciones / vacíos</h3>
+                    <button onClick={() => addAnalisisRow('causa_contradicciones', { materia: 'Contradicción', descripcion: 'Nueva contradicción o vacío' }, 'materia')}
+                            className="text-[10px] text-[#2570BA] hover:underline">+ agregar</button>
+                  </div>
                   <div className="space-y-2">
                     {contradicciones.length === 0 && <p className="text-[11px] text-gray-300 italic">Sin contradicciones o vacíos registrados.</p>}
                     {contradicciones.map(c => (
                       <div key={c.id} className={`border rounded-md px-3 py-2 ${c.materia === 'Vacío investigativo' ? 'bg-orange-50 border-orange-200' : 'bg-red-50 border-red-200'}`}>
                         <div className="flex items-start justify-between gap-2 mb-1">
-                          <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">{c.materia}</p>
-                          {c.revisado === false && <NuevoTag table="causa_contradicciones" id={c.id} />}
+                          <AnalisisText table="causa_contradicciones" id={c.id} field="materia" value={c.materia}
+                            className="text-[10px] font-semibold uppercase tracking-wide text-gray-500" />
+                          <div className="flex items-center gap-1.5 flex-shrink-0">
+                            {c.revisado === false && <NuevoTag table="causa_contradicciones" id={c.id} />}
+                            <DeleteRowBtn table="causa_contradicciones" id={c.id} />
+                          </div>
                         </div>
-                        {c.fuente_1_version && (
-                          <p className="text-[11px] text-gray-700"><DocLink id={c.fuente_1_documento_id} fallback="Fuente 1" />: {c.fuente_1_version}</p>
+                        {(c.fuente_1_version || c.fuente_2_version) ? (
+                          <>
+                            <p className="text-[11px] text-gray-700 flex gap-1"><DocLink id={c.fuente_1_documento_id} fallback="Fuente 1" />:
+                              <AnalisisText table="causa_contradicciones" id={c.id} field="fuente_1_version" multiline rows={2}
+                                value={c.fuente_1_version} placeholder="Sin versión de la fuente 1." className="flex-1" /></p>
+                            <p className="text-[11px] text-gray-700 mt-0.5 flex gap-1"><DocLink id={c.fuente_2_documento_id} fallback="Fuente 2" />:
+                              <AnalisisText table="causa_contradicciones" id={c.id} field="fuente_2_version" multiline rows={2}
+                                value={c.fuente_2_version} placeholder="Sin versión de la fuente 2." className="flex-1" /></p>
+                          </>
+                        ) : (
+                          <AnalisisText table="causa_contradicciones" id={c.id} field="descripcion" multiline rows={2}
+                            value={c.descripcion} className="text-[11px] text-gray-700 block" />
                         )}
-                        {c.fuente_2_version && (
-                          <p className="text-[11px] text-gray-700 mt-0.5"><DocLink id={c.fuente_2_documento_id} fallback="Fuente 2" />: {c.fuente_2_version}</p>
-                        )}
-                        {!c.fuente_1_version && !c.fuente_2_version && (
-                          <p className="text-[11px] text-gray-700">{c.descripcion}</p>
-                        )}
-                        {c.relevancia && <p className="text-[10px] text-gray-400 mt-1">Relevancia: {c.relevancia}</p>}
+                        <p className="text-[10px] text-gray-400 mt-1">Relevancia:{' '}
+                          <AnalisisText table="causa_contradicciones" id={c.id} field="relevancia" value={c.relevancia} placeholder="—" /></p>
                       </div>
                     ))}
                   </div>
@@ -3556,7 +3679,11 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
 
                 {/* NUEVAS DILIGENCIAS RECOMENDADAS */}
                 <section>
-                  <h3 className="text-[12px] font-bold text-[#1A2E4A] uppercase tracking-wide mb-2">Nuevas diligencias recomendadas</h3>
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-[12px] font-bold text-[#1A2E4A] uppercase tracking-wide">Nuevas diligencias recomendadas</h3>
+                    <button onClick={() => addAnalisisRow('causa_recomendaciones', { diligencia_propuesta: 'Nueva recomendación', prioridad: 'MEDIA', estado: 'evaluando' }, 'diligencia_propuesta')}
+                            className="text-[10px] text-[#2570BA] hover:underline">+ agregar</button>
+                  </div>
                   <div className="space-y-2">
                     {recomendaciones.length === 0 && <p className="text-[11px] text-gray-300 italic">Sin recomendaciones registradas.</p>}
                     {recomendaciones.map(r => {
@@ -3564,10 +3691,12 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                       return (
                         <div key={r.id} className="bg-white border border-[#E3E7EC] rounded-lg px-3 py-2.5">
                           <div className="flex items-center justify-between gap-2 flex-wrap">
-                            <p className="text-[11.5px] font-semibold text-gray-800">{r.diligencia_propuesta}</p>
+                            <AnalisisText table="causa_recomendaciones" id={r.id} field="diligencia_propuesta" value={r.diligencia_propuesta}
+                              className="text-[11.5px] font-semibold text-gray-800 flex-1" />
                             <div className="flex items-center gap-2 flex-shrink-0">
                               {r.revisado === false && <NuevoTag table="causa_recomendaciones" id={r.id} />}
-                              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${r.prioridad === 'ALTA' ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-500'}`}>{r.prioridad}</span>
+                              <DeleteRowBtn table="causa_recomendaciones" id={r.id} />
+                              <AnalisisSelect table="causa_recomendaciones" id={r.id} field="prioridad" value={r.prioridad} options={['ALTA', 'MEDIA', 'BAJA']} />
                               {isEdit ? (
                                 <select autoFocus value={cellDraft} onChange={e => setCellDraft(e.target.value)}
                                         onBlur={() => commitRecoEstado(r.id, cellDraft)}
@@ -3582,8 +3711,10 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                               )}
                             </div>
                           </div>
-                          {r.fundamento && <p className="text-[10.5px] text-gray-500 mt-1"><span className="font-medium text-gray-600">Fundamento:</span> {r.fundamento}</p>}
-                          {r.objetivo && <p className="text-[10.5px] text-gray-500 mt-0.5"><span className="font-medium text-gray-600">Objetivo:</span> {r.objetivo}</p>}
+                          <p className="text-[10.5px] text-gray-500 mt-1"><span className="font-medium text-gray-600">Fundamento:</span>{' '}
+                            <AnalisisText table="causa_recomendaciones" id={r.id} field="fundamento" multiline rows={2} value={r.fundamento} placeholder="Sin fundamento." /></p>
+                          <p className="text-[10.5px] text-gray-500 mt-0.5"><span className="font-medium text-gray-600">Objetivo:</span>{' '}
+                            <AnalisisText table="causa_recomendaciones" id={r.id} field="objetivo" multiline rows={2} value={r.objetivo} placeholder="Sin objetivo." /></p>
                           {r.relacion_estrategia && <p className="text-[10.5px] text-gray-500 mt-0.5"><span className="font-medium text-gray-600">Estrategia:</span> {r.relacion_estrategia}</p>}
                         </div>
                       )
@@ -3611,15 +3742,16 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                 {/* PRÓXIMA ACCIÓN */}
                 <section>
                   <h3 className="text-[12px] font-bold text-[#1A2E4A] uppercase tracking-wide mb-2">Próxima acción</h3>
-                  {analisisMeta?.proxima_accion ? (
+                  {analisisMeta ? (
                     <div className="bg-[#1A2E4A] text-white rounded-lg p-4">
-                      <p className="text-[12px] leading-relaxed">{analisisMeta.proxima_accion}</p>
-                      {analisisMeta.proxima_accion_fundamento && (
-                        <p className="text-[10.5px] text-white/70 mt-2 leading-relaxed">{analisisMeta.proxima_accion_fundamento}</p>
-                      )}
-                      {analisisMeta.proxima_accion_prioridad && (
-                        <span className="inline-block mt-2 text-[9px] font-bold px-1.5 py-0.5 rounded bg-white/20">Prioridad {analisisMeta.proxima_accion_prioridad}</span>
-                      )}
+                      <AnalisisText table="causa_analisis_meta" id="meta" field="proxima_accion" multiline rows={2}
+                        value={analisisMeta.proxima_accion} placeholder="Sin próxima acción registrada."
+                        className="text-[12px] leading-relaxed block text-white placeholder:text-white/40" />
+                      <AnalisisText table="causa_analisis_meta" id="meta" field="proxima_accion_fundamento" multiline rows={2}
+                        value={analisisMeta.proxima_accion_fundamento} placeholder="Sin fundamento registrado."
+                        className="text-[10.5px] text-white/70 mt-2 leading-relaxed block" />
+                      <AnalisisSelect table="causa_analisis_meta" id="meta" field="proxima_accion_prioridad"
+                        value={analisisMeta.proxima_accion_prioridad} options={['ALTA', 'MEDIA', 'BAJA']} />
                     </div>
                   ) : (
                     <p className="text-[11px] text-gray-300 italic">Sin próxima acción registrada.</p>
