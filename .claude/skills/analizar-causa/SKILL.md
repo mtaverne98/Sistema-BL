@@ -30,7 +30,18 @@ PASO 2 — LEER TODO LO NUEVO DESDE LA ÚLTIMA SINCRONIZACIÓN
 5. `GET diligencias?causa_id=eq.<causa_id>&created_at=gt.<T>&select=*`
 6. Lee también el estado actual COMPLETO de las tablas de análisis de esta causa (`causa_alertas`, `causa_faltantes`, `causa_recomendaciones`, `causa_contradicciones`, `documentos`, `diligencias`, `causa_instrucciones`), para no duplicar ni contradecir lo ya registrado.
 
-Si no hay nada nuevo desde T en ninguna fuente: dile a Macarena que la causa ya está al día (con la fecha de última sincronización) y no escribas nada.
+Si no hay nada nuevo desde T en ninguna fuente: dile a Macarena que la causa ya está al día (con la fecha de última sincronización), haz igual el chequeo de frescura del PASO 2.5 antes de terminar, y no escribas nada más.
+
+═══════════════════════════════════════════
+PASO 2.5 — CHEQUEO DE FRESCURA DE SIAU/PJUD (esta skill no puede leer los portales)
+═══════════════════════════════════════════
+Esta skill NO tiene forma de entrar a la Oficina Judicial Virtual del PJUD ni al portal SIAU del Ministerio Público — esas tablas dependen 100% de que alguien las cargue manualmente en sistema-bl-alpha. Por eso, en cada ejecución, avisa si podrían estar desactualizadas en vez de asumir silenciosamente que "sin novedades" significa que no pasó nada:
+
+1. `GET siau?causa_id=eq.<causa_id>&select=created_at&order=created_at.desc&limit=1`
+2. `GET pjud?causa_id=eq.<causa_id>&select=created_at&order=created_at.desc&limit=1`
+3. Calcula cuántos días han pasado desde el `created_at` más reciente de cada tabla hasta hoy.
+4. Si cualquiera de las dos supera **15 días** sin un registro nuevo (o no tiene ningún registro): inclúyelo como aviso explícito en el reporte final (PASO 5), con el número exacto de días y la fecha del último registro — algo como "SIAU sin actualizarse hace 23 días (último folio: DD/MM/AAAA) — no se puede verificar si hay novedad en el portal, solo lo que ya se cargó a mano". No lo conviertas en alerta de `causa_alertas` (no es un hallazgo sobre la causa, es una advertencia sobre la frescura de los datos) — repórtalo solo en el chat.
+5. Si ambas están dentro de los 15 días, no hace falta mencionarlo (no generes ruido cuando está al día).
 
 ═══════════════════════════════════════════
 PASO 3 — ANALIZAR, reglas estrictas sin excepción
@@ -55,4 +66,4 @@ PASO 4 — ACTUALIZAR RESUMEN
 ═══════════════════════════════════════════
 PASO 5 — REPORTAR A MACARENA EN EL CHAT
 ═══════════════════════════════════════════
-Además de escribir en Supabase, resume en el chat lo que encontraste: qué cambió desde la última sincronización, alertas nuevas (con prioridad), y la próxima acción recomendada — para que lo tenga a mano de inmediato, sin ir a abrir sistema-bl-alpha.
+Además de escribir en Supabase, resume en el chat lo que encontraste: qué cambió desde la última sincronización, alertas nuevas (con prioridad), la próxima acción recomendada, y el aviso de frescura de SIAU/PJUD del PASO 2.5 si corresponde — para que lo tenga a mano de inmediato, sin ir a abrir sistema-bl-alpha.
