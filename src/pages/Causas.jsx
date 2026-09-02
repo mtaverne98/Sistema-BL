@@ -1819,9 +1819,11 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
           }).length
           const revCount = revisiones.filter(isTeamRev).length
           const alertasSinResolver = alertasAnalisis.filter(a => !a.resuelta)
+          const sinRevisar = [...alertasAnalisis, ...faltantes, ...contradicciones, ...recomendaciones]
+            .filter(x => x.revisado === false).length
           const chips = [
             { key: 'resumen',     Icon: AlignLeft,   label: 'Resumen',     count: null,                    urgent: false },
-            { key: 'analisis',    Icon: FileSearch,  label: 'Análisis',    count: alertasSinResolver.length || null, urgent: alertasSinResolver.some(a => a.tipo === 'rojo') },
+            { key: 'analisis',    Icon: FileSearch,  label: 'Análisis',    count: alertasSinResolver.length || null, urgent: alertasSinResolver.some(a => a.tipo === 'rojo'), nuevo: sinRevisar || null },
             { key: 'siau',        Icon: Database,    label: 'SIAU',        count: siauRows.length || null, urgent: siauRows.some(r => r.estado === 'Urgente') },
             { key: 'pjud',        Icon: Shield,      label: 'PJUD',        count: pjudRows.length || null, urgent: pjudRows.some(r => r.estado === 'Urgente') },
             { key: 'audiencias',  Icon: Gavel,       label: 'Audiencias',  count: audiencias.length,       urgent: audProximas > 0 },
@@ -1835,11 +1837,11 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
           ]
           return (
             <div className="flex items-center gap-1.5 pb-3 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
-              {chips.map(({ key, Icon, label, count, urgent }) => (
+              {chips.map(({ key, Icon, label, count, urgent, nuevo }) => (
                 <button
                   key={key}
                   onClick={() => setTab(key)}
-                  title={`Ir a ${label}`}
+                  title={nuevo ? `Ir a ${label} (${nuevo} sin revisar del último sync automático)` : `Ir a ${label}`}
                   className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium whitespace-nowrap flex-shrink-0 transition-all ${
                     tab === key
                       ? 'bg-[#1A2E4A] text-white'
@@ -1855,6 +1857,11 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                       tab === key ? 'bg-white/20 text-white' : urgent ? 'bg-red-100 text-red-600' : 'bg-[#F1F2F4] text-[#6B7280]'
                     }`}>
                       {count}
+                    </span>
+                  )}
+                  {nuevo > 0 && (
+                    <span className="text-[9px] font-semibold min-w-[16px] h-4 px-1 rounded-full flex items-center justify-center bg-blue-500 text-white">
+                      🆕{nuevo}
                     </span>
                   )}
                   {urgent && tab !== key && (
@@ -3263,6 +3270,29 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
             await supabase.from('causa_alertas').update({ resuelta: nuevo }).eq('id', a.id)
           }
 
+          const REVISADO_SETTERS = {
+            causa_alertas: setAlertasAnalisis,
+            causa_faltantes: setFaltantes,
+            causa_contradicciones: setContradicciones,
+            causa_recomendaciones: setRecomendaciones,
+          }
+          async function marcarRevisado(table, id) {
+            const setter = REVISADO_SETTERS[table]
+            setter(prev => prev.map(x => x.id === id ? { ...x, revisado: true } : x))
+            await supabase.from(table).update({ revisado: true }).eq('id', id)
+          }
+          function NuevoTag({ table, id }) {
+            return (
+              <button
+                onClick={(e) => { e.stopPropagation(); marcarRevisado(table, id) }}
+                title="Agregado por el sync automático — clic para marcar como revisado"
+                className="flex-shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-blue-500 text-white hover:bg-blue-600 transition-colors"
+              >
+                🆕 nuevo
+              </button>
+            )
+          }
+
           const RECO_ESTADOS = ['evaluando', 'aceptada', 'descartada']
           const RECO_ESTADO_CLS = {
             evaluando: 'bg-blue-50 text-blue-600 border-blue-200',
@@ -3381,7 +3411,10 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                       {faltantes.length === 0 && <p className="text-[11px] text-gray-300 italic">Sin faltantes identificados.</p>}
                       {faltantes.map(f => (
                         <div key={f.id} className="bg-blue-50 border border-blue-200 rounded-md px-2.5 py-1.5">
-                          <p className="text-[11px] text-blue-800">{f.descripcion}</p>
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="text-[11px] text-blue-800">{f.descripcion}</p>
+                            {f.revisado === false && <NuevoTag table="causa_faltantes" id={f.id} />}
+                          </div>
                           <p className="text-[10px] text-blue-500 mt-0.5">Relevancia: {f.relevancia || '—'} · {f.accion_sugerida}</p>
                         </div>
                       ))}
@@ -3400,8 +3433,11 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                         <div key={a.id} className={`flex items-start gap-2 border rounded-md px-2.5 py-1.5 ${cfg.cls} ${a.resuelta ? 'opacity-40' : ''}`}>
                           <input type="checkbox" checked={!!a.resuelta} onChange={() => toggleAlertaResuelta(a)}
                                  className="mt-0.5 w-3 h-3 accent-[#2570BA] flex-shrink-0" title="Marcar como resuelta" />
-                          <div className="min-w-0">
-                            <p className={`text-[11px] font-semibold ${a.resuelta ? 'line-through text-gray-400' : 'text-gray-800'}`}>{cfg.emoji} {a.titulo}</p>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-start justify-between gap-2">
+                              <p className={`text-[11px] font-semibold ${a.resuelta ? 'line-through text-gray-400' : 'text-gray-800'}`}>{cfg.emoji} {a.titulo}</p>
+                              {a.revisado === false && <NuevoTag table="causa_alertas" id={a.id} />}
+                            </div>
                             {a.detalle && <p className="text-[10.5px] text-gray-500 mt-0.5">{a.detalle}</p>}
                           </div>
                         </div>
@@ -3499,7 +3535,10 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                     {contradicciones.length === 0 && <p className="text-[11px] text-gray-300 italic">Sin contradicciones o vacíos registrados.</p>}
                     {contradicciones.map(c => (
                       <div key={c.id} className={`border rounded-md px-3 py-2 ${c.materia === 'Vacío investigativo' ? 'bg-orange-50 border-orange-200' : 'bg-red-50 border-red-200'}`}>
-                        <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 mb-1">{c.materia}</p>
+                        <div className="flex items-start justify-between gap-2 mb-1">
+                          <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">{c.materia}</p>
+                          {c.revisado === false && <NuevoTag table="causa_contradicciones" id={c.id} />}
+                        </div>
                         {c.fuente_1_version && (
                           <p className="text-[11px] text-gray-700"><DocLink id={c.fuente_1_documento_id} fallback="Fuente 1" />: {c.fuente_1_version}</p>
                         )}
@@ -3527,6 +3566,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                           <div className="flex items-center justify-between gap-2 flex-wrap">
                             <p className="text-[11.5px] font-semibold text-gray-800">{r.diligencia_propuesta}</p>
                             <div className="flex items-center gap-2 flex-shrink-0">
+                              {r.revisado === false && <NuevoTag table="causa_recomendaciones" id={r.id} />}
                               <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${r.prioridad === 'ALTA' ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-500'}`}>{r.prioridad}</span>
                               {isEdit ? (
                                 <select autoFocus value={cellDraft} onChange={e => setCellDraft(e.target.value)}
