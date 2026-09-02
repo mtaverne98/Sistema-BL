@@ -1221,6 +1221,18 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
     return () => window.removeEventListener('seguimiento:created', handler)
   }, [causa?.id, causa?.rit])
 
+  // Refresh tareas list when QuickAdd creates a tarea linked to this causa
+  useEffect(() => {
+    if (!causa?.id) return
+    const handler = (e) => {
+      const { causa_id, row } = e.detail
+      if (causa_id !== causa.id) return
+      if (row) setTareas(prev => [...prev.filter(t => t.id !== row.id), row])
+    }
+    window.addEventListener('tarea:created', handler)
+    return () => window.removeEventListener('tarea:created', handler)
+  }, [causa?.id])
+
   // Load seguimiento rows — excluye es_revision_semanal=true (filas SIAU/PJUD de Mi semana)
   useEffect(() => {
     if ((tab !== 'seguimiento' && tab !== 'revisiones' && tab !== 'resumen') || !causa?.id) return

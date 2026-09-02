@@ -555,7 +555,10 @@ export default function QuickAdd() {
     setSaving(true)
     setError(null)
     try {
-      await saveEntity(entityType, form)
+      const saved = await saveEntity(entityType, form)
+      if (entityType === 'tarea' && saved) {
+        window.dispatchEvent(new CustomEvent('tarea:created', { detail: { causa_id: saved.causa_id, causa_rit: saved.causa_rit, row: saved } }))
+      }
       setPhase('success')
       setTimeout(close, 1600)
     } catch (err) {

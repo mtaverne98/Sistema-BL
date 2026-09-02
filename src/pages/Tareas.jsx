@@ -988,6 +988,7 @@ function PanelTarea({ tarea, onClose, onUpdate, clientesLista, allCausas }) {
 // ── FormNuevaTarea ────────────────────────────────────────────────────────────
 function FormNuevaTarea({ onClose, onSave, clientesLista, allCausas }) {
   const [saving, setSaving] = useState(false)
+  const [tareaGeneral, setTareaGeneral] = useState(false)
   const [form, setForm] = useState({
     titulo: '', cliente_nombre: '', causa_rit: '', causa_id: null, cliente_id: null,
     categoria: 'Escrito', prioridad: 'Media',
@@ -996,17 +997,24 @@ function FormNuevaTarea({ onClose, onSave, clientesLista, allCausas }) {
   })
   const f = (k, v) => setForm(p => ({ ...p, [k]: v }))
 
+  const canSave = form.titulo.trim() && (tareaGeneral || !!form.causa_id)
+
   const handleSave = async () => {
-    if (!form.titulo.trim()) return
+    if (!canSave) return
     setSaving(true)
-    onSave(form)
+    const payload = tareaGeneral
+      ? { ...form, causa_id: null, causa_rit: '', cliente_nombre: '' }
+      : form
+    onSave(payload)
   }
 
   // Cmd+Enter submits this form
   const saveRef = useRef(null)
   saveRef.current = handleSave
+  const canSaveRef = useRef(false)
+  canSaveRef.current = canSave
   useEffect(() => {
-    const fn = () => saveRef.current?.()
+    const fn = () => { if (canSaveRef.current) saveRef.current?.() }
     window.addEventListener('global:save', fn)
     return () => window.removeEventListener('global:save', fn)
   }, [])
@@ -1078,13 +1086,31 @@ function FormNuevaTarea({ onClose, onSave, clientesLista, allCausas }) {
         </div>
 
         <div>
-          <p className="text-[9px] font-semibold text-gray-300 uppercase tracking-wider mb-1.5">Causa asociada</p>
+          <p className="text-[9px] font-semibold text-gray-300 uppercase tracking-wider mb-1.5">Causa asociada *</p>
           <CausaSelect
             ritValue={form.causa_rit}
             clienteSeleccionado={form.cliente_nombre}
             allCausas={allCausas}
-            onChange={(rit, causaId, clienteId) => setForm(p => ({ ...p, causa_rit: rit, causa_id: causaId, cliente_id: clienteId }))}
+            onChange={(rit, causaId, clienteId) => {
+              setForm(p => ({ ...p, causa_rit: rit, causa_id: causaId, cliente_id: clienteId }))
+              if (causaId) setTareaGeneral(false)
+            }}
           />
+          <label className="mt-2 flex items-center gap-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={tareaGeneral}
+              onChange={e => {
+                setTareaGeneral(e.target.checked)
+                if (e.target.checked) setForm(p => ({ ...p, causa_rit: '', causa_id: null, cliente_nombre: '', cliente_id: null }))
+              }}
+              className="w-3.5 h-3.5 rounded accent-[#2570BA]"
+            />
+            <span className="text-xs text-gray-500">Tarea general del estudio (sin causa)</span>
+          </label>
+          {!form.causa_id && !tareaGeneral && form.titulo.trim() && (
+            <p className="text-[10px] text-amber-500 mt-1">Selecciona una causa o marca "tarea general"</p>
+          )}
         </div>
 
         <div>
@@ -1101,7 +1127,7 @@ function FormNuevaTarea({ onClose, onSave, clientesLista, allCausas }) {
         </button>
         <button
           onClick={handleSave}
-          disabled={!form.titulo.trim() || saving}
+          disabled={!canSave || saving}
           className="flex-1 text-xs bg-[#2570BA] text-white py-2.5 rounded-xl hover:bg-[#2570BA]/90 transition-colors font-semibold disabled:opacity-40 shadow-sm shadow-[#1a2e4a]/20"
         >
           {saving ? 'Guardando...' : 'Crear tarea'}
@@ -1145,6 +1171,7 @@ export default function Tareas() {
   const [fPrioridad,   setFPrioridad]   = useState(_ps.fPrioridad ?? 'Todas')
   const [fResp,        setFResp]        = useState(_ps.fResp ?? 'Todas')
   const [fCategoria,   setFCategoria]   = useState(_ps.fCategoria ?? 'Todas')
+  const [fGeneral,     setFGeneral]     = useState(false)
   const [deleteTarget, setDeleteTarget] = useState(null)
 
   const panelOpen = !!(seleccionada || showForm)
@@ -1316,11 +1343,12 @@ export default function Tareas() {
     if (fPrioridad !== 'Todas')  r = r.filter(t => t.prioridad  === fPrioridad)
     if (fResp      !== 'Todas')  r = r.filter(t => t.responsable === fResp)
     if (fCategoria !== 'Todas')  r = r.filter(t => t.categoria  === fCategoria)
+    if (fGeneral)                r = r.filter(t => !t.causa_id)
     return r
-  }, [tareas, busqueda, fEstado, fPrioridad, fResp, fCategoria])
+  }, [tareas, busqueda, fEstado, fPrioridad, fResp, fCategoria, fGeneral])
 
   const grupos = useMemo(() => computeGrupos(filtradas, groupBy), [filtradas, groupBy])
-  const hayFiltros = busqueda || fEstado !== 'Todos' || fPrioridad !== 'Todas' || fResp !== 'Todas' || fCategoria !== 'Todas'
+  const hayFiltros = busqueda || fEstado !== 'Todos' || fPrioridad !== 'Todas' || fResp !== 'Todas' || fCategoria !== 'Todas' || fGeneral
 
   return (
     <div className="flex h-full bg-[#fafafa]">
@@ -1398,6 +1426,17 @@ export default function Tareas() {
                   </div>
                 ))}
 
+                <button
+                  onClick={() => setFGeneral(v => !v)}
+                  className={`text-[10px] font-semibold px-2.5 py-1.5 rounded-lg border transition-colors whitespace-nowrap ${
+                    fGeneral
+                      ? 'bg-[#1a2e4a] text-white border-[#1a2e4a]'
+                      : 'bg-gray-50 text-gray-400 border-gray-100 hover:text-gray-600'
+                  }`}
+                >
+                  Solo generales
+                </button>
+
                 <div className="flex items-center gap-1 ml-auto border-l border-gray-100 pl-3">
                   <Layers size={12} className="text-gray-300 flex-shrink-0" />
                   {GRUPO_OPTIONS.map(g => (
@@ -1415,7 +1454,7 @@ export default function Tareas() {
 
                 {hayFiltros && (
                   <button
-                    onClick={() => { setBusqueda(''); setFEstado('Todos'); setFPrioridad('Todas'); setFResp('Todas'); setFCategoria('Todas') }}
+                    onClick={() => { setBusqueda(''); setFEstado('Todos'); setFPrioridad('Todas'); setFResp('Todas'); setFCategoria('Todas'); setFGeneral(false) }}
                     className="text-[11px] text-gray-300 hover:text-gray-500 flex items-center gap-1"
                   >
                     <X size={11} />
