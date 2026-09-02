@@ -1,29 +1,32 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import {
-  ChevronLeft, ChevronRight, ChevronDown, ChevronUp,
-  Gavel, CheckSquare, Clock, Plus, Check, X,
-  Circle, CheckCircle2, ArrowRight, AlertTriangle, StickyNote,
-  Undo2, CalendarDays, ListTodo,
+  ChevronLeft, ChevronRight, Plus, Check, X, Undo2,
+  ChevronDown, ChevronUp, ArrowRight, CalendarDays, Link2, Scale,
+  Circle, CheckCircle2, ExternalLink,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
-import { PendientesPanel } from '../components/PendientesPanel'
 
 // ── Constantes ────────────────────────────────────────────────────────────────
 const TODAY = new Date().toISOString().slice(0, 10)
+
+const DIAS_CORTO = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb']
+const DIAS_LARGO = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado']
+const MESES      = ['enero','febrero','marzo','abril','mayo','junio','julio',
+                    'agosto','septiembre','octubre','noviembre','diciembre']
+
+const TIPOS = {
+  audiencia: { label: 'Audiencia', color: '#2570BA', bg: '#EBF3FB' },
+  plazo:     { label: 'Plazo',     color: '#C0392B', bg: '#FDECEA' },
+  tarea:     { label: 'Tarea',     color: '#C8862B', bg: '#FDF3E7' },
+  reunion:   { label: 'Reunión',   color: '#7C3AED', bg: '#F3EFFE' },
+}
 
 const ACTION_VERBS = new Set([
   'llamar','enviar','revisar','preparar','solicitar',
   'mandar','subir','hacer','contactar','confirmar',
 ])
 
-const DIAS_CORTO = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb']
-const DIAS_LARGO = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado']
-const MESES     = ['enero','febrero','marzo','abril','mayo','junio','julio',
-                   'agosto','septiembre','octubre','noviembre','diciembre']
-
 // ── Helpers ───────────────────────────────────────────────────────────────────
-function uid() { return Math.random().toString(36).slice(2, 9) }
-
 function addDays(isoDate, n) {
   const d = new Date(isoDate + 'T00:00:00')
   d.setDate(d.getDate() + n)
@@ -31,7 +34,7 @@ function addDays(isoDate, n) {
 }
 
 function getMonday(dateStr) {
-  const d = new Date(dateStr + 'T00:00:00')
+  const d   = new Date(dateStr + 'T00:00:00')
   const day = d.getDay()
   const diff = day === 0 ? -6 : 1 - day
   d.setDate(d.getDate() + diff)
@@ -39,7 +42,7 @@ function getMonday(dateStr) {
 }
 
 function getISOWeek(isoDate) {
-  const d = new Date(isoDate + 'T00:00:00')
+  const d  = new Date(isoDate + 'T00:00:00')
   const dt = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()))
   dt.setUTCDate(dt.getUTCDate() + 4 - (dt.getUTCDay() || 7))
   const yearStart = new Date(Date.UTC(dt.getUTCFullYear(), 0, 1))
@@ -58,15 +61,15 @@ function fmtWeekRange(monday) {
     : `${d1.getDate()} ${m1} – ${d2.getDate()} ${m2} ${y}`
 }
 
-function dowShort(isoDate) {
-  return DIAS_CORTO[new Date(isoDate + 'T00:00:00').getDay()]
+function dowShort(isoDate)  { return DIAS_CORTO[new Date(isoDate + 'T00:00:00').getDay()] }
+function dowLong(isoDate)   { return DIAS_LARGO[new Date(isoDate + 'T00:00:00').getDay()] }
+function dayNum(isoDate)    { return new Date(isoDate + 'T00:00:00').getDate() }
+function dayMonth(isoDate)  {
+  const d = new Date(isoDate + 'T00:00:00')
+  return `${d.getDate()} de ${MESES[d.getMonth()]}`
 }
-function dowLong(isoDate) {
-  return DIAS_LARGO[new Date(isoDate + 'T00:00:00').getDay()]
-}
-function dayNum(isoDate) {
-  return new Date(isoDate + 'T00:00:00').getDate()
-}
+function nowHHMM() { return new Date().toTimeString().slice(0, 5) }
+function fmtHora(h) { return h ? h.slice(0, 5) : '' }
 
 function isActionText(text) {
   return ACTION_VERBS.has(text.trim().toLowerCase().split(/\s+/)[0])
@@ -79,50 +82,31 @@ function detectClientName(text, clientes) {
     lower.includes(c.nombre.toLowerCase()))?.nombre || null
 }
 
-function nowHHMM() {
-  return new Date().toTimeString().slice(0, 5)
-}
-
-function fmtHora(h) {
-  if (!h) return ''
-  return h.slice(0, 5)
-}
-
-// Resalta nombre de cliente en texto
-function HighlightedText({ text, clienteNombre }) {
-  if (!clienteNombre) return <span>{text}</span>
-  const idx = text.toLowerCase().indexOf(clienteNombre.toLowerCase())
-  if (idx === -1) return <span>{text}</span>
-  return (
-    <span>
-      {text.slice(0, idx)}
-      <span className="text-[#2570BA] font-medium">{text.slice(idx, idx + clienteNombre.length)}</span>
-      {text.slice(idx + clienteNombre.length)}
-    </span>
-  )
+function semChip(isoDate) {
+  const w = getISOWeek(isoDate)
+  return `Sem ${w}`
 }
 
 // ── ConvMenu ──────────────────────────────────────────────────────────────────
 function ConvMenu({ nota, onConvert, onClose }) {
   useEffect(() => {
-    const t = setTimeout(onClose, 6000)
+    const t  = setTimeout(onClose, 6000)
     const fn = e => { if (e.key === 'Escape') onClose() }
     window.addEventListener('keydown', fn)
     return () => { clearTimeout(t); window.removeEventListener('keydown', fn) }
   }, [onClose])
-
   return (
-    <div className="flex items-center gap-1 mt-1 ml-10">
+    <div className="flex items-center gap-1 mt-1 ml-6">
       <button onClick={() => onConvert('tarea')}
-        className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium bg-[#1A2E4A] text-white rounded-md hover:opacity-80 transition-opacity">
+        className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium bg-[#1A2E4A] text-white rounded-md hover:opacity-80">
         <ArrowRight size={9} />Tarea
       </button>
       <button onClick={() => onConvert('seguimiento')}
-        className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium bg-[#2570BA]/10 text-[#2570BA] border border-[#2570BA]/20 rounded-md hover:bg-[#2570BA]/20 transition-colors">
+        className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium bg-[#2570BA]/10 text-[#2570BA] border border-[#2570BA]/20 rounded-md hover:bg-[#2570BA]/20">
         <ArrowRight size={9} />Seguimiento
       </button>
       <button onClick={onClose}
-        className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium text-gray-400 border border-gray-200 rounded-md hover:text-gray-600 transition-colors">
+        className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium text-gray-400 border border-gray-200 rounded-md hover:text-gray-600">
         Solo nota
       </button>
     </div>
@@ -133,14 +117,12 @@ function ConvMenu({ nota, onConvert, onClose }) {
 function SeguimientoPicker({ nota, causas, onConfirm, onClose }) {
   const [query, setQuery] = useState('')
   const inputRef = useRef(null)
-
   useEffect(() => { inputRef.current?.focus() }, [])
   useEffect(() => {
     const fn = e => { if (e.key === 'Escape') onClose() }
     window.addEventListener('keydown', fn)
     return () => window.removeEventListener('keydown', fn)
   }, [onClose])
-
   const filtered = useMemo(() => {
     if (!query.trim()) return causas.slice(0, 12)
     const q = query.toLowerCase()
@@ -151,44 +133,37 @@ function SeguimientoPicker({ nota, causas, onConfirm, onClose }) {
       (c.cliente_nombre || '').toLowerCase().includes(q)
     ).slice(0, 12)
   }, [causas, query])
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30"
       onClick={e => { if (e.target === e.currentTarget) onClose() }}>
       <div className="bg-white rounded-xl shadow-2xl w-[420px] max-h-[500px] flex flex-col overflow-hidden">
-        {/* Header */}
         <div className="px-4 pt-4 pb-3 border-b border-gray-100">
           <p className="text-[10px] font-semibold text-[#2570BA] uppercase tracking-wide mb-1">→ Seguimiento</p>
           <p className="text-xs text-gray-700 leading-snug line-clamp-2">"{nota.texto}"</p>
           <p className="text-[10px] text-gray-400 mt-0.5">Selecciona la causa donde registrar este seguimiento</p>
         </div>
-        {/* Search */}
         <div className="px-4 py-2.5 border-b border-gray-100">
           <input ref={inputRef} value={query} onChange={e => setQuery(e.target.value)}
             placeholder="Buscar por RIT, RUC, materia o cliente…"
-            className="w-full text-xs bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-[#2570BA] focus:ring-1 focus:ring-[#2570BA]/20 transition-colors" />
+            className="w-full text-xs bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-[#2570BA] transition-colors" />
         </div>
-        {/* Lista */}
         <div className="overflow-y-auto flex-1 py-1">
-          {filtered.length === 0 ? (
-            <p className="text-[11px] text-gray-300 text-center py-6">Sin resultados</p>
-          ) : filtered.map(c => (
-            <button key={c.id} onClick={() => onConfirm(c)}
-              className="w-full text-left px-4 py-2.5 hover:bg-[#2570BA]/5 transition-colors border-b border-gray-50 last:border-0">
-              <div className="flex items-baseline gap-2">
-                <span className="text-[11px] font-mono font-semibold text-[#1A2E4A]">{c.rit || c.ruc || '—'}</span>
-                <span className="text-[10px] text-gray-400 truncate">{c.cliente_nombre}</span>
-              </div>
-              {c.materia && (
-                <p className="text-[10px] text-gray-500 leading-snug mt-0.5 truncate">{c.materia}</p>
-              )}
-            </button>
-          ))}
+          {filtered.length === 0
+            ? <p className="text-[11px] text-gray-300 text-center py-6">Sin resultados</p>
+            : filtered.map(c => (
+              <button key={c.id} onClick={() => onConfirm(c)}
+                className="w-full text-left px-4 py-2.5 hover:bg-[#2570BA]/5 transition-colors border-b border-gray-50 last:border-0">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-[11px] font-mono font-semibold text-[#1A2E4A]">{c.rit || c.ruc || '—'}</span>
+                  <span className="text-[10px] text-gray-400 truncate">{c.cliente_nombre}</span>
+                </div>
+                {c.materia && <p className="text-[10px] text-gray-500 mt-0.5 truncate">{c.materia}</p>}
+              </button>
+            ))}
         </div>
-        {/* Footer */}
         <div className="px-4 py-3 border-t border-gray-100 flex justify-end">
           <button onClick={onClose}
-            className="text-[11px] text-gray-400 hover:text-gray-600 transition-colors px-3 py-1.5 rounded-lg border border-gray-200">
+            className="text-[11px] text-gray-400 hover:text-gray-600 px-3 py-1.5 rounded-lg border border-gray-200">
             Cancelar
           </button>
         </div>
@@ -197,319 +172,487 @@ function SeguimientoPicker({ nota, causas, onConfirm, onClose }) {
   )
 }
 
-// ── NotaItem ──────────────────────────────────────────────────────────────────
-function NotaItem({ nota, clientes, onToggle, onDelete, onConvert, onUpdateNota, isPast }) {
-  const [showConv,  setShowConv]  = useState(false)
-  const [showDel,   setShowDel]   = useState(false)
-  const [showNota,  setShowNota]  = useState(false)
-  const [notaDraft, setNotaDraft] = useState(nota.notas || '')
+// ── EventoItem ────────────────────────────────────────────────────────────────
+function EventoItem({ tipo, label, sub, hora }) {
+  const t = TIPOS[tipo]
+  return (
+    <div className="flex items-center gap-2 py-1.5">
+      <div className="w-0.5 self-stretch rounded-full flex-shrink-0" style={{ background: t.color }} />
+      <span
+        className="text-[10px] font-bold px-1.5 py-0.5 rounded flex-shrink-0"
+        style={{ color: t.color, background: t.bg }}
+      >
+        {t.label.toUpperCase()}
+      </span>
+      {hora && <span className="text-[11px] font-mono text-gray-400 flex-shrink-0">{fmtHora(hora)}</span>}
+      <span className="text-[12px] text-gray-700 font-medium truncate flex-1">{label}</span>
+      {sub && <span className="text-[11px] text-gray-400 flex-shrink-0 truncate max-w-[160px]">{sub}</span>}
+    </div>
+  )
+}
 
-  async function handleNotaBlur() {
-    const trimmed = notaDraft.trim()
-    if (trimmed === (nota.notas || '').trim()) return
-    await supabase.from('agenda_notas').update({ notas: trimmed || null }).eq('id', nota.id)
-    onUpdateNota(nota.id, trimmed || null)
-  }
-
-  const hasNota = !!(nota.notas && nota.notas.trim())
+// ── NotaRow ───────────────────────────────────────────────────────────────────
+function NotaRow({ nota, onToggle, onDelete, isPast, newNotaId, onConvert }) {
+  const [showConv, setShowConv] = useState(false)
+  const isNew = nota.id === newNotaId
 
   return (
-    <div className="group"
-      onMouseEnter={() => setShowDel(true)}
-      onMouseLeave={() => setShowDel(false)}>
-      <div className="flex items-start gap-2 py-1 px-1 rounded-lg hover:bg-gray-50/70 transition-colors">
-        {/* Hora */}
-        <span className="text-[10px] text-gray-300 tabular-nums mt-0.5 w-9 flex-shrink-0">
-          {fmtHora(nota.hora)}
-        </span>
-        {/* Checkbox — todos los apuntes */}
-        <button onClick={() => !isPast && onToggle(nota)} disabled={isPast}
-          className={`mt-0.5 flex-shrink-0 transition-colors ${
-            nota.completada ? 'text-emerald-500' : 'text-gray-300 hover:text-gray-500'
-          } ${isPast ? 'cursor-default' : 'cursor-pointer'}`}>
-          {nota.completada
-            ? <CheckCircle2 size={13} />
-            : <Circle size={13} />}
+    <div className="group">
+      <div className="flex items-center gap-2 py-1 hover:bg-gray-50/60 rounded px-1 -mx-1">
+        <button
+          onClick={() => !isPast && onToggle(nota)}
+          disabled={isPast}
+          className="flex-shrink-0 w-4 h-4 rounded border flex items-center justify-center transition-colors"
+          style={{
+            borderColor: nota.completada ? '#1E9E6A' : '#CBD5E1',
+            background:  nota.completada ? '#1E9E6A' : 'transparent',
+          }}
+        >
+          {nota.completada && <Check size={9} color="white" strokeWidth={3} />}
         </button>
-        {/* Texto */}
-        <span className={`text-xs flex-1 leading-relaxed ${
-          nota.completada ? 'line-through text-gray-300' : 'text-gray-700'
-        }`}>
-          <HighlightedText text={nota.texto} clienteNombre={nota.cliente_nombre} />
+        <span
+          className="flex-1 text-[12px] leading-snug"
+          style={{
+            color: nota.completada ? '#9CA3AF' : '#374151',
+            textDecoration: nota.completada ? 'line-through' : 'none',
+          }}
+        >
+          {nota.texto}
           {nota.tag && (
             <span className={`ml-1.5 text-[9px] px-1 py-0.5 rounded font-medium ${
-              nota.tag === 'tarea' ? 'bg-[#1A2E4A]/10 text-[#1A2E4A]' :
-              nota.tag === 'seguimiento' ? 'bg-[#2570BA]/10 text-[#2570BA]' :
-              'bg-gray-100 text-gray-400'
+              nota.tag === 'tarea' ? 'bg-[#1A2E4A]/10 text-[#1A2E4A]' : 'bg-[#2570BA]/10 text-[#2570BA]'
             }`}>
-              {nota.tag === 'tarea' ? '→ Tarea' : nota.tag === 'seguimiento' ? '→ Seguimiento' : 'nota'}
+              {nota.tag === 'tarea' ? '→ Tarea' : '→ Seguimiento'}
             </span>
           )}
         </span>
-        {/* Acciones */}
-        <div className={`flex items-center gap-1 flex-shrink-0 transition-opacity ${showDel && !isPast ? 'opacity-100' : 'opacity-0'}`}>
-          {!nota.completada && !nota.tag && (
-            <button onClick={() => setShowConv(s => !s)}
-              className="text-[9px] text-[#2570BA]/60 hover:text-[#2570BA] px-1.5 py-0.5 border border-[#2570BA]/20 rounded">
-              convertir
-            </button>
-          )}
-          <button onClick={() => setShowNota(s => !s)}
-            title="Agregar nota"
-            className={`transition-colors ${hasNota ? 'text-amber-400' : 'text-gray-300 hover:text-amber-400'}`}>
-            <StickyNote size={11} />
+        {!isPast && !nota.completada && !nota.tag && (
+          <button
+            onClick={() => setShowConv(s => !s)}
+            className="opacity-0 group-hover:opacity-100 text-[9px] text-[#2570BA]/50 hover:text-[#2570BA] px-1.5 py-0.5 border border-[#2570BA]/20 rounded transition-all"
+          >
+            convertir
           </button>
-          <button onClick={() => onDelete(nota)}
-            className="text-gray-300 hover:text-red-400 transition-colors">
+        )}
+        {!isPast && (
+          <button
+            onClick={() => onDelete(nota)}
+            className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-400 transition-all"
+          >
             <X size={11} />
           </button>
-        </div>
+        )}
       </div>
-      {showNota && (
-        <div className="ml-[52px] mb-1">
+      {(showConv || (isNew && isActionText(nota.texto) && !nota.tag)) && (
+        <ConvMenu
+          nota={nota}
+          onConvert={async tipo => { setShowConv(false); await onConvert(nota, tipo) }}
+          onClose={() => setShowConv(false)}
+        />
+      )}
+    </div>
+  )
+}
+
+// ── AnotarInput ───────────────────────────────────────────────────────────────
+function AnotarInput({ date, onSave, isPast }) {
+  const [visible, setVisible] = useState(false)
+  const [val, setVal]         = useState('')
+  const inputRef = useRef(null)
+
+  if (isPast) return null
+
+  function show() { setVisible(true); setTimeout(() => inputRef.current?.focus(), 20) }
+
+  async function save() {
+    const t = val.trim()
+    setVisible(false)
+    setVal('')
+    if (!t) return
+    await onSave(date, t)
+  }
+
+  if (!visible) {
+    return (
+      <button
+        onClick={show}
+        className="flex items-center gap-1 text-[11px] text-gray-300 hover:text-[#2570BA] transition-colors mt-1.5 group"
+      >
+        <Plus size={11} />
+        <span>anotar</span>
+      </button>
+    )
+  }
+
+  return (
+    <div className="flex items-center gap-2 mt-1.5">
+      <div className="w-4 h-4 rounded border border-gray-200 flex-shrink-0" />
+      <input
+        ref={inputRef}
+        type="text"
+        value={val}
+        onChange={e => setVal(e.target.value)}
+        onKeyDown={e => {
+          if (e.key === 'Enter') { e.preventDefault(); save() }
+          if (e.key === 'Escape') { setVisible(false); setVal('') }
+        }}
+        onBlur={() => { if (!val.trim()) setVisible(false) }}
+        placeholder="Anotar… (Enter guarda)"
+        className="flex-1 text-[12px] text-gray-700 bg-transparent border-0 outline-none placeholder:text-gray-300 border-b border-[#2570BA]/30 pb-0.5 focus:border-[#2570BA] transition-colors"
+      />
+    </div>
+  )
+}
+
+// ── DayBlock ──────────────────────────────────────────────────────────────────
+function DayBlock({
+  iso, isToday, isPast,
+  audiencias, plazos, tareas, reuniones, notas,
+  onToggleNota, onAddNota, onDeleteNota, onConvertNota,
+  clientes,
+}) {
+  const [newNotaId, setNewNotaId] = useState(null)
+
+  const hasItems = (audiencias.length + plazos.length + tareas.length +
+                    reuniones.length + notas.length) > 0
+  const isEmpty  = !hasItems
+
+  const headerLabel = `${dowShort(iso)}, ${dayMonth(iso)}`
+
+  const handleAddNota = useCallback(async (date, text) => {
+    const id = await onAddNota(date, text)
+    if (id) {
+      setNewNotaId(id)
+      setTimeout(() => setNewNotaId(null), 8000)
+    }
+  }, [onAddNota])
+
+  // Día vacío y no es hoy → línea compacta
+  if (isEmpty && !isToday) {
+    return (
+      <div className="flex items-center gap-3 px-5 py-2 border-b border-gray-100/80">
+        <span className="text-[12px] text-gray-300 min-w-[140px]">{headerLabel}</span>
+        <AnotarInput date={iso} onSave={onAddNota} isPast={isPast} />
+      </div>
+    )
+  }
+
+  return (
+    <div
+      className="border-b border-gray-100/80"
+      style={isToday ? { background: '#F4F8FD', borderLeft: '2.5px solid #2570BA' } : {}}
+    >
+      {/* Header del día */}
+      <div className="flex items-center gap-2 px-5 pt-3 pb-1">
+        <span
+          className="text-[13px] font-semibold"
+          style={{ color: isToday ? '#2570BA' : '#374151' }}
+        >
+          {headerLabel}
+        </span>
+        {isToday && (
+          <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded"
+            style={{ background: '#2570BA', color: 'white' }}>
+            HOY
+          </span>
+        )}
+      </div>
+
+      {/* Items del sistema */}
+      {(audiencias.length + plazos.length + tareas.length + reuniones.length) > 0 && (
+        <div className="px-5 pb-1">
+          {audiencias.map(a => (
+            <EventoItem key={a.id} tipo="audiencia"
+              label={a.cliente_nombre || a.causa_rit || a.rit}
+              sub={a.tipo || (a.rit !== a.causa_rit ? (a.rit || a.causa_rit) : null)}
+              hora={a.hora} />
+          ))}
+          {plazos.map(p => (
+            <EventoItem key={p.id} tipo="plazo"
+              label={p.descripcion}
+              sub={p.cliente_nombre}
+              hora={null} />
+          ))}
+          {tareas.map(t => (
+            <EventoItem key={t.id} tipo="tarea"
+              label={t.titulo}
+              sub={t.cliente_nombre}
+              hora={null} />
+          ))}
+          {reuniones.map(r => (
+            <EventoItem key={r.id} tipo="reunion"
+              label={r.titulo || 'Reunión'}
+              sub={null}
+              hora={null} />
+          ))}
+        </div>
+      )}
+
+      {/* Notas */}
+      {notas.length > 0 && (
+        <div className="px-5 pb-1">
+          {notas.map(n => (
+            <NotaRow key={n.id} nota={n}
+              onToggle={onToggleNota}
+              onDelete={onDeleteNota}
+              onConvert={onConvertNota}
+              isPast={isPast}
+              newNotaId={newNotaId}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Anotar */}
+      <div className="px-5 pb-3">
+        <AnotarInput date={iso} onSave={handleAddNota} isPast={isPast} />
+      </div>
+    </div>
+  )
+}
+
+// ── PendienteRow ──────────────────────────────────────────────────────────────
+function PendienteRow({
+  p, children, causas, expanded, isResolving,
+  onToggleExpand, onToggle, onUndo,
+  onAddChild, onEditNota, onDelete,
+  weekDays, onMover, onConvertTarea, onConvertSeguimiento,
+  onLink, onUnlink,
+}) {
+  const [childInput,     setChildInput]     = useState('')
+  const [showChildInput, setShowChildInput] = useState(false)
+  const [notaDraft,      setNotaDraft]      = useState(p.notas || '')
+  const [linkOpen,       setLinkOpen]       = useState(false)
+  const [moverOpen,      setMoverOpen]      = useState(false)
+  const childRef = useRef(null)
+  const notaRef  = useRef(null)
+
+  const linkedCausa = useMemo(
+    () => p.causa_id ? causas.find(c => c.id === p.causa_id) : null,
+    [causas, p.causa_id]
+  )
+
+  if (isResolving) {
+    return (
+      <div className="flex items-center gap-2 px-5 py-2 border-b border-gray-100/80">
+        <div className="w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center"
+          style={{ borderColor: '#1E9E6A', background: '#1E9E6A' }}>
+          <Check size={9} color="white" strokeWidth={3} />
+        </div>
+        <span className="flex-1 text-[12px] text-gray-300 line-through">{p.texto}</span>
+        <button onClick={() => onUndo(p)}
+          className="flex items-center gap-1 text-[10px] font-medium text-[#2570BA] hover:underline flex-shrink-0">
+          <Undo2 size={11} /> Deshacer
+        </button>
+      </div>
+    )
+  }
+
+  function handleNotaBlur() {
+    const t = notaDraft.trim()
+    if (t !== (p.notas || '').trim()) onEditNota(p.id, t)
+  }
+
+  async function addChild() {
+    const t = childInput.trim()
+    if (!t) return
+    setChildInput('')
+    await onAddChild(p.id, t)
+  }
+
+  return (
+    <div
+      className="border-b border-gray-100/80"
+      style={expanded
+        ? { background: '#F8FAFC', borderLeft: '2px solid #2570BA' }
+        : { borderLeft: '2px solid transparent' }}
+    >
+      {/* Fila principal */}
+      <div className="flex items-center gap-2 px-5 py-2 group">
+        <button
+          onClick={() => onToggle(p)}
+          className="flex-shrink-0 w-4 h-4 rounded border flex items-center justify-center hover:border-green-500 transition-colors"
+          style={{ borderColor: '#CBD5E1' }}
+        />
+        <span className="flex-1 text-[12px] text-gray-700 leading-snug">{p.texto}</span>
+        {linkedCausa && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-[#2570BA] font-medium flex-shrink-0 truncate max-w-[110px]">
+            {linkedCausa.cliente_nombre?.split(' ')[0] || linkedCausa.rit || '⚖'}
+          </span>
+        )}
+        {children.length > 0 && (
+          <span className="text-[10px] text-gray-300 flex-shrink-0">
+            {children.length}p
+          </span>
+        )}
+        <button
+          onClick={onToggleExpand}
+          className="p-1 text-gray-300 hover:text-gray-500 transition-colors flex-shrink-0"
+        >
+          {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+        </button>
+      </div>
+
+      {/* Expansión */}
+      {expanded && (
+        <div className="px-8 pb-3">
+          {/* Punteo */}
+          {children.map(c => (
+            <div key={c.id} className="flex items-center gap-2 py-0.5">
+              <button
+                onClick={() => onToggle(c)}
+                className="flex-shrink-0 w-3.5 h-3.5 rounded border hover:border-green-500 transition-colors"
+                style={{ borderColor: '#CBD5E1' }}
+              />
+              <span className="text-[11px] text-gray-600">{c.texto}</span>
+            </div>
+          ))}
+
+          {/* Input nuevo punto */}
+          {showChildInput ? (
+            <div className="flex items-center gap-2 py-0.5">
+              <div className="w-3.5 h-3.5 rounded border border-gray-200 flex-shrink-0" />
+              <input
+                ref={childRef}
+                type="text"
+                value={childInput}
+                onChange={e => setChildInput(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') { e.preventDefault(); addChild() }
+                  if (e.key === 'Escape') { setShowChildInput(false); setChildInput('') }
+                }}
+                onBlur={() => { if (!childInput.trim()) setShowChildInput(false) }}
+                placeholder="Nuevo punto… (Enter)"
+                autoFocus
+                className="flex-1 text-[11px] bg-transparent border-0 border-b border-[#2570BA]/30 outline-none placeholder:text-gray-300 text-gray-700 pb-0.5"
+              />
+            </div>
+          ) : (
+            <button
+              onClick={() => { setShowChildInput(true); setTimeout(() => childRef.current?.focus(), 20) }}
+              className="flex items-center gap-1 text-[10px] text-gray-300 hover:text-[#2570BA] transition-colors mt-0.5 mb-1"
+            >
+              <Plus size={10} /> añadir punto
+            </button>
+          )}
+
+          {/* Separador */}
+          <div className="border-t border-dashed border-gray-200 my-2" />
+
+          {/* Notas */}
           <textarea
-            rows={2}
+            ref={notaRef}
             value={notaDraft}
             onChange={e => setNotaDraft(e.target.value)}
             onBlur={handleNotaBlur}
-            placeholder="Notas adicionales…"
-            className="w-full text-[11px] text-gray-600 bg-amber-50/60 border border-amber-200/60 rounded-lg px-2.5 py-1.5 resize-none focus:outline-none focus:border-amber-300 placeholder:text-gray-300 leading-relaxed"
+            placeholder="Notas…"
+            rows={2}
+            className="w-full text-[11px] text-gray-600 bg-transparent border-0 outline-none resize-none placeholder:text-gray-300 leading-relaxed"
           />
+
+          {/* Acciones de conversión / mover */}
+          <div className="flex items-center gap-1.5 flex-wrap mt-2 pt-2 border-t border-gray-100">
+            {!linkedCausa && (
+              <div className="relative">
+                <button
+                  onClick={() => setLinkOpen(s => !s)}
+                  className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] text-gray-400 border border-gray-200 rounded-md hover:text-[#2570BA] hover:border-blue-200 transition-colors"
+                >
+                  <Link2 size={9} /> Causa
+                </button>
+                {linkOpen && (
+                  <CausaLinkDropdown
+                    causas={causas}
+                    onLink={id => { onLink(p, id); setLinkOpen(false) }}
+                    onClose={() => setLinkOpen(false)}
+                  />
+                )}
+              </div>
+            )}
+            {linkedCausa && (
+              <button
+                onClick={() => onUnlink(p)}
+                className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] text-[#2570BA] border border-blue-200 rounded-md hover:bg-blue-50"
+              >
+                <Scale size={9} />{linkedCausa.cliente_nombre?.split(' ')[0]} · ×
+              </button>
+            )}
+            <div className="relative">
+              <button
+                onClick={() => setMoverOpen(s => !s)}
+                className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] text-gray-400 border border-gray-200 rounded-md hover:text-gray-600"
+              >
+                <CalendarDays size={9} /> Mover
+              </button>
+              {moverOpen && (
+                <div className="absolute left-0 top-full mt-1 z-20 bg-white border border-gray-200 rounded-lg shadow-lg py-1 min-w-[110px]">
+                  {(weekDays || []).map(date => (
+                    <button key={date} onClick={() => { setMoverOpen(false); onMover(p, date) }}
+                      className="w-full text-left px-2.5 py-1 text-[11px] text-gray-600 hover:bg-gray-50">
+                      {dowShort(date)} {dayNum(date)}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <button onClick={() => onConvertTarea(p)}
+              className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium bg-[#1A2E4A] text-white rounded-md hover:opacity-80">
+              <ArrowRight size={9} />Tarea
+            </button>
+            <button onClick={() => onConvertSeguimiento(p)}
+              className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium bg-[#2570BA]/10 text-[#2570BA] border border-[#2570BA]/20 rounded-md hover:bg-[#2570BA]/20">
+              <ArrowRight size={9} />Seguimiento
+            </button>
+            <button
+              onClick={() => onDelete(p)}
+              className="ml-auto inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] text-gray-300 hover:text-red-400 border border-gray-100 rounded-md"
+            >
+              <X size={9} /> Eliminar
+            </button>
+          </div>
         </div>
-      )}
-      {showConv && (
-        <ConvMenu nota={nota}
-          onConvert={async (tipo) => {
-            setShowConv(false)
-            await onConvert(nota, tipo)
-          }}
-          onClose={() => setShowConv(false)} />
       )}
     </div>
   )
 }
 
-// ── SystemItems ───────────────────────────────────────────────────────────────
-function SystemItems({ audiencias = [], tareas = [], plazos = [] }) {
-  if (!audiencias.length && !tareas.length && !plazos.length) return null
+// ── CausaLinkDropdown ─────────────────────────────────────────────────────────
+function CausaLinkDropdown({ causas, onLink, onClose }) {
+  const [q, setQ]   = useState('')
+  const inputRef    = useRef(null)
+  useEffect(() => { inputRef.current?.focus() }, [])
+  useEffect(() => {
+    const fn = e => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', fn)
+    return () => window.removeEventListener('keydown', fn)
+  }, [onClose])
+  const filtered = useMemo(() => {
+    if (!q.trim()) return causas.slice(0, 10)
+    const qlo = q.toLowerCase()
+    return causas.filter(c =>
+      (c.rit || '').toLowerCase().includes(qlo) ||
+      (c.cliente_nombre || '').toLowerCase().includes(qlo)
+    ).slice(0, 10)
+  }, [q, causas])
   return (
-    <div className="mb-2">
-      <p className="text-[9px] font-semibold text-gray-300 uppercase tracking-widest mb-1.5 px-1">
-        Desde el sistema
-      </p>
-      <div className="space-y-0.5">
-        {audiencias.map(a => (
-          <div key={a.id} className="flex items-center gap-2 px-1 py-1 rounded-lg hover:bg-gray-50/70">
-            <Gavel size={11} className="text-purple-400 flex-shrink-0" />
-            <span className="text-[10px] font-medium text-gray-500 tabular-nums w-9 flex-shrink-0">
-              {fmtHora(a.hora)}
-            </span>
-            <span className="text-xs text-gray-700 flex-1 truncate">
-              {a.cliente_nombre || a.causa_rit || a.rit}
-            </span>
-            {(a.rit || a.causa_rit) && (
-              <span className="text-[9px] text-gray-400 flex-shrink-0">
-                {a.rit || a.causa_rit}
-              </span>
-            )}
-          </div>
-        ))}
-        {tareas.map(t => (
-          <div key={t.id} className="flex items-center gap-2 px-1 py-1 rounded-lg hover:bg-gray-50/70">
-            <CheckSquare size={11} className="text-blue-400 flex-shrink-0" />
-            <span className="text-[10px] text-gray-400 w-9 flex-shrink-0" />
-            <span className="text-xs text-gray-700 flex-1 truncate">{t.titulo}</span>
-            {t.cliente_nombre && (
-              <span className="text-[9px] text-gray-400 flex-shrink-0 truncate max-w-[80px]">
-                {t.cliente_nombre.split(' ')[0]}
-              </span>
-            )}
-          </div>
-        ))}
-        {plazos.map(p => (
-          <div key={p.id} className="flex items-center gap-2 px-1 py-1 rounded-lg hover:bg-gray-50/70">
-            <AlertTriangle size={11} className={`flex-shrink-0 ${p.urgente ? 'text-red-400' : 'text-amber-400'}`} />
-            <span className="text-[10px] text-gray-400 w-9 flex-shrink-0" />
-            <span className="text-xs text-gray-700 flex-1 truncate">{p.descripcion}</span>
-            {p.urgente && (
-              <span className="text-[9px] font-semibold text-red-500 flex-shrink-0">URGENTE</span>
-            )}
-          </div>
+    <div className="absolute left-0 top-full mt-1 z-30 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden" style={{ minWidth: 220 }}>
+      <div className="p-2 border-b border-gray-100">
+        <input ref={inputRef} value={q} onChange={e => setQ(e.target.value)}
+          placeholder="RIT, RUC o nombre…"
+          className="w-full text-[11px] bg-gray-50 border border-gray-200 rounded-md px-2 py-1 outline-none focus:border-[#2570BA]" />
+      </div>
+      <div className="max-h-40 overflow-y-auto py-1">
+        {filtered.map(c => (
+          <button key={c.id} onClick={() => onLink(c.id)}
+            className="w-full text-left px-3 py-1.5 text-[10px] hover:bg-blue-50 border-b border-gray-50 last:border-0">
+            <span className="font-semibold text-[#1A2E4A]">{c.rit || c.ruc || '—'}</span>
+            {c.cliente_nombre && <span className="text-gray-400 ml-1.5">{c.cliente_nombre}</span>}
+          </button>
         ))}
       </div>
-      <div className="mt-2 mb-2 border-t border-gray-100/80" />
     </div>
   )
 }
-
-// ── DiaRow ────────────────────────────────────────────────────────────────────
-function DiaRow({
-  date, isToday, isOpen, isPast, onToggle,
-  notas, audiencias, tareas, plazos,
-  clientes, onAddNota, onToggleNota, onDeleteNota, onConvertNota, onUpdateNota,
-}) {
-  const [inputVal, setInputVal]     = useState('')
-  const [isAdding, setIsAdding]     = useState(false)
-  const [newNotaId, setNewNotaId]   = useState(null)
-  const inputRef = useRef(null)
-
-  const totalItems = (audiencias?.length || 0) + (tareas?.length || 0) +
-                     (plazos?.length || 0) + (notas?.length || 0)
-
-  const pendientes = (notas || []).filter(n => !n.completada && n.tipo === 'checkbox').length +
-                     (tareas?.length || 0) + (plazos?.length || 0)
-
-  // Preview del día (colapsado)
-  const previewItems = useMemo(() => {
-    const items = []
-    if (audiencias?.length) items.push(`${audiencias.length} audiencia${audiencias.length > 1 ? 's' : ''}`)
-    if (tareas?.length) items.push(`${tareas.length} tarea${tareas.length > 1 ? 's' : ''}`)
-    if (plazos?.length) items.push(`${plazos.length} plazo${plazos.length > 1 ? 's' : ''}`)
-    const checkboxPend = (notas || []).filter(n => n.tipo === 'checkbox' && !n.completada)
-    if (checkboxPend.length) items.push(checkboxPend[0].texto.slice(0, 30))
-    else if (notas?.length) items.push(notas[0].texto.slice(0, 30))
-    return items.slice(0, 2)
-  }, [audiencias, tareas, plazos, notas])
-
-  useEffect(() => {
-    if (isAdding && inputRef.current) inputRef.current.focus()
-  }, [isAdding])
-
-  function handleKeyDown(e) {
-    if (e.key === 'Enter') {
-      e.preventDefault()
-      const text = inputVal.trim()
-      if (!text) { setIsAdding(false); return }
-      onAddNota(date, text).then(id => {
-        setNewNotaId(id)
-        setTimeout(() => setNewNotaId(null), 8000)
-      })
-      setInputVal('')
-      setIsAdding(false)
-    }
-    if (e.key === 'Escape') {
-      setInputVal('')
-      setIsAdding(false)
-    }
-  }
-
-  return (
-    <div className={`border-b border-gray-100/80 last:border-0 ${
-      isToday ? 'bg-[#F4F8FD]' : 'bg-white'
-    }`} style={isToday ? { borderLeft: '2.5px solid #2570BA' } : {}}>
-
-      {/* Header del día */}
-      <button
-        onClick={onToggle}
-        className={`w-full flex items-center gap-3 px-5 py-3 text-left transition-colors ${
-          isToday ? 'hover:bg-[#EEF4FC]' : 'hover:bg-gray-50/60'
-        }`}>
-        {isOpen
-          ? <ChevronDown size={13} className="text-gray-300 flex-shrink-0" />
-          : <ChevronRight size={13} className="text-gray-300 flex-shrink-0" />}
-
-        {/* Nombre del día */}
-        <div className="flex items-center gap-2 min-w-[70px]">
-          <span className={`text-[13px] font-semibold ${isToday ? 'text-[#2570BA]' : 'text-gray-700'}`}>
-            {dowShort(date)} {dayNum(date)}
-          </span>
-          {isToday && (
-            <span className="text-[9px] font-bold text-[#2570BA] uppercase tracking-wider bg-[#2570BA]/10 px-1.5 py-0.5 rounded">
-              HOY
-            </span>
-          )}
-        </div>
-
-        {/* Preview (colapsado) */}
-        {!isOpen && previewItems.length > 0 && (
-          <span className="text-[11px] text-gray-400 truncate flex-1">
-            {previewItems.join(' · ')}
-          </span>
-        )}
-        {!isOpen && previewItems.length === 0 && (
-          <span className="text-[11px] text-gray-300 flex-1">Sin items</span>
-        )}
-
-        {/* Contador */}
-        {totalItems > 0 && (
-          <span className={`ml-auto text-[10px] tabular-nums flex-shrink-0 font-medium ${
-            pendientes > 0 ? 'text-gray-400' : 'text-gray-300'
-          }`}>
-            {totalItems}
-          </span>
-        )}
-      </button>
-
-      {/* Contenido expandido */}
-      {isOpen && (
-        <div className="px-5 pb-4 pt-0">
-          <SystemItems
-            audiencias={audiencias}
-            tareas={tareas}
-            plazos={plazos}
-          />
-
-          {/* Apuntes */}
-          {(notas || []).length > 0 && (
-            <div className="mb-2">
-              {(notas?.length > 0 || (audiencias?.length || tareas?.length || plazos?.length) > 0) &&
-                (notas || []).length > 0 &&
-                (audiencias?.length || tareas?.length || plazos?.length) > 0 && (
-                <p className="text-[9px] font-semibold text-gray-300 uppercase tracking-widest mb-1.5 px-1">
-                  Apuntes
-                </p>
-              )}
-              {(notas || []).map(n => (
-                <div key={n.id}>
-                  <NotaItem
-                    nota={n}
-                    clientes={clientes}
-                    isPast={isPast}
-                    onToggle={onToggleNota}
-                    onDelete={onDeleteNota}
-                    onConvert={onConvertNota}
-                    onUpdateNota={onUpdateNota}
-                  />
-                  {n.id === newNotaId && isActionText(n.texto) && !n.tag && (
-                    <ConvMenu nota={n}
-                      onConvert={async (tipo) => { setNewNotaId(null); await onConvertNota(n, tipo) }}
-                      onClose={() => setNewNotaId(null)} />
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Input para agregar */}
-          {!isPast && (
-            isAdding ? (
-              <div className="flex items-center gap-2 mt-1 px-1">
-                <span className="text-[10px] text-gray-300 w-9 flex-shrink-0">{nowHHMM()}</span>
-                <input
-                  ref={inputRef}
-                  value={inputVal}
-                  onChange={e => setInputVal(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  placeholder="Anotar… (Enter para guardar, Esc para cancelar)"
-                  className="flex-1 text-xs text-gray-700 placeholder:text-gray-300 bg-transparent outline-none border-b border-[#2570BA]/30 pb-0.5 focus:border-[#2570BA] transition-colors"
-                />
-              </div>
-            ) : (
-              <button
-                onClick={() => setIsAdding(true)}
-                className="flex items-center gap-1.5 mt-1 px-1 text-[11px] text-gray-300 hover:text-[#2570BA] transition-colors group">
-                <Plus size={11} className="group-hover:text-[#2570BA]" />
-                <span>anotar (hora automática)</span>
-              </button>
-            )
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
-
-// PendientesItem, PendienteGroup y PendientesPanel → ../components/PendientesPanel.jsx
 
 // ── Componente principal ──────────────────────────────────────────────────────
 export default function Apuntes() {
@@ -518,27 +661,31 @@ export default function Apuntes() {
     catch { return getMonday(TODAY) }
   })
 
-  const [expandedDays, setExpandedDays] = useState(() => new Set([TODAY]))
+  // Semana: datos por fecha
   const [notas,      setNotas]      = useState({})
   const [audiencias, setAudiencias] = useState({})
   const [tareas,     setTareas]     = useState({})
   const [plazos,     setPlazos]     = useState({})
+  const [reuniones,  setReuniones]  = useState({})
   const [clientes,   setClientes]   = useState([])
   const [causas,     setCausas]     = useState([])
   const [loading,    setLoading]    = useState(false)
-  const [segPicker,  setSegPicker]  = useState(null) // { kind: 'nota' | 'pendiente', item }
+  const [segPicker,  setSegPicker]  = useState(null)
 
-  // Pendientes (panel lateral, dos niveles: pendiente padre + puntos)
-  const [pendientes,        setPendientes]        = useState([])
-  const [pendienteInput,    setPendienteInput]     = useState('')
-  const [resolvingIds,      setResolvingIds]       = useState(new Set())
-  const [editingPendienteId, setEditingPendienteId] = useState(null)
-  const [editPendienteDraft, setEditPendienteDraft] = useState('')
-  const [moverMenuId,       setMoverMenuId]        = useState(null)
-  const [addingChildParentId, setAddingChildParentId] = useState(null)
-  const [childInput,        setChildInput]        = useState('')
-  const resolveBatches = useRef({}) // batchKey -> { ids, timer }
-  const idToBatch      = useRef({}) // id -> batchKey
+  // Pendientes
+  const [pendientes,      setPendientes]      = useState([])
+  const [pendienteInput,  setPendienteInput]  = useState('')
+  const [pendTab,         setPendTab]         = useState('lista')
+  const [expandedPendId,  setExpandedPendId]  = useState(null)
+  const [resolvingIds,    setResolvingIds]    = useState(new Set())
+  const resolveBatches = useRef({})
+  const idToBatch      = useRef({})
+
+  const weekDays = useMemo(() => [0,1,2,3,4].map(i => addDays(weekMonday, i)), [weekMonday])
+  const isCurrentWeek = weekMonday === getMonday(TODAY)
+  const weekNum   = getISOWeek(weekMonday)
+  const weekRange = fmtWeekRange(weekMonday)
+  const todayInWeek = weekDays.includes(TODAY)
 
   const pendienteParents = useMemo(() => pendientes.filter(p => !p.parent_id), [pendientes])
   const childrenByParent = useMemo(() => {
@@ -549,226 +696,145 @@ export default function Apuntes() {
     return m
   }, [pendientes])
 
-  // Días de la semana (Lun–Vie)
-  const weekDays = useMemo(() =>
-    [0,1,2,3,4].map(i => addDays(weekMonday, i)),
-  [weekMonday])
-
-  const isCurrentWeek = weekMonday === getMonday(TODAY)
-  const weekNum  = getISOWeek(weekMonday)
-  const weekRange = fmtWeekRange(weekMonday)
-
-  // Subtítulo: solo si HOY está en la semana visible
-  const todayInWeek = weekDays.includes(TODAY)
-  const pendientesTotal = useMemo(() => {
-    if (!todayInWeek) return 0
-    return weekDays.reduce((sum, date) => {
-      const checkPend = (notas[date] || []).filter(n => !n.completada && n.tipo === 'checkbox').length
-      return sum + checkPend + (tareas[date]?.length || 0) + (plazos[date]?.length || 0)
-    }, 0)
-  }, [weekDays, notas, tareas, plazos, todayInWeek])
-
-  // Navegar semanas
-  function navWeek(delta) {
-    const next = addDays(weekMonday, delta * 7)
-    setWeekMonday(next)
-    try { localStorage.setItem('agenda_week', next) } catch {}
-    // Expandir HOY si está en la nueva semana
-    const newDays = [0,1,2,3,4].map(i => addDays(next, i))
-    if (newDays.includes(TODAY)) {
-      setExpandedDays(prev => new Set([...prev, TODAY]))
-    }
-  }
-
-  function toggleDay(date) {
-    setExpandedDays(prev => {
-      const next = new Set(prev)
-      next.has(date) ? next.delete(date) : next.add(date)
-      return next
-    })
-  }
-
-  // Fetch datos de la semana
+  // ── Fetch week data ─────────────────────────────────────────────────────────
   useEffect(() => {
     const start = weekMonday
     const end   = addDays(weekMonday, 4)
 
     async function fetchAll() {
       setLoading(true)
+      function groupBy(arr, key) {
+        return (arr || []).reduce((m, r) => {
+          const k = r[key]; if (!m[k]) m[k] = []; m[k].push(r); return m
+        }, {})
+      }
       const [
         { data: notasData },
         { data: audData },
         { data: tareasData },
         { data: plazosData },
+        { data: reunData },
         { data: clientesData },
         { data: causasData },
       ] = await Promise.all([
-        supabase.from('agenda_notas').select('*')
-          .gte('fecha', start).lte('fecha', end).order('hora'),
+        supabase.from('agenda_notas').select('*').gte('fecha', start).lte('fecha', end).order('hora'),
         supabase.from('audiencias').select('id, fecha, hora, rit, causa_rit, cliente_nombre, tipo')
           .gte('fecha', start).lte('fecha', end).order('hora'),
         supabase.from('tareas').select('id, titulo, fecha_vencimiento, cliente_nombre, estado, prioridad')
-          .eq('estado', 'Pendiente')
-          .gte('fecha_vencimiento', start).lte('fecha_vencimiento', end),
+          .eq('estado', 'Pendiente').gte('fecha_vencimiento', start).lte('fecha_vencimiento', end),
         supabase.from('plazos').select('id, descripcion, fecha_limite, causa_rit, cliente_nombre, urgente')
           .gte('fecha_limite', start).lte('fecha_limite', end),
+        supabase.from('reuniones').select('id, fecha_jueves, titulo')
+          .gte('fecha_jueves', start).lte('fecha_jueves', end),
         supabase.from('clientes').select('id, nombre'),
-        supabase.from('causas')
-          .select('id, rit, ruc, materia, cliente_nombre, estado')
-          .in('estado', ['Abierta', 'Revisar', 'En tramitación'])
-          .order('cliente_nombre', { ascending: true }),
+        supabase.from('causas').select('id, rit, ruc, materia, cliente_nombre, estado')
+          .in('estado', ['Abierta', 'Revisar', 'En tramitación']).order('cliente_nombre'),
       ])
-
-      function groupBy(arr, key) {
-        return (arr || []).reduce((m, r) => {
-          const k = r[key]
-          if (!m[k]) m[k] = []
-          m[k].push(r)
-          return m
-        }, {})
-      }
-
-      const notasByDate   = groupBy(notasData,   'fecha')
-      const audByDate     = groupBy(audData,      'fecha')
-      const tareasByDate  = groupBy(tareasData,   'fecha_vencimiento')
-      const plazosByDate  = groupBy(plazosData,   'fecha_limite')
-
-      setNotas(notasByDate)
-      setAudiencias(audByDate)
-      setTareas(tareasByDate)
-      setPlazos(plazosByDate)
+      setNotas(groupBy(notasData, 'fecha'))
+      setAudiencias(groupBy(audData, 'fecha'))
+      setTareas(groupBy(tareasData, 'fecha_vencimiento'))
+      setPlazos(groupBy(plazosData, 'fecha_limite'))
+      setReuniones(groupBy(reunData, 'fecha_jueves'))
       setClientes(clientesData || [])
       setCausas(causasData || [])
-
-      // Expandir automáticamente los días que tienen contenido
-      const daysWithContent = new Set([
-        ...Object.keys(notasByDate),
-        ...Object.keys(audByDate),
-        ...Object.keys(tareasByDate),
-        ...Object.keys(plazosByDate),
-      ])
-      if (daysWithContent.size) {
-        setExpandedDays(prev => new Set([...prev, ...daysWithContent]))
-      }
-
       setLoading(false)
     }
-
     fetchAll()
   }, [weekMonday])
 
-  // Expandir HOY al montar
+  // ── Fetch pendientes ────────────────────────────────────────────────────────
   useEffect(() => {
-    setExpandedDays(prev => new Set([...prev, TODAY]))
+    supabase.from('agenda_pendientes').select('*')
+      .eq('resuelto', false)
+      .order('created_at', { ascending: true })
+      .then(({ data, error }) => {
+        if (error) console.error('[agenda_pendientes] fetch:', error.message)
+        // Filtrar pendiente con texto solo "-"
+        setPendientes((data || []).filter(p => p.texto !== '-'))
+      })
   }, [])
 
-  // Agregar nota
+  // Limpia timers al desmontar
+  useEffect(() => () => {
+    Object.values(resolveBatches.current).forEach(b => clearTimeout(b.timer))
+  }, [])
+
+  // ── Convertir notas sin marcar de la semana anterior → pendientes ───────────
+  useEffect(() => {
+    const prevMonday = addDays(getMonday(TODAY), -7)
+    const prevSunday = addDays(prevMonday, 6)
+
+    supabase.from('agenda_notas')
+      .select('*')
+      .eq('completada', false)
+      .gte('fecha', prevMonday).lte('fecha', prevSunday)
+      .then(async ({ data }) => {
+        if (!data || data.length === 0) return
+        const rows = data.map(n => ({
+          texto: `${n.texto}`,
+          resuelto: false,
+          parent_id: null,
+          origen_nota_fecha: n.fecha,
+        }))
+        const { data: inserted } = await supabase.from('agenda_pendientes').insert(rows).select()
+        await supabase.from('agenda_notas').update({ completada: true }).in('id', data.map(n => n.id))
+        if (inserted?.length) setPendientes(prev => [...prev, ...inserted])
+      })
+  }, []) // solo al montar
+
+  // ── Handlers: agenda ────────────────────────────────────────────────────────
   const handleAddNota = useCallback(async (date, text) => {
-    const hora  = nowHHMM()
-    const tipo  = isActionText(text) ? 'checkbox' : 'nota'
+    const hora = nowHHMM()
+    const tipo = isActionText(text) ? 'checkbox' : 'nota'
     const clNombre = detectClientName(text, clientes)
-
     const { data, error } = await supabase.from('agenda_notas')
-      .insert([{ fecha: date, hora, texto: text, tipo,
-                 cliente_nombre: clNombre || null, completada: false }])
+      .insert([{ fecha: date, hora, texto: text, tipo, cliente_nombre: clNombre || null, completada: false }])
       .select().single()
-
-    if (error) {
-      console.error('[agenda_notas] insert error:', error.message, error.details)
-      return null
-    }
-    if (data) {
-      setNotas(prev => ({ ...prev, [date]: [...(prev[date] || []), data] }))
-      return data.id
-    }
+    if (error) { console.error('[agenda_notas] insert:', error.message); return null }
+    if (data) { setNotas(prev => ({ ...prev, [date]: [...(prev[date] || []), data] })); return data.id }
     return null
   }, [clientes])
 
-  // Toggle completada
   const handleToggleNota = useCallback(async (nota) => {
-    const { error } = await supabase.from('agenda_notas')
-      .update({ completada: !nota.completada }).eq('id', nota.id)
-    if (!error) {
-      setNotas(prev => ({
-        ...prev,
-        [nota.fecha]: (prev[nota.fecha] || []).map(n =>
-          n.id === nota.id ? { ...n, completada: !n.completada } : n)
-      }))
-    }
+    const { error } = await supabase.from('agenda_notas').update({ completada: !nota.completada }).eq('id', nota.id)
+    if (!error) setNotas(prev => ({
+      ...prev,
+      [nota.fecha]: (prev[nota.fecha] || []).map(n => n.id === nota.id ? { ...n, completada: !n.completada } : n)
+    }))
   }, [])
 
-  // Actualizar campo notas de un apunte
-  const handleUpdateNota = useCallback((notaId, texto) => {
-    setNotas(prev => {
-      const entries = Object.entries(prev)
-      const updated = {}
-      for (const [fecha, list] of entries) {
-        updated[fecha] = list.map(n => n.id === notaId ? { ...n, notas: texto } : n)
-      }
-      return updated
-    })
-  }, [])
-
-  // Eliminar nota
   const handleDeleteNota = useCallback(async (nota) => {
     const { error } = await supabase.from('agenda_notas').delete().eq('id', nota.id)
-    if (!error) {
-      setNotas(prev => ({
-        ...prev,
-        [nota.fecha]: (prev[nota.fecha] || []).filter(n => n.id !== nota.id)
-      }))
-    }
+    if (!error) setNotas(prev => ({
+      ...prev,
+      [nota.fecha]: (prev[nota.fecha] || []).filter(n => n.id !== nota.id)
+    }))
   }, [])
 
-  // Convertir nota en tarea o seguimiento
   const handleConvertNota = useCallback(async (nota, tipo, causa = null) => {
     if (tipo === 'tarea') {
       await supabase.from('tareas').insert([{
-        titulo:           nota.texto,
-        cliente_nombre:   nota.cliente_nombre || null,
-        estado:           'Pendiente',
-        prioridad:        'Media',
-        fecha_vencimiento: nota.fecha,
+        titulo: nota.texto, cliente_nombre: nota.cliente_nombre || null,
+        estado: 'Pendiente', prioridad: 'Media', fecha_vencimiento: nota.fecha,
       }])
     } else if (tipo === 'seguimiento') {
-      // Requiere selección de causa — abre picker si no viene causa
-      if (!causa) {
-        setSegPicker({ kind: 'nota', item: nota })
-        return
-      }
+      if (!causa) { setSegPicker({ kind: 'nota', item: nota }); return }
       const payload = {
-        causa_id:       causa.id,
-        causa_rit:      causa.rit || null,
-        cliente_nombre: causa.cliente_nombre || null,
-        fecha_revision: nota.fecha,
-        por_hacer:      nota.texto,
-        que_se_hizo:    'Pendiente',
-        semana_key:     null,
-        revisada:       false,
-        origen:         'agenda',
+        causa_id: causa.id, causa_rit: causa.rit || null, cliente_nombre: causa.cliente_nombre || null,
+        fecha_revision: nota.fecha, por_hacer: nota.texto, que_se_hizo: 'Pendiente',
+        semana_key: null, revisada: false, origen: 'agenda',
       }
-      console.log('Guardando en revisiones:', { causa_rit: payload.causa_rit, cliente_nombre: payload.cliente_nombre, por_hacer: payload.por_hacer })
-      const { data: segData, error: segError } = await supabase.from('revisiones').insert([payload]).select().single()
-      if (segError) {
-        console.error('Error al guardar seguimiento en revisiones:', segError.message, segError)
-        return
-      }
-      // Notificar a CausaView para que refresque segRows inmediatamente
+      const { data: segData, error } = await supabase.from('revisiones').insert([payload]).select().single()
+      if (error) { console.error('Error seguimiento:', error.message); return }
       window.dispatchEvent(new CustomEvent('seguimiento:created', { detail: { causa_id: causa.id, causa_rit: causa.rit, row: segData } }))
     }
-    // Marcar tag en la nota
-    const { error } = await supabase.from('agenda_notas')
-      .update({ tag: tipo }).eq('id', nota.id)
-    if (!error) {
-      setNotas(prev => ({
-        ...prev,
-        [nota.fecha]: (prev[nota.fecha] || []).map(n =>
-          n.id === nota.id ? { ...n, tag: tipo } : n)
-      }))
-    }
+    const { error } = await supabase.from('agenda_notas').update({ tag: tipo }).eq('id', nota.id)
+    if (!error) setNotas(prev => ({
+      ...prev,
+      [nota.fecha]: (prev[nota.fecha] || []).map(n => n.id === nota.id ? { ...n, tag: tipo } : n)
+    }))
   }, [])
 
-  // Confirmar causa en el picker de seguimiento (nota o pendiente)
   async function handleSegPickerConfirm(causa) {
     const picker = segPicker
     setSegPicker(null)
@@ -777,79 +843,49 @@ export default function Apuntes() {
     else await handleConvertPendienteSeguimiento(picker.item, causa)
   }
 
-  // ── Pendientes (panel lateral) ────────────────────────────────────────────────
-
-  // Carga inicial de pendientes no resueltos
-  useEffect(() => {
-    supabase.from('agenda_pendientes').select('*')
-      .eq('resuelto', false)
-      .order('created_at', { ascending: true })
-      .then(({ data, error }) => {
-        if (error) console.error('[agenda_pendientes] fetch error:', error.message)
-        setPendientes(data || [])
-      })
-  }, [])
-
-  // Limpia timers de "deshacer" al desmontar
-  useEffect(() => () => {
-    Object.values(resolveBatches.current).forEach(b => clearTimeout(b.timer))
-  }, [])
-
+  // ── Handlers: pendientes ────────────────────────────────────────────────────
   async function handleAddPendiente(causaId = null) {
     const texto = pendienteInput.trim()
     if (!texto) return
     setPendienteInput('')
     const row = { texto, resuelto: false, parent_id: null }
     if (causaId) row.causa_id = causaId
-    const { data, error } = await supabase.from('agenda_pendientes')
-      .insert([row]).select().single()
-    if (error) { console.error('[agenda_pendientes] insert error:', error.message); return }
+    const { data, error } = await supabase.from('agenda_pendientes').insert([row]).select().single()
+    if (error) { console.error('[agenda_pendientes] insert:', error.message); return }
     if (data) setPendientes(prev => [...prev, data])
   }
 
   async function handleLinkPendiente(p, causaId) {
-    const { error } = await supabase.from('agenda_pendientes')
-      .update({ causa_id: causaId }).eq('id', p.id)
-    if (error) { console.error('[agenda_pendientes] link error:', error.message); return }
+    const { error } = await supabase.from('agenda_pendientes').update({ causa_id: causaId }).eq('id', p.id)
+    if (error) { console.error('[agenda_pendientes] link:', error.message); return }
     setPendientes(prev => prev.map(x => x.id === p.id ? { ...x, causa_id: causaId } : x))
   }
 
   async function handleUnlinkPendiente(p) {
-    const { error } = await supabase.from('agenda_pendientes')
-      .update({ causa_id: null }).eq('id', p.id)
-    if (error) { console.error('[agenda_pendientes] unlink error:', error.message); return }
+    const { error } = await supabase.from('agenda_pendientes').update({ causa_id: null }).eq('id', p.id)
+    if (error) { console.error('[agenda_pendientes] unlink:', error.message); return }
     setPendientes(prev => prev.map(x => x.id === p.id ? { ...x, causa_id: null } : x))
   }
 
-  function handleStartAddChild(parentId) {
-    setAddingChildParentId(parentId)
-    setChildInput('')
-  }
-  function handleCancelAddChild() {
-    setAddingChildParentId(null)
-    setChildInput('')
-  }
-  async function handleAddChild(parentId) {
-    const texto = childInput.trim()
-    if (!texto) return
-    setChildInput('')
+  async function handleAddChild(parentId, texto) {
     const { data, error } = await supabase.from('agenda_pendientes')
       .insert([{ texto, resuelto: false, parent_id: parentId }]).select().single()
-    if (error) { console.error('[agenda_pendientes] insert child error:', error.message); return }
+    if (error) { console.error('[agenda_pendientes] insert child:', error.message); return }
     if (data) setPendientes(prev => [...prev, data])
-    // Deja el input abierto y enfocado para seguir escribiendo puntos de corrido
   }
 
-  // Marca resuelto (padre + puntos) en BD y los quita de la lista sin animación (usado por las conversiones)
-  async function resolvePendienteGroupSilent(p) {
-    const ids = [p.id, ...(childrenByParent[p.id] || []).map(c => c.id)]
+  async function handleEditNota(id, notas) {
+    await supabase.from('agenda_pendientes').update({ notas: notas || null }).eq('id', id)
+    setPendientes(prev => prev.map(p => p.id === id ? { ...p, notas } : p))
+  }
+
+  async function handleDeletePendiente(p) {
+    const children = childrenByParent[p.id] || []
+    const ids = [p.id, ...children.map(c => c.id)]
+    await supabase.from('agenda_pendientes').delete().in('id', ids)
     setPendientes(prev => prev.filter(x => !ids.includes(x.id)))
-    const { error } = await supabase.from('agenda_pendientes')
-      .update({ resuelto: true, resuelto_at: new Date().toISOString() }).in('id', ids)
-    if (error) console.error('[agenda_pendientes] resolve group error:', error.message)
   }
 
-  // Inicia (o reinicia) el timer de 3s que retira definitivamente un lote de ids resueltos
   function startResolveBatch(ids) {
     const batchKey = ids[0]
     setResolvingIds(prev => { const n = new Set(prev); ids.forEach(id => n.add(id)); return n })
@@ -863,19 +899,18 @@ export default function Apuntes() {
     resolveBatches.current[batchKey] = { ids, timer }
   }
 
-  // Checkbox: marca resuelto (si es padre, también sus puntos abiertos, en la misma operación),
-  // tacha, y tras 3s lo saca de la lista (con opción de deshacer que revierte todo el lote)
   function handleTogglePendiente(p) {
-    const ids = p.parent_id ? [p.id] : [p.id, ...(childrenByParent[p.id] || []).map(c => c.id)]
+    const kids = childrenByParent[p.id] || []
+    const ids  = p.parent_id ? [p.id] : [p.id, ...kids.map(c => c.id)]
     supabase.from('agenda_pendientes')
       .update({ resuelto: true, resuelto_at: new Date().toISOString() }).in('id', ids)
-      .then(({ error }) => { if (error) console.error('[agenda_pendientes] toggle error:', error.message) })
+      .then(({ error }) => { if (error) console.error('[agenda_pendientes] toggle:', error.message) })
     startResolveBatch(ids)
   }
 
   function handleUndoPendiente(p) {
     const batchKey = idToBatch.current[p.id]
-    const batch = resolveBatches.current[batchKey]
+    const batch    = resolveBatches.current[batchKey]
     if (!batch) return
     clearTimeout(batch.timer)
     const ids = batch.ids
@@ -884,88 +919,96 @@ export default function Apuntes() {
     setResolvingIds(prev => { const n = new Set(prev); ids.forEach(id => n.delete(id)); return n })
     supabase.from('agenda_pendientes')
       .update({ resuelto: false, resuelto_at: null }).in('id', ids)
-      .then(({ error }) => { if (error) console.error('[agenda_pendientes] undo error:', error.message) })
+      .then(({ error }) => { if (error) console.error('[agenda_pendientes] undo:', error.message) })
   }
 
-  function handleStartEditPendiente(p) {
-    setEditingPendienteId(p.id)
-    setEditPendienteDraft(p.texto)
-  }
-  function handleCancelEditPendiente() {
-    setEditingPendienteId(null)
-  }
-  async function handleSaveEditPendiente(p) {
-    const texto = editPendienteDraft.trim()
-    setEditingPendienteId(null)
-    if (!texto || texto === p.texto) return
-    const { error } = await supabase.from('agenda_pendientes').update({ texto }).eq('id', p.id)
-    if (error) { console.error('[agenda_pendientes] edit error:', error.message); return }
-    setPendientes(prev => prev.map(x => x.id === p.id ? { ...x, texto } : x))
+  async function resolvePendienteGroupSilent(p) {
+    const ids = [p.id, ...(childrenByParent[p.id] || []).map(c => c.id)]
+    setPendientes(prev => prev.filter(x => !ids.includes(x.id)))
+    await supabase.from('agenda_pendientes')
+      .update({ resuelto: true, resuelto_at: new Date().toISOString() }).in('id', ids)
   }
 
-  function handleToggleMoverMenu(id) {
-    setMoverMenuId(prev => prev === id ? null : id)
-  }
-
-  // Mover pendiente a un día de la semana → crea un apunte en Agenda Diaria y resuelve el pendiente
   async function handleMoverPendiente(p, date) {
-    setMoverMenuId(null)
-    const hora     = nowHHMM()
-    const tipo     = isActionText(p.texto) ? 'checkbox' : 'nota'
+    const hora = nowHHMM()
+    const tipo = isActionText(p.texto) ? 'checkbox' : 'nota'
     const clNombre = detectClientName(p.texto, clientes)
-
     const { data, error } = await supabase.from('agenda_notas')
-      .insert([{ fecha: date, hora, texto: p.texto, tipo,
-                 cliente_nombre: clNombre || null, completada: false }])
+      .insert([{ fecha: date, hora, texto: p.texto, tipo, cliente_nombre: clNombre || null, completada: false }])
       .select().single()
-
-    if (error) { console.error('[pendiente→agenda_notas] insert error:', error.message); return }
+    if (error) { console.error('[pendiente→agenda_notas]:', error.message); return }
     if (data) setNotas(prev => ({ ...prev, [date]: [...(prev[date] || []), data] }))
     await resolvePendienteGroupSilent(p)
   }
 
-  // Convertir pendiente en tarea
   async function handleConvertPendienteTarea(p) {
     const clNombre = detectClientName(p.texto, clientes)
     const { error } = await supabase.from('tareas').insert([{
-      titulo:            p.texto,
-      cliente_nombre:    clNombre || null,
-      estado:            'Pendiente',
-      prioridad:         'Media',
-      fecha_vencimiento: TODAY,
+      titulo: p.texto, cliente_nombre: clNombre || null,
+      estado: 'Pendiente', prioridad: 'Media', fecha_vencimiento: TODAY,
     }])
-    if (error) { console.error('[pendiente→tarea] insert error:', error.message); return }
+    if (error) { console.error('[pendiente→tarea]:', error.message); return }
     await resolvePendienteGroupSilent(p)
   }
 
-  // Enviar pendiente a seguimiento de una causa (abre picker si no viene causa)
   async function handleConvertPendienteSeguimiento(p, causa = null) {
-    if (!causa) {
-      setSegPicker({ kind: 'pendiente', item: p })
-      return
-    }
+    if (!causa) { setSegPicker({ kind: 'pendiente', item: p }); return }
     const payload = {
-      causa_id:       causa.id,
-      causa_rit:      causa.rit || null,
-      cliente_nombre: causa.cliente_nombre || null,
-      fecha_revision: TODAY,
-      por_hacer:      p.texto,
-      que_se_hizo:    'Pendiente',
-      semana_key:     null,
-      revisada:       false,
-      origen:         'agenda',
+      causa_id: causa.id, causa_rit: causa.rit || null, cliente_nombre: causa.cliente_nombre || null,
+      fecha_revision: TODAY, por_hacer: p.texto, que_se_hizo: 'Pendiente',
+      semana_key: null, revisada: false, origen: 'agenda',
     }
     const { data: segData, error } = await supabase.from('revisiones').insert([payload]).select().single()
-    if (error) { console.error('[pendiente→seguimiento] insert error:', error.message); return }
+    if (error) { console.error('[pendiente→seguimiento]:', error.message); return }
     window.dispatchEvent(new CustomEvent('seguimiento:created', { detail: { causa_id: causa.id, causa_rit: causa.rit, row: segData } }))
     await resolvePendienteGroupSilent(p)
   }
 
+  // ── Pendientes: agrupación por semana ───────────────────────────────────────
+  const weekMondayDate = new Date(weekMonday + 'T00:00:00')
+
+  const [pendAntes, pendEsta] = useMemo(() => {
+    const antes = [], esta = []
+    for (const p of pendienteParents) {
+      const created = p.created_at ? new Date(p.created_at) : new Date()
+      if (created < weekMondayDate) antes.push(p)
+      else esta.push(p)
+    }
+    return [antes, esta]
+  }, [pendienteParents, weekMondayDate])
+
+  function filterByTab(list) {
+    if (pendTab === 'por-causa') return list.filter(p => p.causa_id)
+    if (pendTab === 'sin-causa') return list.filter(p => !p.causa_id)
+    return list
+  }
+
+  const antesFiltered = filterByTab(pendAntes)
+  const estaFiltered  = filterByTab(pendEsta)
+
+  // "Por causa" grouping
+  const estaGrouped = useMemo(() => {
+    if (pendTab !== 'por-causa') return null
+    const groups = {}
+    for (const p of estaFiltered) {
+      const k = p.causa_id || '__sin__'
+      if (!groups[k]) groups[k] = []
+      groups[k].push(p)
+    }
+    return groups
+  }, [estaFiltered, pendTab])
+
+  function navWeek(delta) {
+    const next = addDays(weekMonday, delta * 7)
+    setWeekMonday(next)
+    try { localStorage.setItem('agenda_week', next) } catch {}
+  }
+
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
-    <div className="flex h-full min-h-screen bg-white">
+    <div className="h-full flex flex-col bg-[#F5F6F8] overflow-hidden">
 
-      {/* Picker de causa para → Seguimiento */}
+      {/* Picker de causa */}
       {segPicker && (
         <SeguimientoPicker
           nota={segPicker.item}
@@ -975,36 +1018,31 @@ export default function Apuntes() {
         />
       )}
 
-      <div className="flex flex-col flex-1 min-w-0">
-        {/* Header */}
-        <div className="px-7 pt-7 pb-5 border-b border-gray-100">
-          <div className="flex items-center gap-3">
+      {/* ── Header ── */}
+      <div className="bg-[#1A2E4A] px-6 py-4 flex items-center justify-between gap-4 flex-shrink-0">
+        <div>
+          <h1 className="text-white font-bold text-[14px] leading-tight">Agenda diaria</h1>
+          {todayInWeek ? (
+            <p className="text-white/40 text-[11px] capitalize">
+              {dowLong(TODAY)} {dayNum(TODAY)} · hoy
+            </p>
+          ) : (
+            <p className="text-white/40 text-[11px]">
+              {weekMonday < getMonday(TODAY) ? 'Semana anterior' : 'Próxima semana'}
+            </p>
+          )}
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-0.5 bg-white/10 rounded-xl px-1 py-1">
             <button onClick={() => navWeek(-1)}
-              className="p-1.5 rounded-lg border border-gray-200 text-gray-400 hover:text-gray-700 hover:border-gray-300 transition-colors">
+              className="p-1.5 rounded-lg text-white/50 hover:text-white hover:bg-white/10 transition-colors">
               <ChevronLeft size={14} />
             </button>
-            <div className="flex-1">
-              <h1 className="text-lg font-semibold text-[#1C2533]">
-                Semana {weekNum} · {weekRange}
-              </h1>
-              {todayInWeek ? (
-                <p className="mt-0.5 text-xs text-gray-400">
-                  <span className="capitalize">{dowLong(TODAY)}</span>
-                  {' '}{dayNum(TODAY)} · <span className="font-semibold text-[#2570BA]">hoy</span>
-                  {pendientesTotal > 0 && (
-                    <span className="ml-1 text-gray-400">
-                      · {pendientesTotal} pendiente{pendientesTotal !== 1 ? 's' : ''} esta semana
-                    </span>
-                  )}
-                </p>
-              ) : (
-                <p className="mt-0.5 text-xs text-gray-400">
-                  {weekMonday < getMonday(TODAY) ? 'Semana anterior — solo lectura' : 'Próxima semana'}
-                </p>
-              )}
+            <div className="px-4 text-center" style={{ minWidth: 200 }}>
+              <p className="text-white font-semibold text-[12px]">Semana {weekNum} · {weekRange}</p>
             </div>
             <button onClick={() => navWeek(1)}
-              className="p-1.5 rounded-lg border border-gray-200 text-gray-400 hover:text-gray-700 hover:border-gray-300 transition-colors">
+              className="p-1.5 rounded-lg text-white/50 hover:text-white hover:bg-white/10 transition-colors">
               <ChevronRight size={14} />
             </button>
           </div>
@@ -1013,82 +1051,218 @@ export default function Apuntes() {
               const m = getMonday(TODAY)
               setWeekMonday(m)
               try { localStorage.setItem('agenda_week', m) } catch {}
-            }}
-              className="mt-2 text-[11px] text-[#2570BA] hover:underline">
-              ← Volver a semana actual
+            }} className="text-white/40 hover:text-white text-[11px] font-medium transition-colors">
+              Semana actual
             </button>
-          )}
-        </div>
-
-        {/* Lista de días */}
-        <div className="flex-1 overflow-y-auto fab-clear">
-          {loading ? (
-            <div className="flex items-center justify-center py-20 text-sm text-gray-300">
-              Cargando…
-            </div>
-          ) : (
-            <div className="divide-y-0">
-              {weekDays.map(date => {
-                const isToday  = date === TODAY
-                const isPast   = date < TODAY
-                return (
-                  <DiaRow
-                    key={date}
-                    date={date}
-                    isToday={isToday}
-                    isPast={false}
-                    isOpen={expandedDays.has(date)}
-                    onToggle={() => toggleDay(date)}
-                    notas={notas[date] || []}
-                    audiencias={audiencias[date] || []}
-                    tareas={tareas[date] || []}
-                    plazos={plazos[date] || []}
-                    clientes={clientes}
-                    onAddNota={handleAddNota}
-                    onToggleNota={handleToggleNota}
-                    onDeleteNota={handleDeleteNota}
-                    onConvertNota={handleConvertNota}
-                    onUpdateNota={handleUpdateNota}
-                  />
-                )
-              })}
-            </div>
           )}
         </div>
       </div>
 
-      {/* Panel lateral fijo — Pendientes */}
-      <PendientesPanel
-        parents={pendienteParents}
-        childrenByParent={childrenByParent}
-        resolvingIds={resolvingIds}
-        weekDays={weekDays}
-        input={pendienteInput}
-        onInputChange={setPendienteInput}
-        onAddPendiente={handleAddPendiente}
-        editingId={editingPendienteId}
-        editDraft={editPendienteDraft}
-        onEditDraftChange={setEditPendienteDraft}
-        onToggle={handleTogglePendiente}
-        onUndo={handleUndoPendiente}
-        onStartEdit={handleStartEditPendiente}
-        onSaveEdit={handleSaveEditPendiente}
-        onCancelEdit={handleCancelEditPendiente}
-        moverMenuId={moverMenuId}
-        onToggleMoverMenu={handleToggleMoverMenu}
-        onMover={handleMoverPendiente}
-        onConvertTarea={handleConvertPendienteTarea}
-        onConvertSeguimiento={handleConvertPendienteSeguimiento}
-        addingChildParentId={addingChildParentId}
-        childInput={childInput}
-        onStartAddChild={handleStartAddChild}
-        onChildInputChange={setChildInput}
-        onAddChild={handleAddChild}
-        onCancelAddChild={handleCancelAddChild}
-        causas={causas}
-        onLink={handleLinkPendiente}
-        onUnlink={handleUnlinkPendiente}
-      />
+      {/* ── Contenido ── */}
+      <div className="flex-1 overflow-y-auto">
+
+        {/* ── Sección semana ── */}
+        <div className="bg-white mb-2">
+          <div className="px-5 py-2 bg-gray-50 border-b border-gray-100">
+            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">La semana</span>
+          </div>
+
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="w-5 h-5 border-2 border-[#1a2e4a]/20 border-t-[#1a2e4a] rounded-full animate-spin" />
+            </div>
+          ) : (
+            weekDays.map((date) => (
+              <DayBlock
+                key={date}
+                iso={date}
+                isToday={date === TODAY}
+                isPast={date < TODAY}
+                audiencias={audiencias[date] || []}
+                plazos={plazos[date] || []}
+                tareas={tareas[date] || []}
+                reuniones={reuniones[date] || []}
+                notas={notas[date] || []}
+                clientes={clientes}
+                onToggleNota={handleToggleNota}
+                onAddNota={handleAddNota}
+                onDeleteNota={handleDeleteNota}
+                onConvertNota={handleConvertNota}
+              />
+            ))
+          )}
+        </div>
+
+        {/* ── Sección pendientes ── */}
+        <div className="bg-white">
+          <div className="px-5 py-2 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
+            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Pendientes</span>
+            <span className="text-[10px] text-gray-300">{pendienteParents.length} sin resolver</span>
+          </div>
+
+          {/* Input */}
+          <div className="px-5 py-3 border-b border-gray-100">
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-4 rounded border border-gray-200 flex-shrink-0" />
+              <input
+                type="text"
+                value={pendienteInput}
+                onChange={e => setPendienteInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddPendiente() } }}
+                placeholder="Anotar pendiente… (Enter)"
+                className="flex-1 text-[12px] text-gray-700 bg-transparent border-0 outline-none placeholder:text-gray-300"
+              />
+            </div>
+          </div>
+
+          {/* Tabs */}
+          <div className="flex border-b border-gray-100">
+            {[['lista','Lista'],['por-causa','Por causa'],['sin-causa','Sin causa']].map(([k, label]) => (
+              <button key={k} onClick={() => setPendTab(k)}
+                className="px-4 py-2 text-[11px] font-medium transition-colors border-b-2"
+                style={{
+                  color: pendTab === k ? '#2570BA' : '#9CA3AF',
+                  borderBottomColor: pendTab === k ? '#2570BA' : 'transparent',
+                }}>
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {/* Pendientes anteriores */}
+          {antesFiltered.length > 0 && (
+            <div>
+              <div className="px-5 py-2 bg-amber-50 border-b border-amber-100">
+                <span className="text-[10px] font-bold text-amber-600 uppercase tracking-widest">
+                  Vienen de la semana pasada · {antesFiltered.length}
+                </span>
+              </div>
+              {antesFiltered.map(p => (
+                <div key={p.id} className="relative">
+                  <PendienteRow
+                    p={p}
+                    children={childrenByParent[p.id] || []}
+                    causas={causas}
+                    expanded={expandedPendId === p.id}
+                    isResolving={resolvingIds.has(p.id)}
+                    onToggleExpand={() => setExpandedPendId(prev => prev === p.id ? null : p.id)}
+                    onToggle={handleTogglePendiente}
+                    onUndo={handleUndoPendiente}
+                    onAddChild={handleAddChild}
+                    onEditNota={handleEditNota}
+                    onDelete={handleDeletePendiente}
+                    weekDays={weekDays}
+                    onMover={handleMoverPendiente}
+                    onConvertTarea={handleConvertPendienteTarea}
+                    onConvertSeguimiento={handleConvertPendienteSeguimiento}
+                    onLink={handleLinkPendiente}
+                    onUnlink={handleUnlinkPendiente}
+                  />
+                  {/* Chip de semana */}
+                  {!resolvingIds.has(p.id) && p.created_at && (
+                    <span
+                      className="absolute right-10 top-2.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full pointer-events-none"
+                      style={{ background: '#FEF3C7', color: '#92400E' }}
+                    >
+                      {semChip(p.created_at.slice(0, 10))}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Pendientes de esta semana */}
+          {pendTab !== 'por-causa' && estaFiltered.length > 0 && (
+            <div>
+              {antesFiltered.length > 0 && (
+                <div className="px-5 py-2 bg-gray-50 border-b border-gray-100">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Esta semana</span>
+                </div>
+              )}
+              {estaFiltered.map(p => (
+                <PendienteRow
+                  key={p.id}
+                  p={p}
+                  children={childrenByParent[p.id] || []}
+                  causas={causas}
+                  expanded={expandedPendId === p.id}
+                  isResolving={resolvingIds.has(p.id)}
+                  onToggleExpand={() => setExpandedPendId(prev => prev === p.id ? null : p.id)}
+                  onToggle={handleTogglePendiente}
+                  onUndo={handleUndoPendiente}
+                  onAddChild={handleAddChild}
+                  onEditNota={handleEditNota}
+                  onDelete={handleDeletePendiente}
+                  weekDays={weekDays}
+                  onMover={handleMoverPendiente}
+                  onConvertTarea={handleConvertPendienteTarea}
+                  onConvertSeguimiento={handleConvertPendienteSeguimiento}
+                  onLink={handleLinkPendiente}
+                  onUnlink={handleUnlinkPendiente}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Por causa: agrupado */}
+          {pendTab === 'por-causa' && estaGrouped && (
+            <div>
+              {antesFiltered.length > 0 && (
+                <div className="px-5 py-2 bg-gray-50 border-b border-gray-100">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Esta semana</span>
+                </div>
+              )}
+              {Object.entries(estaGrouped).map(([causaId, pList]) => {
+                const causa = causaId === '__sin__' ? null : causas.find(c => c.id === causaId)
+                return (
+                  <div key={causaId}>
+                    <div className="px-5 py-1.5 border-b border-gray-100 bg-blue-50/30">
+                      <span className="text-[10px] font-semibold text-[#2570BA]">
+                        {causa ? (causa.cliente_nombre || causa.rit || '—') : 'Sin causa'}
+                      </span>
+                      {causa?.rit && <span className="text-[10px] text-gray-400 ml-1.5 font-mono">{causa.rit}</span>}
+                    </div>
+                    {pList.map(p => (
+                      <PendienteRow
+                        key={p.id}
+                        p={p}
+                        children={childrenByParent[p.id] || []}
+                        causas={causas}
+                        expanded={expandedPendId === p.id}
+                        isResolving={resolvingIds.has(p.id)}
+                        onToggleExpand={() => setExpandedPendId(prev => prev === p.id ? null : p.id)}
+                        onToggle={handleTogglePendiente}
+                        onUndo={handleUndoPendiente}
+                        onAddChild={handleAddChild}
+                        onEditNota={handleEditNota}
+                        onDelete={handleDeletePendiente}
+                        weekDays={weekDays}
+                        onMover={handleMoverPendiente}
+                        onConvertTarea={handleConvertPendienteTarea}
+                        onConvertSeguimiento={handleConvertPendienteSeguimiento}
+                        onLink={handleLinkPendiente}
+                        onUnlink={handleUnlinkPendiente}
+                      />
+                    ))}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {pendienteParents.length === 0 && (
+            <div className="px-5 py-10 text-center">
+              <p className="text-[12px] text-gray-300">Sin pendientes · todo en orden</p>
+            </div>
+          )}
+
+          {/* Pie */}
+          <div className="h-6" />
+        </div>
+
+        <div className="h-8" />
+      </div>
     </div>
   )
 }
