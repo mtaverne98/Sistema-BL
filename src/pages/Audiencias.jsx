@@ -471,7 +471,7 @@ function CardAudiencia({ audiencia: aud, onUpdate, onDeleteRequest }) {
           <span className="text-[10px] font-semibold text-gray-300 uppercase tracking-wider">
             {aud.tipo}
           </span>
-          <span className="text-sm font-semibold text-gray-900 leading-tight">
+          <span className="text-sm font-semibold text-gray-900 leading-tight uppercase">
             {aud.cliente_nombre}
           </span>
           <div className="flex items-center gap-1 text-[11px] text-gray-400">
@@ -714,7 +714,7 @@ function ClienteSearchSelect({ clientes, value, onSelect, inputCls }) {
                   key={c.id}
                   type="button"
                   onMouseDown={e => { e.preventDefault(); handleSelect(c) }}
-                  className="w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition-colors"
+                  className="w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition-colors uppercase"
                 >
                   {c.nombre}
                 </button>

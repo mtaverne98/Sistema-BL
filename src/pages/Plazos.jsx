@@ -285,7 +285,7 @@ function PlazosRow({ plazo, selected, onClick, onDeleteRequest }) {
         }`}>
           {plazo.titulo}
         </p>
-        <p className="text-[11px] text-gray-400 mt-0.5 truncate">{plazo.cliente_nombre}</p>
+        <p className="text-[11px] text-gray-400 mt-0.5 truncate uppercase">{plazo.cliente_nombre}</p>
       </div>
 
       <div className="flex-shrink-0 flex flex-col items-end gap-1.5">

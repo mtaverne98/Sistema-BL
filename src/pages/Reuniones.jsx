@@ -128,7 +128,7 @@ function TemaRow({ tema, onToggle, onDelete, onSaveAcuerdos, readOnly = false })
               </span>
             )}
             {tema.cliente_nombre && (
-              <span className="text-[10px] font-medium text-[#1a2e4a] bg-[#1a2e4a]/5 px-1.5 py-0.5 rounded">
+              <span className="text-[10px] font-medium text-[#1a2e4a] bg-[#1a2e4a]/5 px-1.5 py-0.5 rounded uppercase">
                 {tema.cliente_nombre}
               </span>
             )}

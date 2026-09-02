@@ -138,7 +138,7 @@ function ModalNueva({ causas, onSave, onClose }) {
               className={`w-full text-left px-3 py-2 text-[11px] border-b border-gray-50 last:border-b-0 transition-colors ${causaId === c.id ? 'bg-blue-50 text-[#2570BA] font-semibold' : 'hover:bg-gray-50 text-gray-700'}`}>
               <span className="font-medium">{c.ruc || c.rit || '—'}</span>
               {c.materia && <span className="text-gray-400 ml-2 text-[10px]">{c.materia}</span>}
-              {c.cliente_nombre && <span className="text-gray-400 block text-[10px] mt-0.5">{c.cliente_nombre}</span>}
+              {c.cliente_nombre && <span className="text-gray-400 block text-[10px] mt-0.5 uppercase">{c.cliente_nombre}</span>}
             </button>
           ))}
         </div>
@@ -369,7 +369,7 @@ export default function Diligencias() {
                           {causa && (
                             <div className="col-span-2">
                               <span className="text-gray-400 font-medium block mb-0.5">Causa</span>
-                              <span className="text-[11px] text-gray-600">{causa.ruc || causa.rit} — {causa.cliente_nombre}</span>
+                              <span className="text-[11px] text-gray-600">{causa.ruc || causa.rit} — <span className="uppercase">{causa.cliente_nombre}</span></span>
                             </div>
                           )}
                         </div>

@@ -572,7 +572,7 @@ function TaskRow({ tarea, onClick, onToggle, onDeleteRequest, panelOpen, onOpenC
             {tarea.categoria}
           </span>
         </div>
-        <span className={`text-[11px] leading-none mt-1 block truncate ${done ? 'text-gray-300' : 'text-gray-400'}`}>
+        <span className={`text-[11px] leading-none mt-1 block truncate uppercase ${done ? 'text-gray-300' : 'text-gray-400'}`}>
           {tarea.cliente_nombre}
         </span>
       </div>

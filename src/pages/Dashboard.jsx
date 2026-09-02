@@ -566,7 +566,7 @@ export default function Dashboard() {
                       </div>
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium text-gray-900 truncate">{a.cliente_nombre}</p>
+                      <p className="text-xs font-medium text-gray-900 truncate uppercase">{a.cliente_nombre}</p>
                       <div className="flex items-center gap-1 mt-0.5">
                         <MapPin size={9} className="text-gray-300 flex-shrink-0" />
                         <p className="text-[11px] text-gray-400 truncate">{a.tribunal}</p>
@@ -610,7 +610,7 @@ export default function Dashboard() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-xs text-gray-800 leading-snug truncate">{t.titulo}</p>
-                      <p className="text-[10px] text-gray-400 mt-0.5 truncate">{t.cliente_nombre} · {t.causa_rit}</p>
+                      <p className="text-[10px] text-gray-400 mt-0.5 truncate"><span className="uppercase">{t.cliente_nombre}</span> · {t.causa_rit}</p>
                     </div>
                     <div className="flex items-center gap-1.5 flex-shrink-0">
                       <Avatar quien={t.responsable || 'MT'} size={16} />

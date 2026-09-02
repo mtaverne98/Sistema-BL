@@ -461,7 +461,7 @@ function PanelDetalle({ prospecto, onClose, onConvertir, onUpdate }) {
             {initials(prospecto.nombre)}
           </div>
           <div>
-            <h2 className={`text-[15px] font-semibold leading-snug transition-colors ${inactivo ? 'text-gray-400' : 'text-gray-900'}`}>
+            <h2 className={`text-[15px] font-semibold leading-snug transition-colors uppercase ${inactivo ? 'text-gray-400' : 'text-gray-900'}`}>
               {prospecto.nombre}
             </h2>
             <p className="text-xs text-gray-400 mt-0.5">{prospecto.fecha_contacto} · vía {prospecto.origen}</p>
@@ -477,7 +477,7 @@ function PanelDetalle({ prospecto, onClose, onConvertir, onUpdate }) {
                 <p className="text-xs font-semibold text-emerald-800">Confirmar conversión</p>
               </div>
               <p className="text-[11px] text-emerald-700 leading-relaxed mb-3">
-                <strong>{prospecto.nombre}</strong> será agregado al módulo Clientes como cliente formal del estudio.
+                <strong className="uppercase">{prospecto.nombre}</strong> será agregado al módulo Clientes como cliente formal del estudio.
               </p>
               <div className="flex gap-2">
                 <button
@@ -1193,7 +1193,7 @@ export default function Prospectos() {
                             style={{ backgroundColor: inactivo ? '#94a3b8' : '#1a2e4a' }}>
                             {initials(p.nombre)}
                           </div>
-                          <span className={`text-xs font-medium whitespace-nowrap ${inactivo ? 'text-gray-400' : 'text-gray-800'}`}>{p.nombre}</span>
+                          <span className={`text-xs font-medium whitespace-nowrap uppercase ${inactivo ? 'text-gray-400' : 'text-gray-800'}`}>{p.nombre}</span>
                         </div>
                       </td>
                       <td className="px-3 py-3"><span className="text-xs text-gray-500 whitespace-nowrap">{p.telefono}</span></td>

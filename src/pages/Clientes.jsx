@@ -215,7 +215,7 @@ function PanelCliente({ cliente, hasActiveCausas, onClose, onEstadoCambiar, onIn
                 value={cliente.nombre}
                 onSave={save('nombre')}
                 placeholder="Nombre del cliente"
-                textClassName="text-sm font-semibold text-gray-900"
+                textClassName="text-sm font-semibold text-gray-900 uppercase"
                 inputClassName="text-sm font-semibold w-full"
               />
               {/* RUT editable inline */}

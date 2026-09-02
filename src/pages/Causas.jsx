@@ -463,7 +463,7 @@ function ClienteSelector({ clientes, value, onChange, onCrearCliente }) {
             <div className="w-5 h-5 rounded-full bg-[#1a2e4a]/10 flex items-center justify-center flex-shrink-0">
               <span className="text-[9px] font-bold text-[#1a2e4a]">{initials(value.nombre)}</span>
             </div>
-            <span className="text-xs text-gray-800 truncate font-medium">{value.nombre}</span>
+            <span className="text-xs text-gray-800 truncate font-medium uppercase">{value.nombre}</span>
           </div>
         ) : (
           <span className="text-xs text-gray-300">Seleccionar cliente…</span>
@@ -522,7 +522,7 @@ function ClienteSelector({ clientes, value, onChange, onCrearCliente }) {
                     <span className="text-[9px] font-bold text-[#1a2e4a]">{initials(c.nombre)}</span>
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs text-gray-800 truncate font-medium">{c.nombre}</p>
+                    <p className="text-xs text-gray-800 truncate font-medium uppercase">{c.nombre}</p>
                     {c.rut && <p className="text-[10px] text-gray-400 font-mono mt-0.5">{c.rut}</p>}
                   </div>
                   {value?.id === c.id && <Check size={11} className="text-[#2570ba] flex-shrink-0" />}
@@ -673,7 +673,7 @@ function CausaOrigenSelector({ value, onChange, causas }) {
           }`}>
           {selected ? (
             <div className="flex-1 min-w-0 text-left flex items-center gap-2">
-              <span className="text-xs text-gray-800 font-medium truncate">{selected.cliente_nombre}</span>
+              <span className="text-xs text-gray-800 font-medium truncate uppercase">{selected.cliente_nombre}</span>
               {selected.rit && <span className="font-mono text-[10px] text-violet-500">{selected.rit}</span>}
               <span className={`text-[9px] px-1.5 py-0.5 rounded flex-shrink-0 ${AREA_STYLES[selected.area] ?? 'bg-gray-100 text-gray-500'}`}>{selected.area}</span>
             </div>
@@ -708,7 +708,7 @@ function CausaOrigenSelector({ value, onChange, causas }) {
                     value === (c.rit || c.id) ? 'bg-blue-50/60' : 'hover:bg-gray-50'
                   }`}>
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs text-gray-800 font-medium truncate">{c.cliente_nombre}</p>
+                    <p className="text-xs text-gray-800 font-medium truncate uppercase">{c.cliente_nombre}</p>
                     <p className="text-[10px] text-gray-400 truncate mt-0.5">
                       {c.materia}
                       {c.rit && <span className="font-mono ml-1.5 text-violet-500">{c.rit}</span>}
@@ -1640,7 +1640,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                 <span className="mx-0.5 text-gray-200 flex-shrink-0">›</span>
                 <button
                   onClick={() => onNavigateToCliente?.(causa.cliente_nombre)}
-                  className="hover:text-blue-500 transition-colors truncate max-w-[200px] text-left"
+                  className="hover:text-blue-500 transition-colors truncate max-w-[200px] text-left uppercase"
                   title={`Filtrar por ${causa.cliente_nombre}`}
                 >
                   {causa.cliente_nombre}
@@ -5098,7 +5098,7 @@ export default function Causas() {
                                     style={{ backgroundColor: clienteAvatarColor(false, clienteActivoCausasMap[c.cliente_id] ?? clienteActivoCausasMap[c.cliente_nombre] ?? true) }}>
                                     {initials(c.cliente_nombre)}
                                   </div>
-                                  <span className={`text-xs whitespace-nowrap ${clienteEstadoMap[c.cliente_id] && clienteEstadoMap[c.cliente_id] !== 'Activo' ? 'text-gray-400' : 'text-gray-800'}`}>
+                                  <span className={`text-xs whitespace-nowrap uppercase ${clienteEstadoMap[c.cliente_id] && clienteEstadoMap[c.cliente_id] !== 'Activo' ? 'text-gray-400' : 'text-gray-800'}`}>
                                     {c.cliente_nombre}
                                   </span>
                                 </div>

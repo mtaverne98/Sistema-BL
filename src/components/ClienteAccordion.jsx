@@ -91,7 +91,7 @@ export function ClienteAccordionRow({
 
   const nameBlock = (
     <div className="flex-1 min-w-0">
-      <p className={`text-[13px] font-semibold truncate ${hasActiveCausas ? 'text-[#1a2e4a]' : 'text-gray-400'}`}>
+      <p className={`text-[13px] font-semibold truncate uppercase ${hasActiveCausas ? 'text-[#1a2e4a]' : 'text-gray-400'}`}>
         {clienteNombre}
       </p>
       {subtitle && <p className="text-[11px] text-gray-400 mt-0.5">{subtitle}</p>}

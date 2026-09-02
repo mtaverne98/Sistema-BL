@@ -1075,7 +1075,7 @@ function CausaGroupRow({ causa, metaRows, records, isLoading, isExpanded, onTogg
         <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-[11px] font-bold bg-[#2570BA] flex-shrink-0 select-none">{ini}</div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[12px] text-gray-400 font-medium">{causa.cliente_nombre}</span>
+            <span className="text-[12px] text-gray-400 font-medium uppercase">{causa.cliente_nombre}</span>
             <CausaIdentChip causa_rit={causa.rit} causa_ruc={causa.ruc} size="sm" />
           </div>
           {causa.materia && <p className="text-[11px] text-gray-400 mt-0.5 truncate">{causa.materia}</p>}

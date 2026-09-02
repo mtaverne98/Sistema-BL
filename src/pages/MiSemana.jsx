@@ -317,7 +317,7 @@ export default function MiSemana() {
                   >
                     {/* Causa */}
                     <td className="px-6 py-3 align-middle">
-                      <p className="text-[13px] font-semibold text-[#1a2e4a] leading-tight">{causa.cliente_nombre}</p>
+                      <p className="text-[13px] font-semibold text-[#1a2e4a] leading-tight uppercase">{causa.cliente_nombre}</p>
                       <div className="flex items-center gap-2 mt-0.5">
                         {causa.rit && (
                           <span className="text-[10px] text-gray-400 font-mono">{causa.rit}</span>

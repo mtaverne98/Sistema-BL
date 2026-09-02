@@ -158,7 +158,7 @@ function ModalCrearTarea({ causa, onSave, onClose }) {
           <div>
             <h3 className="text-[14px] font-semibold text-gray-900">Crear tarea</h3>
             <p className="text-[11px] text-gray-400 mt-0.5">
-              {causa.cliente_nombre}
+              <span className="uppercase">{causa.cliente_nombre}</span>
               {causa.rit && <><span className="mx-1.5 text-gray-200">·</span><CopyValue value={causa.rit} className="text-[11px] text-gray-400" /></>}
             </p>
           </div>
