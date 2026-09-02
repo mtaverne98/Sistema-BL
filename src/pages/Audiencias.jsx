@@ -5,7 +5,7 @@ import {
   Download, Plus, AlignLeft, X, Loader2, AlertCircle, Trash2,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
-import { GCal, syncViaEdgeFunction, checkConnectionServer } from '../lib/googleCalendar'
+import { pushAudiencia, deleteAudienciaGEvent } from '../lib/googleCalendar'
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal'
 
 // ── Constantes ────────────────────────────────────────────────────────────────
@@ -1042,10 +1042,10 @@ export default function Audiencias() {
   // ── Actualizar audiencia ──
   // persist=true → guarda en BD; persist=false → solo actualiza estado local (UI-only)
   const handleUpdate = useCallback(async (id, cambios, persist = true) => {
+    const currentAud = audienciasRef.current.find(a => a.id === id)
     setAudiencias(prev => prev.map(a => a.id === id ? { ...a, ...cambios } : a))
     if (!persist) return
 
-    // Filtrar solo los campos que existen en BD
     const dbCambios = Object.fromEntries(
       Object.entries(cambios).filter(([k]) => DB_FIELDS.has(k))
     )
@@ -1056,23 +1056,30 @@ export default function Audiencias() {
       .update(dbCambios)
       .eq('id', id)
     if (err) console.error('Error actualizando audiencia:', err.message)
+
+    if (currentAud) {
+      const updated = { ...currentAud, ...cambios }
+      if (updated.fecha && updated.hora) {
+        pushAudiencia(updated, supabase).then(gcalId => {
+          if (gcalId && gcalId !== currentAud.google_event_id) {
+            setAudiencias(prev => prev.map(a => a.id === id ? { ...a, google_event_id: gcalId } : a))
+          }
+        }).catch(() => {})
+      }
+    }
   }, [])
 
   // ── Eliminar audiencia ──
   const handleDelete = useCallback(async () => {
     if (!deleteTarget) return
+    const aud = audienciasRef.current.find(a => a.id === deleteTarget.id)
+    if (aud?.google_event_id) {
+      deleteAudienciaGEvent(aud.google_event_id, supabase).catch(() => {})
+    }
     await supabase.from('audiencias').delete().eq('id', deleteTarget.id)
     setAudiencias(prev => prev.filter(a => a.id !== deleteTarget.id))
     setDeleteTarget(null)
   }, [deleteTarget])
-
-  // ── Sync silencioso con Google Calendar (fire-and-forget) ──
-  const triggerGCalSync = useCallback(async () => {
-    try {
-      const connected = await checkConnectionServer(supabase)
-      if (connected) syncViaEdgeFunction(GCal.getCalendarId()).catch(() => {})
-    } catch { /* silencioso */ }
-  }, [])
 
   // ── Crear audiencia ──
   const handleCrear = useCallback(async (form) => {
@@ -1086,14 +1093,25 @@ export default function Audiencias() {
     if (err) {
       alert('Error al guardar: ' + err.message)
     } else {
-      setAudiencias(prev => [mapRow(data), ...prev])
+      const newAud = mapRow(data)
+      setAudiencias(prev => [newAud, ...prev])
       setMostrarForm(false)
-      triggerGCalSync()
+      if (newAud.fecha && newAud.hora) {
+        pushAudiencia(newAud, supabase).then(gcalId => {
+          if (gcalId) {
+            setAudiencias(prev => prev.map(a => a.id === newAud.id ? { ...a, google_event_id: gcalId } : a))
+          }
+        }).catch(() => {})
+      }
     }
     setGuardando(false)
-  }, [triggerGCalSync])
+  }, [])
 
   // Keep state ref synced for the unmount closure
+  // Ref for accessing current audiencias in async callbacks
+  const audienciasRef = useRef([])
+  useEffect(() => { audienciasRef.current = audiencias }, [audiencias])
+
   const _stRef = useRef({})
   useEffect(() => {
     _stRef.current = { busqueda, filtroEstado, filtroFecha }

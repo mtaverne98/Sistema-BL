@@ -1,0 +1,2 @@
+[functions.google-token-refresh]
+verify_jwt = false

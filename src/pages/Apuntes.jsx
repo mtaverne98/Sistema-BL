@@ -5,6 +5,7 @@ import {
   Circle, CheckCircle2, ExternalLink,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
+import { isGCalEnabled, fetchExternalGCalEvents } from '../lib/googleCalendar'
 
 // ── Constantes ────────────────────────────────────────────────────────────────
 const TODAY = new Date().toISOString().slice(0, 10)
@@ -19,6 +20,7 @@ const TIPOS = {
   plazo:     { label: 'Plazo',     color: '#C0392B', bg: '#FDECEA' },
   tarea:     { label: 'Tarea',     color: '#C8862B', bg: '#FDF3E7' },
   reunion:   { label: 'Reunión',   color: '#7C3AED', bg: '#F3EFFE' },
+  gcal:      { label: 'Google',    color: '#4285F4', bg: '#EEF3FD' },
 }
 
 const ACTION_VERBS = new Set([
@@ -173,9 +175,9 @@ function SeguimientoPicker({ nota, causas, onConfirm, onClose }) {
 }
 
 // ── EventoItem ────────────────────────────────────────────────────────────────
-function EventoItem({ tipo, label, sub, hora }) {
+function EventoItem({ tipo, label, sub, hora, href }) {
   const t = TIPOS[tipo]
-  return (
+  const inner = (
     <div className="flex items-center gap-2 py-1.5">
       <div className="w-0.5 self-stretch rounded-full flex-shrink-0" style={{ background: t.color }} />
       <span
@@ -189,6 +191,9 @@ function EventoItem({ tipo, label, sub, hora }) {
       {sub && <span className="text-[11px] text-gray-400 flex-shrink-0 truncate max-w-[160px]">{sub}</span>}
     </div>
   )
+  return href
+    ? <a href={href} target="_blank" rel="noreferrer" className="block hover:opacity-75 transition-opacity">{inner}</a>
+    : inner
 }
 
 // ── NotaRow ───────────────────────────────────────────────────────────────────
@@ -309,7 +314,7 @@ function DayBlock({
   iso, isToday, isPast,
   audiencias, plazos, tareas, reuniones, notas,
   onToggleNota, onAddNota, onDeleteNota, onConvertNota,
-  clientes,
+  clientes, gcalEventos,
 }) {
   const [newNotaId,     setNewNotaId]     = useState(null)
   const [showCompleted, setShowCompleted] = useState(false)
@@ -317,9 +322,10 @@ function DayBlock({
   const pendingNotas   = notas.filter(n => !n.completada)
   const completedNotas = notas.filter(n =>  n.completada)
   const hiddenCount    = showCompleted ? 0 : completedNotas.length
+  const gcalItems      = gcalEventos || []
 
   const hasItems = (audiencias.length + plazos.length + tareas.length +
-                    reuniones.length + pendingNotas.length) > 0
+                    reuniones.length + pendingNotas.length + gcalItems.length) > 0
   const isEmpty  = !hasItems && completedNotas.length === 0
 
   const headerLabel = `${dowShort(iso)}, ${dayMonth(iso)}`
@@ -392,6 +398,19 @@ function DayBlock({
               label={r.titulo || 'Reunión'}
               sub={null}
               hora={null} />
+          ))}
+        </div>
+      )}
+
+      {/* Eventos externos de Google Calendar (calendar principal) */}
+      {gcalItems.length > 0 && (
+        <div className="px-5 pb-1">
+          {gcalItems.map(e => (
+            <EventoItem key={e.id} tipo="gcal"
+              label={e.title}
+              sub={null}
+              hora={e.hora}
+              href={e.htmlLink} />
           ))}
         </div>
       )}
@@ -699,15 +718,16 @@ export default function Apuntes() {
   })
 
   // Semana: datos por fecha
-  const [notas,      setNotas]      = useState({})
-  const [audiencias, setAudiencias] = useState({})
-  const [tareas,     setTareas]     = useState({})
-  const [plazos,     setPlazos]     = useState({})
-  const [reuniones,  setReuniones]  = useState({})
-  const [clientes,   setClientes]   = useState([])
-  const [causas,     setCausas]     = useState([])
-  const [loading,    setLoading]    = useState(false)
-  const [segPicker,  setSegPicker]  = useState(null)
+  const [notas,        setNotas]        = useState({})
+  const [audiencias,   setAudiencias]   = useState({})
+  const [tareas,       setTareas]       = useState({})
+  const [plazos,       setPlazos]       = useState({})
+  const [reuniones,    setReuniones]    = useState({})
+  const [clientes,     setClientes]     = useState([])
+  const [causas,       setCausas]       = useState([])
+  const [loading,      setLoading]      = useState(false)
+  const [segPicker,    setSegPicker]    = useState(null)
+  const [gcalEventos,  setGcalEventos]  = useState({})
 
   // Pendientes
   const [pendientes,      setPendientes]      = useState([])
@@ -777,6 +797,28 @@ export default function Apuntes() {
       setLoading(false)
     }
     fetchAll()
+  }, [weekMonday])
+
+  // ── Fetch eventos externos de Google Calendar ───────────────────────────────
+  useEffect(() => {
+    let cancelled = false
+    async function fetchGcal() {
+      const enabled = await isGCalEnabled(supabase)
+      if (!enabled || cancelled) return
+      try {
+        const end    = addDays(weekMonday, 6)
+        const events = await fetchExternalGCalEvents(weekMonday, end, supabase)
+        if (cancelled) return
+        const byDate = {}
+        events.forEach(e => {
+          if (!byDate[e.fecha]) byDate[e.fecha] = []
+          byDate[e.fecha].push(e)
+        })
+        setGcalEventos(byDate)
+      } catch { /* silencioso */ }
+    }
+    fetchGcal()
+    return () => { cancelled = true }
   }, [weekMonday])
 
   // ── Fetch pendientes ────────────────────────────────────────────────────────
@@ -1121,6 +1163,7 @@ export default function Apuntes() {
                   reuniones={reuniones[date] || []}
                   notas={notas[date] || []}
                   clientes={clientes}
+                  gcalEventos={gcalEventos[date] || []}
                   onToggleNota={handleToggleNota}
                   onAddNota={handleAddNota}
                   onDeleteNota={handleDeleteNota}

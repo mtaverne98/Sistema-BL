@@ -8,9 +8,9 @@ import {
 } from 'lucide-react'
 import { useNotifications } from '../context/NotificationContext'
 import {
-  GCal, getAuthUrl, listCalendars,
+  getAuthUrl,
   checkConnectionServer, disconnectServer, syncViaEdgeFunction,
-  getAccessTokenServer,
+  getSyncSettings, setSyncEnabled,
 } from '../lib/googleCalendar'
 import { supabase } from '../lib/supabase'
 
@@ -32,38 +32,40 @@ function Section({ title, description, children }) {
 // ── Google Calendar integration card ─────────────────────────────────────────
 function GoogleCalendarCard() {
   const location = useLocation()
-  const [connected,     setConnected]     = useState(false)
-  const [loading,       setLoading]       = useState(true)
-  const [calendars,     setCalendars]     = useState([])
-  const [loadingCals,   setLoadingCals]   = useState(false)
-  const [calError,      setCalError]      = useState('')
-  const [selectedCalId, setSelectedCalId] = useState(GCal.getCalendarId())
-  const [syncStatus,    setSyncStatus]    = useState(null) // 'syncing'|'done'|'error'
-  const [syncMsg,       setSyncMsg]       = useState('')
-  const [showCalList,   setShowCalList]   = useState(false)
+  const [connected,    setConnected]    = useState(false)
+  const [loading,      setLoading]      = useState(true)
+  const [syncEnabled,  setSyncEnabledS] = useState(true)
+  const [lastSyncAt,   setLastSyncAt]   = useState(null)
+  const [syncStatus,   setSyncStatus]   = useState(null) // 'syncing'|'done'|'error'
+  const [syncMsg,      setSyncMsg]      = useState('')
 
-  // Check connection via Supabase table (server-side tokens)
   useEffect(() => {
     async function check() {
       setLoading(true)
       const ok = await checkConnectionServer(supabase)
       setConnected(ok)
+      if (ok) {
+        const settings = await getSyncSettings(supabase)
+        setSyncEnabledS(settings.sync_enabled !== false)
+        setLastSyncAt(settings.last_sync_at)
+      }
       setLoading(false)
-      if (ok) loadCalendars()
     }
     check()
   }, [])
 
-  // Handle redirect back from OAuth (?calendar=connected / ?calendar=error)
   useEffect(() => {
     const params = new URLSearchParams(location.search)
     const cal    = params.get('calendar')
     if (cal === 'connected') {
-      checkConnectionServer(supabase).then(ok => {
+      checkConnectionServer(supabase).then(async ok => {
         setConnected(ok)
-        if (ok) loadCalendars()
+        if (ok) {
+          const settings = await getSyncSettings(supabase)
+          setSyncEnabledS(settings.sync_enabled !== false)
+          setLastSyncAt(settings.last_sync_at)
+        }
       })
-      // Clean up URL
       window.history.replaceState({}, '', '/configuracion')
     } else if (cal === 'error') {
       const msg = params.get('msg') || 'Error al conectar Google Calendar'
@@ -73,25 +75,6 @@ function GoogleCalendarCard() {
     }
   }, [location.search])
 
-  async function loadCalendars() {
-    setLoadingCals(true)
-    setCalError('')
-    try {
-      // Get token from Supabase then call Calendar API
-      const token = await getAccessTokenServer(supabase)
-      const res   = await fetch('https://www.googleapis.com/calendar/v3/users/me/calendarList', {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      const data = await res.json()
-      if (data.error) throw new Error(data.error.message)
-      setCalendars(data.items || [])
-    } catch (e) {
-      setCalError(e.message)
-    } finally {
-      setLoadingCals(false)
-    }
-  }
-
   function handleConnect() {
     window.location.href = getAuthUrl()
   }
@@ -99,34 +82,43 @@ function GoogleCalendarCard() {
   async function handleDisconnect() {
     await disconnectServer(supabase)
     setConnected(false)
-    setCalendars([])
     setSyncStatus(null)
     setSyncMsg('')
   }
 
-  function handleCalendarSelect(id) {
-    GCal.setCalendarId(id)
-    setSelectedCalId(id)
-    setShowCalList(false)
+  async function handleToggleSync(enabled) {
+    setSyncEnabledS(enabled)
+    await setSyncEnabled(supabase, enabled)
   }
 
   async function handleSyncAll() {
     setSyncStatus('syncing')
-    setSyncMsg('Sincronizando audiencias…')
+    setSyncMsg('Sincronizando audiencias con Google Calendar…')
     try {
-      const result = await syncViaEdgeFunction(selectedCalId)
+      const result = await syncViaEdgeFunction()
       const { created = 0, updated = 0, total = 0 } = result
       setSyncStatus('done')
       setSyncMsg(`${total} audiencias procesadas · ${created} creadas · ${updated} actualizadas`)
-      setTimeout(() => { setSyncStatus(null); setSyncMsg('') }, 5000)
+      setLastSyncAt(new Date().toISOString())
+      setTimeout(() => { setSyncStatus(null); setSyncMsg('') }, 6000)
     } catch (e) {
       setSyncStatus('error')
       setSyncMsg(e.message)
-      setTimeout(() => { setSyncStatus(null); setSyncMsg('') }, 5000)
+      setTimeout(() => { setSyncStatus(null); setSyncMsg('') }, 6000)
     }
   }
 
-  const selectedCal = calendars.find(c => c.id === selectedCalId)
+  function fmtLastSync(iso) {
+    if (!iso) return 'Nunca'
+    const d = new Date(iso)
+    const now = new Date()
+    const diff = Math.floor((now - d) / 60000)
+    if (diff < 2)  return 'Hace un momento'
+    if (diff < 60) return `Hace ${diff} min`
+    const h = Math.floor(diff / 60)
+    if (h < 24) return `Hace ${h}h`
+    return d.toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric' })
+  }
 
   return (
     <div className="p-5">
@@ -195,84 +187,38 @@ function GoogleCalendarCard() {
       {connected && (
         <div className="space-y-4">
 
-          {/* Calendar selector */}
-          <div>
-            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Calendario de destino</p>
-            <div className="relative">
-              <button
-                onClick={() => setShowCalList(v => !v)}
-                className="w-full flex items-center justify-between gap-2 border border-gray-100 rounded-xl px-3 py-2.5 bg-gray-50/50 hover:bg-gray-50 transition-colors text-left"
-              >
-                <div className="flex items-center gap-2 min-w-0">
-                  <div
-                    className="w-3 h-3 rounded-full flex-shrink-0"
-                    style={{ background: selectedCal?.backgroundColor || '#1a73e8' }}
-                  />
-                  <span className="text-xs font-medium text-gray-700 truncate">
-                    {selectedCal?.summary || (selectedCalId === 'primary' ? 'Calendario principal' : selectedCalId)}
-                  </span>
-                </div>
-                {loadingCals
-                  ? <Loader size={12} className="text-gray-300 animate-spin flex-shrink-0" />
-                  : <ChevronDown size={12} className="text-gray-400 flex-shrink-0" />
-                }
-              </button>
-
-              {showCalList && calendars.length > 0 && (
-                <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-100 rounded-xl shadow-lg z-50 overflow-hidden max-h-[200px] overflow-y-auto">
-                  {calendars.map(c => (
-                    <button
-                      key={c.id}
-                      onClick={() => handleCalendarSelect(c.id)}
-                      className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-left hover:bg-gray-50 transition-colors ${
-                        c.id === selectedCalId ? 'bg-blue-50/50' : ''
-                      }`}
-                    >
-                      <div
-                        className="w-3 h-3 rounded-full flex-shrink-0"
-                        style={{ background: c.backgroundColor || '#1a73e8' }}
-                      />
-                      <span className="text-xs text-gray-700 truncate flex-1">{c.summary}</span>
-                      {c.id === selectedCalId && (
-                        <CheckCircle size={12} className="text-blue-400 flex-shrink-0" />
-                      )}
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {calError && (
-                <p className="text-[10px] text-red-500 mt-1.5 flex items-center gap-1">
-                  <AlertCircle size={10} />
-                  {calError}
-                </p>
-              )}
+          {/* Sync toggle */}
+          <div className="flex items-center justify-between bg-gray-50/60 border border-gray-100 rounded-xl px-4 py-3">
+            <div>
+              <p className="text-xs font-semibold text-gray-700">Sincronización activa</p>
+              <p className="text-[11px] text-gray-400 mt-0.5">Audiencias y reuniones → calendario "Sistema BL"</p>
             </div>
+            <button
+              onClick={() => handleToggleSync(!syncEnabled)}
+              className={`relative flex-shrink-0 w-9 h-5 rounded-full transition-colors duration-200 ${syncEnabled ? 'bg-[#2570BA]' : 'bg-gray-200'}`}
+              aria-pressed={syncEnabled}
+            >
+              <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow-sm transition-transform duration-200 ${syncEnabled ? 'translate-x-4' : 'translate-x-0'}`} />
+            </button>
           </div>
 
-          {/* Sync actions */}
-          <div className="grid grid-cols-2 gap-2.5">
+          {/* Last sync + manual sync */}
+          <div className="flex items-center gap-2.5">
             <button
               onClick={handleSyncAll}
-              disabled={syncStatus === 'syncing'}
-              className="flex items-center justify-center gap-2 bg-[#2570BA] text-white text-xs font-semibold px-4 py-2.5 rounded-xl hover:bg-[#2570BA]/90 transition-colors disabled:opacity-50 shadow-sm"
+              disabled={syncStatus === 'syncing' || !syncEnabled}
+              className="flex items-center justify-center gap-2 bg-[#2570BA] text-white text-xs font-semibold px-4 py-2.5 rounded-xl hover:bg-[#2570BA]/90 transition-colors disabled:opacity-40 shadow-sm flex-1"
             >
               {syncStatus === 'syncing'
                 ? <Loader size={13} className="animate-spin" />
                 : <RefreshCw size={13} />
               }
-              Sincronizar audiencias
+              Sincronizar ahora
             </button>
-
-            <a
-              href={`https://calendar.google.com/calendar/r?cid=${encodeURIComponent(selectedCalId)}`}
-              target="_blank"
-              rel="noreferrer"
-              className="flex items-center justify-center gap-2 bg-gray-50 border border-gray-100 text-gray-500 text-xs font-semibold px-4 py-2.5 rounded-xl hover:bg-gray-100 transition-colors"
-            >
-              <ExternalLink size={13} />
-              Abrir en Google
-            </a>
+            <div className="text-[11px] text-gray-400 text-right flex-shrink-0">
+              <p className="font-medium text-gray-500">Última sync</p>
+              <p>{fmtLastSync(lastSyncAt)}</p>
+            </div>
           </div>
 
           {/* Sync status */}

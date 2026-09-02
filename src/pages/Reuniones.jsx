@@ -4,6 +4,7 @@ import {
   CheckCircle2, RotateCcw, Loader2, Trash2, Scale, Users,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
+import { pushReunion, deleteReunionGEvent } from '../lib/googleCalendar'
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -484,6 +485,9 @@ export default function Reuniones() {
       .select()
       .single()
     setReuniones(prev => [data, ...prev])
+    pushReunion(data, supabase).then(gcalId => {
+      if (gcalId) setReuniones(prev => prev.map(r => r.id === data.id ? { ...r, google_event_id: gcalId } : r))
+    }).catch(() => {})
     return data.id
   }
 
@@ -517,6 +521,10 @@ export default function Reuniones() {
 
   async function handleDeleteReunion() {
     if (!deleteTarget) return
+    const reunion = reuniones.find(r => r.id === deleteTarget.id)
+    if (reunion?.google_event_id) {
+      deleteReunionGEvent(reunion.google_event_id, supabase).catch(() => {})
+    }
     await supabase.from('reuniones').delete().eq('id', deleteTarget.id)
     setReuniones(prev => prev.filter(r => r.id !== deleteTarget.id))
     setTemas(prev => prev.filter(t => t.fecha_jueves !== deleteTarget.fecha_jueves))

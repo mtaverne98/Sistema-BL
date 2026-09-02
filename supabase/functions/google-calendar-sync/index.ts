@@ -8,6 +8,8 @@ const GOOGLE_CLIENT_SECRET = Deno.env.get('GOOGLE_CLIENT_SECRET')!
 
 const TOKEN_ROW_ID = '00000000-0000-0000-0000-000000000001'
 const GCAL_BASE    = 'https://www.googleapis.com/calendar/v3/calendars'
+const BL_CAL_NAME  = 'Sistema BL'
+const TZ           = 'America/Santiago'
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -92,6 +94,33 @@ function toGCalEvent(a: Record<string, string>) {
   }
 }
 
+// ── Ensure "Sistema BL" calendar exists ──────────────────────────────────────
+async function ensureBLCalendar(supabase: ReturnType<typeof createClient>, token: string): Promise<string> {
+  const { data: row } = await supabase
+    .from('google_tokens').select('bl_calendar_id').eq('id', TOKEN_ROW_ID).single()
+  if (row?.bl_calendar_id) return row.bl_calendar_id
+
+  const listRes = await fetch('https://www.googleapis.com/calendar/v3/users/me/calendarList', {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  const listData = await listRes.json()
+  const existing = (listData.items ?? []).find((c: { summary: string }) => c.summary === BL_CAL_NAME)
+  if (existing) {
+    await supabase.from('google_tokens').update({ bl_calendar_id: existing.id }).eq('id', TOKEN_ROW_ID)
+    return existing.id
+  }
+
+  const createRes = await fetch('https://www.googleapis.com/calendar/v3/calendars', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ summary: BL_CAL_NAME, timeZone: TZ }),
+  })
+  const newCal = await createRes.json()
+  if (newCal.error) throw new Error('Error creando calendario: ' + newCal.error.message)
+  await supabase.from('google_tokens').update({ bl_calendar_id: newCal.id }).eq('id', TOKEN_ROW_ID)
+  return newCal.id
+}
+
 // ── Main handler ──────────────────────────────────────────────────────────────
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS })
@@ -102,13 +131,8 @@ serve(async (req) => {
     let accessToken  = typeof tokenData === 'string' ? tokenData : tokenData.accessToken
     const refreshToken = typeof tokenData === 'string' ? null : tokenData.refreshToken
 
-    // Read request body for optional calendar_id override
-    let calendarId = 'primary'
-    try {
-      const body = await req.json()
-      if (body?.calendar_id) calendarId = body.calendar_id
-    } catch { /* body optional */ }
-
+    // Use "Sistema BL" calendar (auto-create if needed)
+    const calendarId = await ensureBLCalendar(supabase, accessToken)
     const calEnc = encodeURIComponent(calendarId)
     const today  = new Date().toISOString().slice(0, 10)
     console.log('Syncing to calendarId:', calendarId, '| today:', today)
@@ -202,6 +226,10 @@ serve(async (req) => {
         errors++
       }
     }
+
+    await supabase.from('google_tokens')
+      .update({ last_sync_at: new Date().toISOString() })
+      .eq('id', TOKEN_ROW_ID)
 
     console.log('Sync done — created:', created, 'updated:', updated, 'errors:', errors)
     return json({ ok: true, created, updated, errors, total: (audiencias ?? []).length })
