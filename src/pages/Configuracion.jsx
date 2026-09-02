@@ -339,7 +339,21 @@ function NotificacionesCard() {
             {permission === 'granted' ? (
               <>
                 <CheckCircle size={13} className="text-emerald-500 flex-shrink-0" />
-                <span className="text-[11px] text-gray-500">Permiso concedido por el navegador</span>
+                <span className="text-[11px] text-gray-500 flex-1">Permiso concedido por el navegador</span>
+                <button
+                  onClick={() => {
+                    try {
+                      const n = new Notification('Sistema BL — Prueba', {
+                        body: 'Las notificaciones están funcionando correctamente.',
+                        icon: '/logo.jpg',
+                      })
+                      n.onclick = () => { window.focus() }
+                    } catch {}
+                  }}
+                  className="text-[11px] font-semibold text-[#2570BA] hover:underline flex-shrink-0"
+                >
+                  Enviar prueba
+                </button>
               </>
             ) : permission === 'denied' ? (
               <>
