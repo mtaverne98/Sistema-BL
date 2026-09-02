@@ -22,6 +22,34 @@ import SlashCommands     from '../components/SlashCommands'
 import SaveStatusBadge   from '../components/SaveStatusBadge'
 import NotificationBell  from '../components/NotificationBell'
 
+// ── Banner de permiso de notificaciones ──────────────────────────────────────
+function NotifPermBanner() {
+  const { showPermBanner, requestPermission, dismissPermBanner } = useNotifications()
+  if (!showPermBanner) return null
+  return (
+    <div className="flex-shrink-0 flex items-center gap-3 px-4 py-2.5 text-sm"
+      style={{ backgroundColor: '#EEF4FB', borderBottom: '1px solid #C9DDEF' }}>
+      <Bell size={14} className="text-[#2570BA] flex-shrink-0" />
+      <span className="flex-1 text-[12px] text-[#1A2E4A]">
+        Activa las notificaciones del sistema operativo para recibir avisos de audiencias y plazos urgentes aunque la pantalla esté minimizada.
+      </span>
+      <button
+        onClick={requestPermission}
+        className="text-[11px] font-bold px-3 py-1 rounded-lg text-white flex-shrink-0"
+        style={{ backgroundColor: '#2570BA' }}
+      >
+        Activar
+      </button>
+      <button
+        onClick={dismissPermBanner}
+        className="text-[11px] font-semibold text-gray-400 hover:text-gray-600 flex-shrink-0"
+      >
+        Ahora no
+      </button>
+    </div>
+  )
+}
+
 // ── helpers ───────────────────────────────────────────────────────────────────
 const TODAY_LAYOUT = new Date().toISOString().slice(0, 10)
 
@@ -876,6 +904,9 @@ export default function MainLayout() {
             </button>
           </header>
         )}
+
+        {/* ── Notificaciones: banner de permiso ── */}
+        <NotifPermBanner />
 
         {/* ── Main content ── */}
         <main className="flex-1 overflow-y-auto bg-white min-w-0 fab-clear">

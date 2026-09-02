@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 const TODAY = new Date().toISOString().slice(0, 10)
 const LS_SETTINGS = 'notif-settings'
 const LS_SENT     = `notif-sent-${TODAY}`
+const LS_PERM_ASKED = 'notif-permission-asked'
 
 function daysDiff(isoDate) {
   if (!isoDate) return null
@@ -55,6 +56,7 @@ export function NotificationProvider({ children }) {
   const [permission, setPermission] = useState(() => {
     try { return Notification.permission } catch { return 'default' }
   })
+  const [showPermBanner, setShowPermBanner] = useState(false)
   const initialLoaded  = useRef(false)
   const prevUrgentIds  = useRef(new Set())
 
@@ -92,6 +94,18 @@ export function NotificationProvider({ children }) {
 
   useEffect(() => {
     fetchData().then(() => { initialLoaded.current = true })
+  }, [])
+
+  // Mostrar banner de permiso la primera vez (si no se ha pedido antes y no está concedido)
+  useEffect(() => {
+    if (!('Notification' in window)) return
+    if (Notification.permission !== 'default') return
+    try {
+      if (localStorage.getItem(LS_PERM_ASKED)) return
+    } catch {}
+    // Esperar 3 segundos para no interrumpir la carga inicial
+    const t = setTimeout(() => setShowPermBanner(true), 3000)
+    return () => clearTimeout(t)
   }, [])
 
   useEffect(() => {
@@ -202,11 +216,12 @@ export function NotificationProvider({ children }) {
 
     if (!sent.has(summaryKey)) {
       try {
-        new Notification('Sistema BL', {
+        const n = new Notification('Sistema BL', {
           body: `Tienes ${notifications.length} aviso${notifications.length !== 1 ? 's' : ''} pendiente${notifications.length !== 1 ? 's' : ''}`,
           icon: '/logo.jpg',
           tag: summaryKey,
         })
+        n.onclick = () => { window.focus(); window.location.href = '/' }
       } catch {}
       markSent(summaryKey)
     }
@@ -217,16 +232,17 @@ export function NotificationProvider({ children }) {
       (n.type === 'plazo' && n.id.endsWith('-hoy'))
     )
 
-    urgentNow.forEach(n => {
-      if (!sent.has(n.id) && !prevUrgentIds.current.has(n.id)) {
+    urgentNow.forEach(notif => {
+      if (!sent.has(notif.id) && !prevUrgentIds.current.has(notif.id)) {
         try {
-          new Notification('Sistema BL — Aviso urgente', {
-            body: `${n.title}: ${n.subtitle}`,
+          const n = new Notification('Sistema BL — Aviso urgente', {
+            body: `${notif.title}: ${notif.subtitle}`,
             icon: '/logo.jpg',
-            tag: n.id,
+            tag: notif.id,
           })
+          n.onclick = () => { window.focus(); window.location.href = notif.navigateTo || '/' }
         } catch {}
-        markSent(n.id)
+        markSent(notif.id)
       }
     })
 
@@ -235,9 +251,16 @@ export function NotificationProvider({ children }) {
 
   async function requestPermission() {
     if (!('Notification' in window)) return 'not-supported'
+    try { localStorage.setItem(LS_PERM_ASKED, '1') } catch {}
+    setShowPermBanner(false)
     const result = await Notification.requestPermission()
     setPermission(result)
     return result
+  }
+
+  function dismissPermBanner() {
+    try { localStorage.setItem(LS_PERM_ASKED, '1') } catch {}
+    setShowPermBanner(false)
   }
 
   function saveSettings(patch) {
@@ -247,7 +270,7 @@ export function NotificationProvider({ children }) {
   }
 
   return (
-    <NotificationCtx.Provider value={{ notifications, permission, requestPermission, settings, saveSettings }}>
+    <NotificationCtx.Provider value={{ notifications, permission, requestPermission, dismissPermBanner, showPermBanner, settings, saveSettings }}>
       {children}
     </NotificationCtx.Provider>
   )
