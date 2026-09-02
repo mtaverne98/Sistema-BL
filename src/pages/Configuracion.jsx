@@ -283,12 +283,30 @@ function ToggleRow({ label, description, checked, onChange }) {
 // ── Notificaciones card ───────────────────────────────────────────────────────
 function NotificacionesCard() {
   const { notifications, permission, requestPermission, settings, saveSettings } = useNotifications()
-  const [requesting, setRequesting] = useState(false)
+  const [requesting,  setRequesting]  = useState(false)
+  const [testStatus,  setTestStatus]  = useState(null) // null | 'sent' | 'error' | string
 
   async function handleRequestPermission() {
     setRequesting(true)
     await requestPermission()
     setRequesting(false)
+  }
+
+  async function handleTestNotif() {
+    setTestStatus(null)
+    if (!('Notification' in window)) { setTestStatus('no-api'); return }
+    if (Notification.permission !== 'granted') { setTestStatus('no-perm'); return }
+    try {
+      const n = new Notification('Sistema BL — Prueba', {
+        body: 'Las notificaciones están funcionando correctamente.',
+        icon: '/logo.jpg',
+      })
+      n.onclick = () => window.focus()
+      setTestStatus('sent')
+    } catch (e) {
+      setTestStatus('error:' + e.message)
+    }
+    setTimeout(() => setTestStatus(null), 4000)
   }
 
   const TIPOS = [
@@ -341,19 +359,21 @@ function NotificacionesCard() {
                 <CheckCircle size={13} className="text-emerald-500 flex-shrink-0" />
                 <span className="text-[11px] text-gray-500 flex-1">Permiso concedido por el navegador</span>
                 <button
-                  onClick={() => {
-                    try {
-                      const n = new Notification('Sistema BL — Prueba', {
-                        body: 'Las notificaciones están funcionando correctamente.',
-                        icon: '/logo.jpg',
-                      })
-                      n.onclick = () => { window.focus() }
-                    } catch {}
-                  }}
+                  onClick={handleTestNotif}
                   className="text-[11px] font-semibold text-[#2570BA] hover:underline flex-shrink-0"
                 >
                   Enviar prueba
                 </button>
+                {testStatus === 'sent' && (
+                  <span className="text-[10px] text-emerald-600 flex-shrink-0">
+                    ✓ Enviada — si no aparece, minimiza Chrome
+                  </span>
+                )}
+                {testStatus && testStatus.startsWith('error:') && (
+                  <span className="text-[10px] text-red-500 flex-shrink-0">
+                    Error: {testStatus.slice(6)}
+                  </span>
+                )}
               </>
             ) : permission === 'denied' ? (
               <>
