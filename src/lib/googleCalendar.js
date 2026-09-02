@@ -7,7 +7,6 @@ const REDIRECT_URI = 'https://zzcdkjoetgclbtcuqswr.supabase.co/functions/v1/goog
 const SCOPES       = 'https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/calendar.events'
 const SUPABASE_ANON_KEY  = import.meta.env.VITE_SUPABASE_ANON_KEY
 const SUPABASE_URL       = 'https://zzcdkjoetgclbtcuqswr.supabase.co'
-const REFRESH_EF_URL     = `${SUPABASE_URL}/functions/v1/google-token-refresh`
 const SYNC_EF_URL        = `${SUPABASE_URL}/functions/v1/google-calendar-sync`
 const TOKEN_ROW_ID       = '00000000-0000-0000-0000-000000000001'
 const TZ                 = 'America/Santiago'
@@ -69,14 +68,19 @@ export async function disconnectServer(supabase) {
     .eq('id', TOKEN_ROW_ID)
 }
 
-// ── Token refresh (via Edge Function — CLIENT_SECRET stays server-side) ───────
+// ── Token refresh (via google-calendar-sync EF with action=get_token) ────────
 export async function getValidToken() {
-  const res = await fetch(REFRESH_EF_URL, {
+  const res = await fetch(SYNC_EF_URL, {
     method: 'POST',
-    headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
+    headers: {
+      'Content-Type':  'application/json',
+      'apikey':        SUPABASE_ANON_KEY,
+      'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+    },
+    body: JSON.stringify({ action: 'get_token' }),
   })
   const { access_token, error } = await res.json()
-  if (error) throw new Error('GCal token: ' + error)
+  if (error || !access_token) throw new Error('GCal token: ' + (error || 'sin token'))
   return access_token
 }
 
@@ -298,6 +302,7 @@ export async function syncViaEdgeFunction() {
     method:  'POST',
     headers: {
       'Content-Type':  'application/json',
+      'apikey':        SUPABASE_ANON_KEY,
       'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
     },
     body: JSON.stringify({}),

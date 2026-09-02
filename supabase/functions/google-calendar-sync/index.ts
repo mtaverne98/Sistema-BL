@@ -131,6 +131,13 @@ serve(async (req) => {
     let accessToken  = typeof tokenData === 'string' ? tokenData : tokenData.accessToken
     const refreshToken = typeof tokenData === 'string' ? null : tokenData.refreshToken
 
+    // action=get_token: only return a valid access token (used by client-side CRUD)
+    let body: Record<string, string> = {}
+    try { body = await req.json() } catch { /* body optional */ }
+    if (body?.action === 'get_token') {
+      return json({ access_token: accessToken })
+    }
+
     // Use "Sistema BL" calendar (auto-create if needed)
     const calendarId = await ensureBLCalendar(supabase, accessToken)
     const calEnc = encodeURIComponent(calendarId)
