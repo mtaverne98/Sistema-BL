@@ -311,11 +311,16 @@ function DayBlock({
   onToggleNota, onAddNota, onDeleteNota, onConvertNota,
   clientes,
 }) {
-  const [newNotaId, setNewNotaId] = useState(null)
+  const [newNotaId,     setNewNotaId]     = useState(null)
+  const [showCompleted, setShowCompleted] = useState(false)
+
+  const pendingNotas   = notas.filter(n => !n.completada)
+  const completedNotas = notas.filter(n =>  n.completada)
+  const hiddenCount    = showCompleted ? 0 : completedNotas.length
 
   const hasItems = (audiencias.length + plazos.length + tareas.length +
-                    reuniones.length + notas.length) > 0
-  const isEmpty  = !hasItems
+                    reuniones.length + pendingNotas.length) > 0
+  const isEmpty  = !hasItems && completedNotas.length === 0
 
   const headerLabel = `${dowShort(iso)}, ${dayMonth(iso)}`
 
@@ -356,6 +361,9 @@ function DayBlock({
             HOY
           </span>
         )}
+        {hiddenCount > 0 && (
+          <span className="ml-auto text-[10px] text-gray-300 tabular-nums">{hiddenCount} oculta{hiddenCount !== 1 ? 's' : ''}</span>
+        )}
       </div>
 
       {/* Items del sistema */}
@@ -388,10 +396,10 @@ function DayBlock({
         </div>
       )}
 
-      {/* Notas */}
-      {notas.length > 0 && (
+      {/* Notas pendientes */}
+      {pendingNotas.length > 0 && (
         <div className="px-5 pb-1">
-          {notas.map(n => (
+          {pendingNotas.map(n => (
             <NotaRow key={n.id} nota={n}
               onToggle={onToggleNota}
               onDelete={onDeleteNota}
@@ -400,6 +408,35 @@ function DayBlock({
               newNotaId={newNotaId}
             />
           ))}
+        </div>
+      )}
+
+      {/* Notas completadas (plegadas) */}
+      {completedNotas.length > 0 && showCompleted && (
+        <div className="px-5 pb-1">
+          {completedNotas.map(n => (
+            <NotaRow key={n.id} nota={n}
+              onToggle={onToggleNota}
+              onDelete={onDeleteNota}
+              onConvert={onConvertNota}
+              isPast={isPast}
+              newNotaId={newNotaId}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Toggle completadas */}
+      {completedNotas.length > 0 && (
+        <div className="px-5 pb-1">
+          <button
+            onClick={() => setShowCompleted(s => !s)}
+            className="text-[11px] text-gray-300 hover:text-gray-500 transition-colors"
+          >
+            {showCompleted
+              ? `▾ Ocultar ${completedNotas.length} completada${completedNotas.length !== 1 ? 's' : ''}`
+              : `▸ Mostrar ${completedNotas.length} completada${completedNotas.length !== 1 ? 's' : ''}`}
+          </button>
         </div>
       )}
 
@@ -1058,43 +1095,46 @@ export default function Apuntes() {
         </div>
       </div>
 
-      {/* ── Contenido ── */}
-      <div className="flex-1 overflow-y-auto">
+      {/* ── Contenido: dos columnas ── */}
+      <div className="flex-1 flex flex-col min-[1100px]:flex-row overflow-hidden">
 
-        {/* ── Sección semana ── */}
-        <div className="bg-white mb-2">
-          <div className="px-5 py-2 bg-gray-50 border-b border-gray-100">
+        {/* ── Columna izquierda: La semana (60%) ── */}
+        <div className="min-[1100px]:w-[60%] flex-shrink-0 flex flex-col overflow-hidden border-r border-gray-200">
+          <div className="px-5 py-2 bg-gray-50 border-b border-gray-100 flex-shrink-0">
             <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">La semana</span>
           </div>
-
-          {loading ? (
-            <div className="flex items-center justify-center py-12">
-              <div className="w-5 h-5 border-2 border-[#1a2e4a]/20 border-t-[#1a2e4a] rounded-full animate-spin" />
-            </div>
-          ) : (
-            weekDays.map((date) => (
-              <DayBlock
-                key={date}
-                iso={date}
-                isToday={date === TODAY}
-                isPast={date < TODAY}
-                audiencias={audiencias[date] || []}
-                plazos={plazos[date] || []}
-                tareas={tareas[date] || []}
-                reuniones={reuniones[date] || []}
-                notas={notas[date] || []}
-                clientes={clientes}
-                onToggleNota={handleToggleNota}
-                onAddNota={handleAddNota}
-                onDeleteNota={handleDeleteNota}
-                onConvertNota={handleConvertNota}
-              />
-            ))
-          )}
+          <div className="flex-1 overflow-y-auto bg-white">
+            {loading ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="w-5 h-5 border-2 border-[#1a2e4a]/20 border-t-[#1a2e4a] rounded-full animate-spin" />
+              </div>
+            ) : (
+              weekDays.map((date) => (
+                <DayBlock
+                  key={date}
+                  iso={date}
+                  isToday={date === TODAY}
+                  isPast={date < TODAY}
+                  audiencias={audiencias[date] || []}
+                  plazos={plazos[date] || []}
+                  tareas={tareas[date] || []}
+                  reuniones={reuniones[date] || []}
+                  notas={notas[date] || []}
+                  clientes={clientes}
+                  onToggleNota={handleToggleNota}
+                  onAddNota={handleAddNota}
+                  onDeleteNota={handleDeleteNota}
+                  onConvertNota={handleConvertNota}
+                />
+              ))
+            )}
+            <div className="h-8" />
+          </div>
         </div>
 
-        {/* ── Sección pendientes ── */}
-        <div className="bg-white">
+        {/* ── Columna derecha: Pendientes (40%) ── */}
+        <div className="min-[1100px]:flex-1 flex flex-col overflow-hidden">
+        <div className="bg-white flex flex-col flex-1 overflow-hidden">
           <div className="px-5 py-2 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
             <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Pendientes</span>
             <span className="text-[10px] text-gray-300">{pendienteParents.length} sin resolver</span>
@@ -1116,7 +1156,7 @@ export default function Apuntes() {
           </div>
 
           {/* Tabs */}
-          <div className="flex border-b border-gray-100">
+          <div className="flex border-b border-gray-100 flex-shrink-0">
             {[['lista','Lista'],['por-causa','Por causa'],['sin-causa','Sin causa']].map(([k, label]) => (
               <button key={k} onClick={() => setPendTab(k)}
                 className="px-4 py-2 text-[11px] font-medium transition-colors border-b-2"
@@ -1128,6 +1168,9 @@ export default function Apuntes() {
               </button>
             ))}
           </div>
+
+          {/* Lista scrollable */}
+          <div className="flex-1 overflow-y-auto">
 
           {/* Pendientes anteriores */}
           {antesFiltered.length > 0 && (
@@ -1259,9 +1302,9 @@ export default function Apuntes() {
 
           {/* Pie */}
           <div className="h-6" />
-        </div>
-
-        <div className="h-8" />
+          </div>{/* /lista scrollable */}
+        </div>{/* /bg-white flex col */}
+        </div>{/* /columna derecha */}
       </div>
     </div>
   )
