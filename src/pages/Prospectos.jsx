@@ -12,7 +12,7 @@ import {
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal'
 
 // ── Opciones ──────────────────────────────────────────────────────────────
-const ESTADO_OPTIONS = ['Activo', 'Inactivo']
+const ESTADO_OPTIONS = ['Activo', 'Inactivo', 'Rechazado']
 const ACCION_OPTIONS = [
   'Llamar', 'Agendar reunión', 'Enviar presupuesto',
   'Enviar contrato', 'Seguimiento', 'Esperando respuesta', 'Sin acción',
@@ -22,8 +22,9 @@ const MATERIA_OPTIONS = ['Penal', 'Civil', 'Laboral', 'Familia', 'Policía Local
 
 // ── Estilos ───────────────────────────────────────────────────────────────
 const ESTADO_STYLES = {
-  'Activo':   { badge: 'bg-emerald-50 text-emerald-600', dot: 'bg-emerald-400' },
-  'Inactivo': { badge: 'bg-gray-100 text-gray-400',      dot: 'bg-gray-300'   },
+  'Activo':    { badge: 'bg-emerald-50 text-emerald-600', dot: 'bg-emerald-400' },
+  'Inactivo':  { badge: 'bg-gray-100 text-gray-400',      dot: 'bg-gray-300'   },
+  'Rechazado': { badge: 'bg-red-50 text-red-600',         dot: 'bg-red-400'    },
 }
 const ESTADO_STYLE_DEFAULT = { badge: 'bg-blue-50 text-blue-600', dot: 'bg-blue-400' }
 const ACCION_STYLES = {
@@ -53,13 +54,14 @@ const INTERACCION_STYLES = {
   'Seguimiento':{ bg: 'bg-amber-50',   text: 'text-amber-500',   Icon: Clock         },
 }
 
-const INACTIVOS = ['Inactivo']
+const INACTIVOS = ['Inactivo', 'Rechazado']
 
 // ── DB helpers ────────────────────────────────────────────────────────────
 // Base columns always present; extended columns added via supabase_schema_additions.sql
 const PROSPECTOS_BASE_FIELDS    = new Set(['nombre','telefono','email','fecha_contacto','origen','materia','estado','proxima_accion','notas','convertido'])
 const PROSPECTOS_EXTENDED_FIELDS = new Set(['presupuesto_enviado','descripcion','antecedentes','interacciones'])
-const PROSPECTOS_DB_FIELDS = new Set([...PROSPECTOS_BASE_FIELDS, ...PROSPECTOS_EXTENDED_FIELDS])
+const PROSPECTOS_EXTRA_FIELDS   = new Set(['motivo_rechazo'])
+const PROSPECTOS_DB_FIELDS = new Set([...PROSPECTOS_BASE_FIELDS, ...PROSPECTOS_EXTENDED_FIELDS, ...PROSPECTOS_EXTRA_FIELDS])
 
 function mapProspectoRow(row) {
   return {
@@ -78,6 +80,7 @@ function mapProspectoRow(row) {
     antecedentes:        row.antecedentes        || '',
     interacciones:       Array.isArray(row.interacciones) ? row.interacciones : [],
     notas:               row.notas               || '',
+    motivo_rechazo:      row.motivo_rechazo      || '',
     created_at:          row.created_at          || '',
   }
 }
@@ -432,7 +435,8 @@ function PanelDetalle({ prospecto, onClose, onConvertir, onUpdate }) {
     { key: 'notas',         label: 'Notas',         Icon: FileText      },
   ]
 
-  const inactivo = prospecto.estado === 'Inactivo' || prospecto.convertido
+  const rechazado = prospecto.estado === 'Rechazado'
+  const inactivo = prospecto.estado === 'Inactivo' || prospecto.convertido || rechazado
 
   return (
     <div className="detail-panel w-[460px] flex-shrink-0 border-l border-gray-100 flex flex-col bg-white">
@@ -510,6 +514,18 @@ function PanelDetalle({ prospecto, onClose, onConvertir, onUpdate }) {
               )}
             </div>
           )
+        ) : rechazado ? (
+          <div className="flex items-center gap-2">
+            <div className="flex-1 text-center py-2 text-[11px] rounded-lg bg-red-50 text-red-500 font-medium">
+              Rechazado
+            </div>
+            <button
+              onClick={() => onUpdate(prospecto.id, { estado: 'Activo' })}
+              className="px-3 py-2 text-[11px] font-medium text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors whitespace-nowrap"
+            >
+              Reactivar
+            </button>
+          </div>
         ) : (
           <div className="flex items-center gap-2">
             <div className="flex-1 text-center py-2 text-[11px] rounded-lg bg-gray-100 text-gray-400">
@@ -615,6 +631,18 @@ function PanelDetalle({ prospecto, onClose, onConvertir, onUpdate }) {
                   <p className="text-[10px] text-gray-400 mb-1">Primer contacto</p>
                   <p className="text-xs text-gray-700">{prospecto.fecha_contacto}</p>
                 </div>
+                {prospecto.estado === 'Rechazado' && (
+                  <div className="col-span-2">
+                    <p className="text-[10px] text-gray-400 mb-1">Motivo de rechazo</p>
+                    <textarea
+                      defaultValue={prospecto.motivo_rechazo}
+                      onBlur={e => onUpdate(prospecto.id, { motivo_rechazo: e.target.value })}
+                      placeholder="¿Por qué se rechazó este prospecto?"
+                      rows={3}
+                      className="w-full px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg outline-none focus:border-red-300 resize-none placeholder:text-gray-300 leading-relaxed"
+                    />
+                  </div>
+                )}
               </div>
             </div>
 
@@ -806,7 +834,7 @@ function FormNuevoProspecto({ onClose, onGuardar }) {
     fecha_contacto: todayISO,
     origen: '', materia: '', estado: 'Activo',
     proxima_accion: 'Llamar',
-    descripcion: '', antecedentes: '',
+    descripcion: '', antecedentes: '', motivo_rechazo: '',
   })
   const [guardando, setGuardando] = useState(false)
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }))
@@ -894,6 +922,15 @@ function FormNuevoProspecto({ onClose, onGuardar }) {
                 {ACCION_OPTIONS.map(a => <option key={a}>{a}</option>)}
               </select>
             </div>
+            {form.estado === 'Rechazado' && (
+              <div className="col-span-2">
+                <label className="block text-[10px] text-gray-500 mb-1">Motivo de rechazo</label>
+                <textarea value={form.motivo_rechazo} onChange={e => set('motivo_rechazo', e.target.value)}
+                  placeholder="¿Por qué se rechaza este prospecto?"
+                  rows={3}
+                  className="w-full px-3 py-2 text-xs border border-gray-200 rounded-lg outline-none focus:border-[#2570ba] transition-all placeholder:text-gray-300 resize-none leading-relaxed" />
+              </div>
+            )}
           </div>
         </div>
 
@@ -1053,7 +1090,7 @@ export default function Prospectos() {
     const diaSemana = inicioSemana.getDay()
     inicioSemana.setDate(inicioSemana.getDate() - (diaSemana === 0 ? 6 : diaSemana - 1))
     inicioSemana.setHours(0, 0, 0, 0)
-    const nuevos = prospectos.filter(p => p.created_at && new Date(p.created_at) >= inicioSemana).length
+    const nuevos = prospectos.filter(p => p.created_at && new Date(p.created_at) >= inicioSemana && p.estado !== 'Rechazado').length
     const tasa = total > 0 ? Math.round((convertidos / total) * 100) : 0
     return { total, activos, inactivos, convertidos, nuevos, tasa }
   }, [prospectos])
