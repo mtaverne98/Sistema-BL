@@ -355,7 +355,7 @@ function parteOpciones(area) {
 }
 function formatFecha(iso) {
   if (!iso) return '—'
-  try { return new Date(iso).toLocaleDateString('es-CL', { day: 'numeric', month: 'short', year: 'numeric' }) }
+  try { return new Date(iso + 'T00:00:00').toLocaleDateString('es-CL', { day: 'numeric', month: 'short', year: 'numeric' }) }
   catch { return iso }
 }
 
