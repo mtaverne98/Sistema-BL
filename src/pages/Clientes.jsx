@@ -3,10 +3,10 @@ import { useNavigate } from 'react-router-dom'
 import { useNavigation } from '../context/NavigationContext'
 import { ClienteAccordionRow, CausaAccordionCard } from '../components/ClienteAccordion'
 import {
-  Search, Plus, X, Phone, Mail, FileText,
-  Clock, Circle, CheckCircle2,
-  User, Pencil, Scale, AlertCircle, Trash2,
+  Search, Plus, X, Phone, Mail, MapPin, Copy,
+  AlertCircle, Trash2, Eye, EyeOff, ChevronLeft,
   Loader2, AlertTriangle, RefreshCw, ChevronDown, Check,
+  KeyRound,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import InlineField from '../components/InlineField'
@@ -172,215 +172,341 @@ function ErrorBanner({ mensaje, onRetry }) {
   )
 }
 
-// ── Panel lateral – detalle cliente ───────────────────────────────────────
-function PanelCliente({ cliente, hasActiveCausas, onClose, onEstadoCambiar, onInlineSave, onRequestDelete }) {
+// ── Colores de estado de causa ────────────────────────────────────────────
+const CAUSA_ESTADO_DOT = {
+  'En tramitación': '#2570BA',
+  'Activa':         '#1E9E6A',
+  'Abierta':        '#2570BA',
+  'Cerrada':        '#9ca3af',
+  'Archivada':      '#9ca3af',
+  'Suspendida':     '#C8862B',
+}
+
+function daysSince(isoDate) {
+  if (!isoDate) return null
+  return Math.round((Date.now() - new Date(isoDate).getTime()) / 86400000)
+}
+
+function formatMovDate(iso) {
+  if (!iso) return null
+  return new Date(iso).toLocaleDateString('es-CL', { day: 'numeric', month: 'short' })
+}
+
+// ── Celda de contacto ─────────────────────────────────────────────────────
+function ContactCell({ icon: Icon, label, value, onSave }) {
+  const isEmpty = !value
+  return (
+    <div className="flex flex-col px-4 py-3 border-r border-gray-100 last:border-r-0 min-w-0">
+      <div className="flex items-center gap-1.5 mb-1.5">
+        <Icon size={10} className="text-gray-300 flex-shrink-0" />
+        <span className="text-[9px] font-semibold text-gray-300 uppercase tracking-wider">{label}</span>
+      </div>
+      <InlineField
+        value={value}
+        onSave={onSave}
+        placeholder="— agregar"
+        textClassName={`text-xs leading-snug ${isEmpty ? 'text-gray-300 italic' : 'text-gray-700'}`}
+        inputClassName="text-xs w-full"
+      />
+    </div>
+  )
+}
+
+// ── Clave Única enmascarada ───────────────────────────────────────────────
+function ClaveUnicaCell({ value, onSave }) {
+  const [revealed, setRevealed] = useState(false)
+  const [editing,  setEditing]  = useState(false)
+  const [draft,    setDraft]    = useState(value ?? '')
+  const [saving,   setSaving]   = useState(false)
+  const [copied,   setCopied]   = useState(false)
+  const inputRef = useRef(null)
+
+  useEffect(() => { if (!editing) setDraft(value ?? '') }, [value, editing])
+  useEffect(() => { if (editing && inputRef.current) { inputRef.current.focus(); inputRef.current.select() } }, [editing])
+
+  async function commit() {
+    if (draft === (value ?? '')) { setEditing(false); return }
+    setSaving(true)
+    try { await onSave?.(draft) } finally { setSaving(false); setEditing(false) }
+  }
+
+  function handleKeyDown(e) {
+    if (e.key === 'Escape') { setDraft(value ?? ''); setEditing(false) }
+    if (e.key === 'Enter')  { e.preventDefault(); commit() }
+  }
+
+  function handleCopy() {
+    if (!value) return
+    navigator.clipboard.writeText(value)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
+  }
+
+  const isEmpty = !value
+  const masked  = value ? '•'.repeat(Math.min(value.length, 12)) : null
+
+  return (
+    <div className="flex flex-col px-4 py-3 min-w-0">
+      <div className="flex items-center gap-1.5 mb-1.5">
+        <KeyRound size={10} className="text-gray-300 flex-shrink-0" />
+        <span className="text-[9px] font-semibold text-gray-300 uppercase tracking-wider">Clave Única</span>
+      </div>
+      {editing ? (
+        <input
+          ref={inputRef}
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={handleKeyDown}
+          className="text-xs border border-blue-300 rounded px-1.5 py-0.5 outline-none focus:ring-2 focus:ring-blue-400/20 w-full font-mono"
+          placeholder="Ingresar clave…"
+        />
+      ) : (
+        <div className="flex items-center gap-1.5">
+          <span
+            onDoubleClick={() => !isEmpty && setEditing(true)}
+            onClick={() => isEmpty && setEditing(true)}
+            className={`text-xs font-mono leading-snug cursor-text flex-1 ${isEmpty ? 'text-gray-300 italic' : 'text-gray-700'}`}
+            title={isEmpty ? undefined : 'Doble clic para editar'}
+          >
+            {isEmpty ? '— agregar' : (revealed ? value : masked)}
+          </span>
+          {saving && <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />}
+          {!isEmpty && (
+            <>
+              <button onClick={() => setRevealed(v => !v)} className="text-gray-300 hover:text-gray-500 transition-colors" title={revealed ? 'Ocultar' : 'Revelar'}>
+                {revealed ? <EyeOff size={11} /> : <Eye size={11} />}
+              </button>
+              <button onClick={handleCopy} className={`transition-colors ${copied ? 'text-emerald-500' : 'text-gray-300 hover:text-gray-500'}`} title="Copiar">
+                {copied ? <Check size={11} /> : <Copy size={11} />}
+              </button>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Ficha completa de cliente ─────────────────────────────────────────────
+function FichaCliente({ cliente, onClose, onEstadoCambiar, onInlineSave, onRequestDelete }) {
   const navigate = useNavigate()
   const { setActiveCausa } = useNavigation()
-  const [tab, setTab]                   = useState('causas')
-  const [causas, setCausas]             = useState([])
-  const [loadingCausas, setLoadingCausas] = useState(false)
+  const [causas,      setCausas]      = useState([])
+  const [loading,     setLoading]     = useState(true)
+  const [siauMap,     setSiauMap]     = useState({})
+  const [pjudMap,     setPjudMap]     = useState({})
+  const [lastMovMap,  setLastMovMap]  = useState({})
+  const [tareasMap,   setTareasMap]   = useState({})
+  const [notasDraft,  setNotasDraft]  = useState(cliente.observaciones ?? '')
+  const [notasSaving, setNotasSaving] = useState(false)
+  const notasTimer = useRef(null)
+  const [rutCopied,   setRutCopied]   = useState(false)
 
+  // Sync notas draft when cliente prop changes (e.g., after inline save)
+  useEffect(() => { setNotasDraft(cliente.observaciones ?? '') }, [cliente.observaciones])
+
+  // Fetch causas + movimientos
   useEffect(() => {
-    setLoadingCausas(true)
+    setLoading(true)
     supabase
       .from('causas')
-      .select('id, rit, ruc, materia, tribunal, estado')
+      .select('id, rit, ruc, materia, tribunal, fiscalia, estado, area, parte, etapa_procesal')
       .eq('cliente_id', cliente.id)
-      .then(({ data, error }) => {
-        if (!error && data) setCausas(data)
-        setLoadingCausas(false)
+      .then(async ({ data }) => {
+        const list = data || []
+        setCausas(list)
+        if (list.length === 0) { setLoading(false); return }
+        const ids = list.map(c => c.id)
+        const [{ data: siauData }, { data: pjudData }, { data: tareasData }] = await Promise.all([
+          supabase.from('siau').select('causa_id, fecha').in('causa_id', ids),
+          supabase.from('pjud').select('causa_id, fecha').in('causa_id', ids),
+          supabase.from('tareas').select('causa_id').in('causa_id', ids).neq('estado', 'Completada'),
+        ])
+        const sm = {}, pm = {}, lm = {}, tm = {}
+        for (const c of list) { sm[c.id] = 0; pm[c.id] = 0; lm[c.id] = null; tm[c.id] = 0 }
+        for (const r of (siauData  || [])) { sm[r.causa_id]++; if (!lm[r.causa_id] || r.fecha > lm[r.causa_id]) lm[r.causa_id] = r.fecha }
+        for (const r of (pjudData  || [])) { pm[r.causa_id]++; if (!lm[r.causa_id] || r.fecha > lm[r.causa_id]) lm[r.causa_id] = r.fecha }
+        for (const r of (tareasData || [])) { tm[r.causa_id]++ }
+        setSiauMap(sm); setPjudMap(pm); setLastMovMap(lm); setTareasMap(tm)
+        setLoading(false)
       })
   }, [cliente.id])
 
-  const ini = iniciales(cliente.nombre)
-
-  // Inline save helper — llama al padre con (id, campo, valor)
   const save = (field) => async (value) => onInlineSave?.(cliente.id, field, value)
 
+  function handleNotasChange(v) {
+    setNotasDraft(v)
+    clearTimeout(notasTimer.current)
+    notasTimer.current = setTimeout(async () => {
+      setNotasSaving(true)
+      try { await onInlineSave?.(cliente.id, 'observaciones', v) } finally { setNotasSaving(false) }
+    }, 1200)
+  }
+  useEffect(() => () => clearTimeout(notasTimer.current), [])
+
+  function copyRut() {
+    if (!cliente.rut) return
+    navigator.clipboard.writeText(cliente.rut)
+    setRutCopied(true)
+    setTimeout(() => setRutCopied(false), 1500)
+  }
+
+  const ini = iniciales(cliente.nombre)
+
   return (
-    <div className="flex-1 min-w-0 border-l border-gray-100 flex flex-col bg-white">
-      {/* Header */}
-      <div className="px-5 py-4 border-b border-gray-100 flex items-start justify-between">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <div
-              className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
-              style={{ backgroundColor: hasActiveCausas ? '#2570ba' : '#9ca3af' }}
-            >
-              {ini}
-            </div>
-            <div className="min-w-0 flex-1">
-              {/* Nombre editable inline */}
-              <InlineField
-                value={cliente.nombre}
-                onSave={save('nombre')}
-                placeholder="Nombre del cliente"
-                textClassName="text-sm font-semibold text-gray-900 uppercase"
-                inputClassName="text-sm font-semibold w-full"
-              />
-              {/* RUT editable inline */}
-              <InlineField
-                value={cliente.rut}
-                onSave={save('rut')}
-                placeholder="Agregar RUT"
-                textClassName="text-xs text-gray-400 font-mono"
-                inputClassName="text-xs font-mono w-24"
-              />
+    <div className="flex flex-col h-full bg-[#fafafa]">
+
+      {/* ── Encabezado ── */}
+      <div className="bg-white border-b border-gray-100 px-8 pt-5 pb-0 flex-shrink-0">
+        {/* Miga + acciones */}
+        <div className="flex items-center justify-between mb-4">
+          <button
+            onClick={onClose}
+            className="inline-flex items-center gap-1 text-xs text-gray-400 hover:text-[#2570BA] transition-colors font-medium"
+          >
+            <ChevronLeft size={13} />
+            Clientes
+          </button>
+          <button
+            onClick={() => onRequestDelete?.(cliente, causas.length)}
+            className="p-1.5 rounded-lg hover:bg-red-50 text-gray-300 hover:text-red-400 transition-colors"
+            title="Eliminar cliente"
+          >
+            <Trash2 size={14} />
+          </button>
+        </div>
+
+        {/* Avatar + nombre */}
+        <div className="flex items-start gap-4 mb-4">
+          <div
+            className="w-11 h-11 rounded-full flex items-center justify-center text-white text-sm font-bold flex-shrink-0 mt-0.5"
+            style={{ backgroundColor: avatarColor(cliente.estado) }}
+          >
+            {ini}
+          </div>
+          <div className="flex-1 min-w-0">
+            <InlineField
+              value={cliente.nombre}
+              onSave={save('nombre')}
+              placeholder="Nombre del cliente"
+              textClassName="text-xl font-bold text-[#1a2e4a] uppercase tracking-tight leading-tight"
+              inputClassName="text-xl font-bold w-full uppercase"
+            />
+            {/* Meta row */}
+            <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+              <ClienteEstadoDropdown estado={cliente.estado} onCambiar={onEstadoCambiar} />
+              {cliente.rut && <>
+                <span className="text-gray-200 text-xs">·</span>
+                <span className="text-xs font-mono text-gray-500">{cliente.rut}</span>
+                <button onClick={copyRut} className={`transition-colors ${rutCopied ? 'text-emerald-500' : 'text-gray-300 hover:text-[#2570BA]'}`} title="Copiar RUT">
+                  {rutCopied ? <Check size={11} /> : <Copy size={11} />}
+                </button>
+              </>}
+              {cliente.createdAt && <>
+                <span className="text-gray-200 text-xs">·</span>
+                <span className="text-xs text-gray-400">cliente desde {formatFecha(cliente.createdAt)}</span>
+              </>}
+              <span className="text-gray-200 text-xs">·</span>
+              <span className="text-xs text-gray-400">{causas.length} causa{causas.length !== 1 ? 's' : ''}</span>
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-1 ml-2">
-          <button
-            onClick={() => onRequestDelete?.(cliente, causas.length)}
-            className="p-1.5 rounded-md hover:bg-red-50 text-gray-300 hover:text-red-500 transition-colors"
-            title="Eliminar cliente"
-          >
-            <Trash2 size={13} />
-          </button>
-          <button onClick={onClose}
-            className="p-1.5 rounded-md hover:bg-gray-100 text-gray-300 hover:text-gray-600 transition-colors">
-            <X size={13} />
-          </button>
+
+        {/* Fila de contacto */}
+        <div className="grid grid-cols-4 border border-gray-100 rounded-xl overflow-hidden mb-5">
+          <ContactCell icon={Phone}  label="Teléfono"  value={cliente.telefono}  onSave={save('telefono')} />
+          <ContactCell icon={Mail}   label="Email"     value={cliente.email}     onSave={save('email')} />
+          <ContactCell icon={MapPin} label="Dirección" value={cliente.direccion} onSave={save('direccion')} />
+          <ClaveUnicaCell value={cliente.claveUnica} onSave={save('claveUnica')} />
         </div>
       </div>
 
-      {/* Propiedades — estilo Notion (icon + campo inline editable) */}
-      <div className="px-5 py-3 border-b border-gray-50 space-y-1.5">
-        {/* Teléfono */}
-        <div className="flex items-center gap-2.5 group/prop">
-          <Phone size={11} className="text-gray-300 flex-shrink-0" />
-          <span className="text-[10px] text-gray-300 w-14 flex-shrink-0">Teléfono</span>
-          <InlineField
-            value={cliente.telefono}
-            onSave={save('telefono')}
-            placeholder="Agregar"
-            textClassName="text-xs text-gray-600"
-            inputClassName="text-xs w-40"
-          />
-        </div>
-        {/* Email */}
-        <div className="flex items-center gap-2.5 group/prop">
-          <Mail size={11} className="text-gray-300 flex-shrink-0" />
-          <span className="text-[10px] text-gray-300 w-14 flex-shrink-0">Email</span>
-          <InlineField
-            value={cliente.email}
-            onSave={save('email')}
-            placeholder="Agregar"
-            textClassName="text-xs text-gray-600"
-            inputClassName="text-xs w-44"
-          />
-        </div>
-        {/* Dirección */}
-        <div className="flex items-center gap-2.5 group/prop">
-          <Circle size={11} className="text-gray-300 flex-shrink-0" />
-          <span className="text-[10px] text-gray-300 w-14 flex-shrink-0">Dirección</span>
-          <InlineField
-            value={cliente.direccion}
-            onSave={save('direccion')}
-            placeholder="Agregar"
-            textClassName="text-xs text-gray-500"
-            inputClassName="text-xs w-44"
-          />
-        </div>
-        {/* Clave Única */}
-        <div className="flex items-center gap-2.5 group/prop">
-          <AlertCircle size={11} className="text-gray-300 flex-shrink-0" />
-          <span className="text-[10px] text-gray-300 w-14 flex-shrink-0">Clave Única</span>
-          <InlineField
-            value={cliente.claveUnica}
-            onSave={save('claveUnica')}
-            placeholder="Agregar"
-            textClassName="text-xs text-gray-500 font-mono"
-            inputClassName="text-xs font-mono w-28"
-          />
-        </div>
-        {/* Estado */}
-        <div className="flex items-center gap-2.5 pt-0.5">
-          <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: avatarColor(cliente.estado), marginLeft: 1 }} />
-          <span className="text-[10px] text-gray-300 w-14 flex-shrink-0">Estado</span>
-          <ClienteEstadoDropdown estado={cliente.estado} onCambiar={onEstadoCambiar} />
-          {!loadingCausas && (
-            <span className="text-[10px] text-gray-300 ml-1">
-              · {causas.filter(c => c.estado === 'En tramitación' || c.estado === 'Activa').length} activa{causas.length !== 1 ? 's' : ''}
-            </span>
-          )}
-        </div>
-      </div>
+      {/* ── Cuerpo ── */}
+      <div className="flex-1 overflow-hidden flex min-h-0">
 
-      {/* Tabs */}
-      <div className="flex border-b border-gray-100 px-5">
-        {[{ key: 'causas', label: 'Causas' }, { key: 'notas', label: 'Notas' }].map(t => (
-          <button key={t.key} onClick={() => setTab(t.key)}
-            className={`py-2.5 mr-4 text-xs font-medium border-b-2 transition-colors ${
-              tab === t.key ? 'border-[#1a2e4a] text-[#1a2e4a]' : 'border-transparent text-gray-400 hover:text-gray-600'
-            }`}>
-            {t.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Contenido */}
-      <div className="flex-1 overflow-y-auto fab-clear">
-        {tab === 'causas' && (
-          <div className="divide-y divide-gray-50">
-            {loadingCausas ? (
-              <div className="flex justify-center py-8">
-                <Loader2 size={16} className="animate-spin text-gray-300" />
-              </div>
-            ) : causas.length === 0 ? (
-              <p className="px-5 py-6 text-xs text-gray-400 text-center">Sin causas registradas</p>
-            ) : causas.map(c => (
-              <div key={c.id}
-                className="px-5 py-3.5 hover:bg-gray-50 transition-colors cursor-pointer"
+        {/* Causas */}
+        <div className="flex-1 overflow-y-auto px-8 py-6 fab-clear">
+          <p className="text-[10px] font-bold text-gray-300 uppercase tracking-widest mb-3">Causas</p>
+          {loading ? (
+            <div className="flex justify-center py-12"><Loader2 size={20} className="animate-spin text-gray-300" /></div>
+          ) : causas.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-12">Sin causas registradas</p>
+          ) : causas.map(c => {
+            const siau      = siauMap[c.id]    || 0
+            const pjud      = pjudMap[c.id]    || 0
+            const tareas    = tareasMap[c.id]  || 0
+            const lastMov   = lastMovMap[c.id]
+            const diasMov   = daysSince(lastMov)
+            const sinMov    = diasMov !== null && diasMov > 60
+            const dotColor  = CAUSA_ESTADO_DOT[c.estado] ?? '#9ca3af'
+            return (
+              <div
+                key={c.id}
+                className="mb-2 bg-white border border-gray-100 rounded-xl px-4 py-3.5 hover:border-[#2570BA]/30 hover:shadow-sm transition-all cursor-pointer"
                 onClick={() => {
-                  setActiveCausa({
-                    id:             c.id,
-                    rit:            c.rit || null,
-                    ruc:            c.ruc || null,
-                    materia:        c.materia || '',
-                    cliente_nombre: cliente.nombre || '',
-                    cliente_id:     cliente.id,
-                  })
+                  setActiveCausa({ id: c.id, rit: c.rit || null, ruc: c.ruc || null, materia: c.materia || '', cliente_nombre: cliente.nombre || '', cliente_id: cliente.id })
                   navigate('/causas')
                 }}
               >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="text-[11px] font-semibold text-gray-400 tabular-nums">{c.rit}</p>
-                    <p className="text-xs text-gray-800 mt-0.5 leading-snug">{c.materia}</p>
-                    <p className="text-[11px] text-gray-400 mt-0.5 truncate">{c.tribunal}</p>
+                <div className="flex items-start gap-3">
+                  <div className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0" style={{ backgroundColor: dotColor }} />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-gray-800 leading-snug">{c.materia || '—'}</p>
+                        <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                          {c.area    && <span className="text-[10px] text-gray-400">{c.area}</span>}
+                          {c.parte   && <><span className="text-gray-200 text-[10px]">·</span><span className="text-[10px] text-gray-400">{c.parte}</span></>}
+                          {c.tribunal && <><span className="text-gray-200 text-[10px]">·</span><span className="text-[10px] text-gray-400 truncate max-w-[200px]">{c.tribunal}</span></>}
+                          {c.rit     && <><span className="text-gray-200 text-[10px]">·</span><span className="text-[10px] font-mono text-gray-400">{c.rit}</span></>}
+                        </div>
+                      </div>
+                      <div className="flex-shrink-0 text-right">
+                        {(siau > 0 || pjud > 0) && (
+                          <p className="text-[10px] text-gray-400 whitespace-nowrap">
+                            {siau > 0 && `${siau} SIAU`}{siau > 0 && pjud > 0 && ' · '}{pjud > 0 && `${pjud} PJUD`}
+                          </p>
+                        )}
+                        {lastMov && (
+                          <p className="text-[10px] text-gray-300 mt-0.5 whitespace-nowrap">últ. {formatMovDate(lastMov)}</p>
+                        )}
+                      </div>
+                    </div>
+                    {(tareas > 0 || sinMov) && (
+                      <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                        {tareas > 0 && (
+                          <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-50 text-amber-600 border border-amber-100">
+                            {tareas} tarea{tareas !== 1 ? 's' : ''} pendiente{tareas !== 1 ? 's' : ''}
+                          </span>
+                        )}
+                        {sinMov && (
+                          <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-red-50 text-red-400 border border-red-100">
+                            Sin movimiento · {diasMov}d
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded flex-shrink-0 font-medium ${
-                    c.estado === 'En tramitación' || c.estado === 'Activa'
-                      ? 'bg-blue-50 text-blue-500' : 'bg-gray-100 text-gray-400'
-                  }`}>
-                    {c.estado === 'En tramitación' || c.estado === 'Activa' ? 'Activa' : c.estado ?? 'Cerrada'}
-                  </span>
                 </div>
               </div>
-            ))}
+            )
+          })}
+        </div>
+
+        {/* Notas */}
+        <div className="w-80 flex-shrink-0 border-l border-gray-100 bg-white flex flex-col px-6 py-6">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-[10px] font-bold text-gray-300 uppercase tracking-widest">Notas</p>
+            {notasSaving && <span className="text-[10px] text-blue-400">Guardando…</span>}
           </div>
-        )}
-        {tab === 'notas' && (
-          <div className="px-5 py-4">
-            {/* Observaciones — textarea inline editable con auto-save */}
-            <p className="text-[10px] font-semibold text-gray-300 uppercase tracking-widest mb-2">Observaciones internas</p>
-            <InlineField
-              value={cliente.observaciones}
-              onSave={save('observaciones')}
-              type="textarea"
-              placeholder="Agrega notas internas sobre este cliente…"
-              debounce={1200}
-              textClassName="text-xs text-gray-600 leading-relaxed whitespace-pre-line"
-              inputClassName="text-xs"
-            />
-            {cliente.createdAt && (
-              <p className="text-[10px] text-gray-300 mt-4">
-                Registrado el {formatFecha(cliente.createdAt)}
-              </p>
-            )}
-          </div>
-        )}
+          <textarea
+            value={notasDraft}
+            onChange={e => handleNotasChange(e.target.value)}
+            placeholder="Notas internas sobre este cliente…"
+            className="flex-1 text-xs text-gray-700 leading-relaxed resize-none outline-none placeholder:text-gray-300 bg-transparent"
+          />
+        </div>
       </div>
     </div>
   )
@@ -533,33 +659,6 @@ export default function Clientes() {
   const [formulario, setFormulario] = useState(null) // null | 'nuevo' | objeto cliente
   const [formError, setFormError] = useState(null)   // error del formulario modal
   const [deleteModal, setDeleteModal] = useState(null) // null | { cliente, causasCount }
-
-  const [rightPanelW, setRightPanelW] = useState(() => {
-    const s = localStorage.getItem('clientes_panel_w')
-    return s ? Math.max(180, Math.min(350, parseInt(s))) : 320
-  })
-  const rightDragging = useRef(false)
-
-  function startDragRight(e) {
-    e.preventDefault()
-    const startX = e.clientX
-    const startW = rightPanelW
-    let cur = startW
-    rightDragging.current = true
-
-    function onMove(ev) {
-      cur = Math.max(180, Math.min(350, startW - (ev.clientX - startX)))
-      setRightPanelW(cur)
-    }
-    function onUp() {
-      rightDragging.current = false
-      localStorage.setItem('clientes_panel_w', cur.toString())
-      document.removeEventListener('mousemove', onMove)
-      document.removeEventListener('mouseup', onUp)
-    }
-    document.addEventListener('mousemove', onMove)
-    document.addEventListener('mouseup', onUp)
-  }
 
   // ── Fetch ───────────────────────────────────────────────────────────────
   const fetchClientes = useCallback(async () => {
@@ -825,6 +924,32 @@ export default function Clientes() {
     return Object.entries(grupos).sort(([a], [b]) => a.localeCompare(b))
   }, [filtrados])
 
+  // ── Ficha pantalla completa ────────────────────────────────────────────
+  if (clienteSeleccionado && !formulario) {
+    return (
+      <>
+        <FichaCliente
+          cliente={clienteSeleccionado}
+          onClose={() => setSeleccionado(null)}
+          onEstadoCambiar={handleEstadoCambiar}
+          onInlineSave={handleInlineSave}
+          onRequestDelete={handleRequestDelete}
+        />
+        <ConfirmDeleteModal
+          open={!!deleteModal}
+          title={deleteModal?.cliente?.nombre}
+          warning={deleteModal?.causasCount > 0
+            ? `Este cliente tiene ${deleteModal.causasCount} causa${deleteModal.causasCount !== 1 ? 's' : ''} que también se eliminarán.`
+            : null}
+          onCancel={() => setDeleteModal(null)}
+          onConfirm={handleEliminar}
+          onArchive={handleArchivar}
+          archiveLabel="Marcar inactivo"
+        />
+      </>
+    )
+  }
+
   return (
     <>
     <div className="flex h-full min-h-screen">
@@ -1011,42 +1136,17 @@ export default function Clientes() {
         </div>
       </div>
 
-      {/* ── Handle + Panel lateral ── */}
-      {(clienteSeleccionado || formulario) && (<>
-        {/* Handle de redimensión */}
-        <div
-          onMouseDown={startDragRight}
-          onDoubleClick={() => setRightPanelW(w => w === 320 ? 180 : 320)}
-          title="Arrastrar para redimensionar · Doble clic para alternar"
-          className="flex-shrink-0 w-2 flex flex-col items-center justify-center bg-white border-gray-100 hover:bg-blue-50 hover:border-blue-200 transition-colors group cursor-col-resize select-none"
-        >
-          <div className="flex flex-col gap-[3px] opacity-0 group-hover:opacity-100 transition-opacity">
-            <span className="w-[3px] h-[3px] rounded-full bg-gray-400" />
-            <span className="w-[3px] h-[3px] rounded-full bg-gray-400" />
-            <span className="w-[3px] h-[3px] rounded-full bg-gray-400" />
-          </div>
-        </div>
-        {/* Panel */}
-        <div className="flex-shrink-0 flex flex-col" style={{ width: rightPanelW, transition: rightDragging.current ? 'none' : 'width 0.15s' }}>
-          {clienteSeleccionado && !formulario && (
-            <PanelCliente
-              cliente={clienteSeleccionado}
-              hasActiveCausas={clienteHasActiveCausasSet.has(clienteSeleccionado.id)}
-              onClose={() => setSeleccionado(null)}
-              onEstadoCambiar={handleEstadoCambiar}
-              onInlineSave={handleInlineSave}
-              onRequestDelete={handleRequestDelete}
-            />
-          )}
-          {formulario && (
-            <FormCliente
-              inicial={formulario === 'nuevo' ? null : formulario}
-              onClose={() => { setFormulario(null); setFormError(null) }}
-              onGuardar={handleGuardar}
-              guardando={guardando}
-              errorMsg={formError}
-            />
-          )}
+      {/* ── Panel formulario (nuevo / editar) ── */}
+      {formulario && (<>
+        <div className="flex-shrink-0 w-2 flex flex-col items-center justify-center bg-white border-gray-100 cursor-col-resize select-none" />
+        <div className="flex-shrink-0 flex flex-col" style={{ width: 320 }}>
+          <FormCliente
+            inicial={formulario === 'nuevo' ? null : formulario}
+            onClose={() => { setFormulario(null); setFormError(null) }}
+            onGuardar={handleGuardar}
+            guardando={guardando}
+            errorMsg={formError}
+          />
         </div>
       </>)}
     </div>
