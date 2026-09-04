@@ -34,41 +34,79 @@
 /* ── Nombres de personas en mayúsculas (display only, sin tocar la BD) ─── */
 .persona { text-transform: uppercase; }
 
-/* ── Portrait / responsive utilities ───────────────────────────────── */
-@media (orientation: portrait) {
+/* ── Tablas: siempre scrollables dentro de su contenedor ──────────── */
+.siau-table, .pjud-table { width: max-content; min-width: 100%; }
 
-  /* Ocultar columnas secundarias en tablas */
-  .portrait-hidden { display: none !important; }
+/* ── Tablet (900–1279px) — iPad vertical ───────────────────────────── */
+@media (max-width: 1279px) {
 
-  /* SIAU: mostrar Fecha, Folio, Solicitud, Estado — ocultar el resto */
+  /* Panel de causa: dos columnas → apiladas */
+  .bl-causa-cols {
+    flex-direction: column !important;
+    overflow-y: auto;
+  }
+  .bl-causa-cols > div:first-child {
+    border-right: 0 !important;
+    border-bottom: 1px solid #E3E7EC;
+    flex: 1 1 auto;
+    max-height: 55vh;
+    min-height: 220px;
+  }
+  .bl-causa-cols > div:last-child {
+    flex: 0 0 220px;
+    min-height: 220px;
+    border-left: 0 !important;
+  }
+
+  /* Ficha de cliente: dos columnas → apiladas */
+  .bl-cliente-cols {
+    flex-direction: column !important;
+  }
+  .bl-cliente-cols > div:last-child {
+    width: 100% !important;
+    border-left: 0 !important;
+    border-top: 1px solid #E3E7EC;
+    max-height: 180px;
+    flex: 0 0 auto;
+  }
+
+  /* Recuadro de resumen de causa: 3 col → 2 col */
+  .bl-resumen-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+
+  /* SIAU: ocultar columnas secundarias */
   .siau-table th:nth-child(3), .siau-table td:nth-child(3),
-  .siau-table th:nth-child(5), .siau-table td:nth-child(5),
   .siau-table th:nth-child(6), .siau-table td:nth-child(6),
   .siau-table th:nth-child(7), .siau-table td:nth-child(7),
   .siau-table th:nth-child(8), .siau-table td:nth-child(8) { display: none !important; }
 
-  /* PJUD: mostrar Fecha, Folio, Solicitud, Notas — ocultar el resto */
+  /* PJUD: ocultar columnas secundarias */
   .pjud-table th:nth-child(3), .pjud-table td:nth-child(3),
-  .pjud-table th:nth-child(5), .pjud-table td:nth-child(5),
   .pjud-table th:nth-child(6), .pjud-table td:nth-child(6),
   .pjud-table th:nth-child(7), .pjud-table td:nth-child(7) { display: none !important; }
 
-  /* Dashboard: métricas en 2 columnas, secciones principales en 1 */
+  /* Dashboard: métricas en 2 col */
   .dashboard-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
   .dashboard-main    { grid-template-columns: repeat(1, minmax(0, 1fr)) !important; }
 
-  /* Botones táctiles: mínimo 44px */
-  button, a[href] { min-height: 44px; }
-  /* Excluir botones de badge/icon que no son touch targets principales */
-  .no-touch-min { min-height: unset !important; }
+  /* Áreas de toque táctil: 44px */
+  button:not(.no-touch-min) { min-height: 44px; }
+  .no-touch-min { min-height: unset !important; min-width: unset !important; }
+}
 
-  /* Panel lateral → drawer de pantalla completa desde la derecha */
+/* ── Teléfono (<900px) ──────────────────────────────────────────────── */
+@media (max-width: 899px) {
+
+  /* Ocultar columnas secundarias en cualquier tabla */
+  .portrait-hidden { display: none !important; }
+
+  /* Grillas de contacto: 4→2 columnas */
+  .bl-contact-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+
+  /* Panel lateral → full screen drawer */
   .detail-panel {
     position: fixed !important;
-    top: 0 !important;
-    right: 0 !important;
-    bottom: 0 !important;
-    left: 0 !important;
+    top: 0 !important; right: 0 !important;
+    bottom: 0 !important; left: 0 !important;
     width: 100% !important;
     max-width: 100% !important;
     z-index: 50;

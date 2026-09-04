@@ -1846,7 +1846,6 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
             { key: 'entrevistas',   Icon: MessageSquare, label: 'Entrevistas', count: entrevistas.length || null, urgent: false },
             { key: 'seguimiento',   Icon: Target,   label: 'Seguimiento',   count: segRows.length || null, urgent: false },
             { key: 'revisiones',  Icon: BookOpen,    label: 'Revisiones',  count: revCount || null,        urgent: false },
-            { key: 'documentos',  Icon: FileText,    label: 'Documentos',  count: documentosDrive.length || null, urgent: false },
           ]
           return (
             <div className="flex items-center gap-1.5 pb-3 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
@@ -1946,7 +1945,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
 
             {/* ── RECUADRO DE RESUMEN ──────────────────────────────────── */}
             <div className="flex-shrink-0 mx-4 mt-3 mb-2 rounded-xl bg-[#F5F6F8] border border-[#E3E7EC] px-4 py-3">
-              <div className="grid grid-cols-3 gap-x-6 gap-y-3">
+              <div className="grid grid-cols-3 gap-x-6 gap-y-3 bl-resumen-grid">
                 {/* Querellante */}
                 <div>
                   <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-0.5">Querellante</p>
@@ -2061,7 +2060,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
             </div>
 
             {/* ── DOS COLUMNAS ─────────────────────────────────────────── */}
-            <div className="flex flex-1 min-h-0">
+            <div className="flex flex-1 min-h-0 bl-causa-cols">
 
               {/* ── IZQUIERDA 60% — Expediente tipo chat ─────────────── */}
               <div className="flex-[3] min-w-0 flex flex-col border-r border-gray-100">
@@ -4271,59 +4270,6 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
           )
         })()}
 
-        {/* DOCUMENTOS */}
-        {tab === 'documentos' && (
-          <div className="px-6 py-5">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h3 className="text-[15px] font-semibold text-[#1C2533]">Documentos</h3>
-                <p className="text-[11px] text-gray-400 mt-0.5">{documentosDrive.length} documento{documentosDrive.length !== 1 ? 's' : ''} de Drive vinculados</p>
-              </div>
-              {analisisMeta?.drive_folder_id && (
-                <a href={`https://drive.google.com/drive/folders/${analisisMeta.drive_folder_id}`}
-                  target="_blank" rel="noreferrer"
-                  className="text-[11px] text-[#2570BA] hover:underline flex items-center gap-1">
-                  Ver carpeta en Drive →
-                </a>
-              )}
-            </div>
-
-            {documentosDrive.length === 0 ? (
-              <p className="text-[13px] text-gray-400 py-8 text-center">Sin documentos de Drive vinculados</p>
-            ) : (
-              <div className="border border-gray-100 rounded-xl overflow-hidden">
-                <table className="w-full text-[11px]">
-                  <thead>
-                    <tr className="border-b border-gray-100 bg-gray-50">
-                      <th className="text-left px-4 py-2.5 font-semibold text-gray-400 text-[9px] uppercase tracking-widest">Fecha</th>
-                      <th className="text-left px-4 py-2.5 font-semibold text-gray-400 text-[9px] uppercase tracking-widest">Documento</th>
-                      <th className="text-left px-4 py-2.5 font-semibold text-gray-400 text-[9px] uppercase tracking-widest">Tipo</th>
-                      <th className="text-left px-4 py-2.5 font-semibold text-gray-400 text-[9px] uppercase tracking-widest">Origen</th>
-                      <th className="text-left px-4 py-2.5 font-semibold text-gray-400 text-[9px] uppercase tracking-widest">Drive</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {documentosDrive.map((doc, i) => (
-                      <tr key={doc.id} className={`border-b border-gray-50 last:border-b-0 ${i % 2 === 0 ? '' : 'bg-gray-50/50'}`}>
-                        <td className="px-4 py-2.5 text-gray-500 tabular-nums whitespace-nowrap">
-                          {doc.fecha ? (() => { const [y,m,d] = doc.fecha.split('-'); return `${d}-${m}-${y}` })() : '—'}
-                        </td>
-                        <td className="px-4 py-2.5 text-gray-800 font-medium max-w-[280px] truncate">{doc.nombre || '—'}</td>
-                        <td className="px-4 py-2.5 text-gray-500">{doc.tipo || '—'}</td>
-                        <td className="px-4 py-2.5 text-gray-400">{doc.fuente || '—'}</td>
-                        <td className="px-4 py-2.5">
-                          {doc.drive_url
-                            ? <a href={doc.drive_url} target="_blank" rel="noreferrer" className="text-[#2570BA] hover:underline">Abrir ↗</a>
-                            : <span className="text-gray-300">— sin link</span>}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        )}
 
       </div>
     </div>

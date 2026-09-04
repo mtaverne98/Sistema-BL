@@ -1138,10 +1138,10 @@ export default function Apuntes() {
       </div>
 
       {/* ── Contenido: dos columnas ── */}
-      <div className="flex-1 flex flex-col min-[1100px]:flex-row overflow-hidden">
+      <div className="flex-1 flex flex-col min-[900px]:flex-row overflow-hidden">
 
         {/* ── Columna izquierda: La semana (60%) ── */}
-        <div className="min-[1100px]:w-[60%] flex-shrink-0 flex flex-col overflow-hidden border-r border-gray-200">
+        <div className="min-[900px]:w-[60%] flex-shrink-0 flex flex-col overflow-hidden border-r border-gray-200">
           <div className="px-5 py-2 bg-gray-50 border-b border-gray-100 flex-shrink-0">
             <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">La semana</span>
           </div>
@@ -1176,7 +1176,7 @@ export default function Apuntes() {
         </div>
 
         {/* ── Columna derecha: Pendientes (40%) ── */}
-        <div className="min-[1100px]:flex-1 flex flex-col overflow-hidden">
+        <div className="min-[900px]:flex-1 flex flex-col overflow-hidden">
         <div className="bg-white flex flex-col flex-1 overflow-hidden">
           <div className="px-5 py-2 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
             <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Pendientes</span>

@@ -544,9 +544,10 @@ export default function MainLayout() {
   // Mobile / responsive state
   const [mobileOpen, setMobileOpen] = useState(false)
   const [screenWidth, setScreenWidth] = useState(() => window.innerWidth)
-  const isMobile = screenWidth < 768
-  // Responsive = mobile breakpoint OR portrait orientation on any device
-  const isResponsive = isMobile || isPortrait
+  const isMobile = screenWidth < 900
+  const isTablet  = screenWidth >= 900 && screenWidth < 1280
+  const isPhone   = isMobile
+  const isResponsive = isPhone
 
   useEffect(() => {
     function onResize() { setScreenWidth(window.innerWidth) }
@@ -561,7 +562,7 @@ export default function MainLayout() {
   const [sbCollapsed, setSbCollapsed] = useState(() => {
     try {
       // Auto-collapse on tablet (768–1279px) on first load
-      if (window.innerWidth < 1280 && window.innerWidth >= 768) return true
+      if (window.innerWidth < 1280 && window.innerWidth >= 900) return true
       return JSON.parse(localStorage.getItem('sb-collapsed') ?? 'false')
     } catch { return false }
   })
@@ -577,6 +578,9 @@ export default function MainLayout() {
 
   // Limpiar clave legacy de recientes (si existía de versiones anteriores)
   useEffect(() => { try { localStorage.removeItem('sb-recent-nav') } catch {} }, [])
+
+  // effectiveCollapsed: icono-only en tablet aunque el usuario no lo haya colapsado manualmente
+  const effectiveCollapsed = sbCollapsed || isTablet
 
   // ── Resize drag listeners ──────────────────────────────────────────────────
   useEffect(() => {
@@ -632,7 +636,7 @@ export default function MainLayout() {
     })
   }
 
-  const currentSbWidth = isResponsive ? 280 : (sbCollapsed ? 56 : sbWidth)
+  const currentSbWidth = isPhone ? 280 : (effectiveCollapsed ? 56 : sbWidth)
 
   // Global shortcuts
   useEffect(() => {
@@ -690,7 +694,7 @@ export default function MainLayout() {
       {/* ── Sidebar ── */}
       <aside
         className={`flex-shrink-0 flex flex-col overflow-hidden ${
-          isResponsive
+          isPhone
             ? `fixed inset-y-0 left-0 z-[60] transition-transform duration-300 ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`
             : 'relative'
         }`}
@@ -706,37 +710,39 @@ export default function MainLayout() {
           className="flex-shrink-0 flex items-center"
           style={{
             borderBottom: '1px solid rgba(255,255,255,0.08)',
-            padding: sbCollapsed ? '10px 8px' : '10px 8px 10px 14px',
+            padding: effectiveCollapsed ? '10px 8px' : '10px 8px 10px 14px',
             gap: 6,
             minHeight: 56,
           }}
         >
-          {!sbCollapsed && (
+          {!effectiveCollapsed && (
             <img src="/logo.jpg" alt="Bianchi Leiva Abogadas"
               className="flex-1 object-contain rounded-lg min-w-0"
               style={{ maxHeight: 40 }}
             />
           )}
-          {sbCollapsed && (
+          {effectiveCollapsed && (
             <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center mx-auto flex-shrink-0">
               <Scale size={14} className="text-white/70" />
             </div>
           )}
-          <button
-            onClick={toggleCollapsed}
-            title={sbCollapsed ? 'Expandir sidebar' : 'Colapsar sidebar'}
-            className="flex-shrink-0 p-1.5 rounded-md hover:bg-white/10 transition-colors"
-          >
-            {sbCollapsed
-              ? <ChevronRight size={12} className="text-white/35" />
-              : <ChevronLeft  size={12} className="text-white/35" />
-            }
-          </button>
+          {!isTablet && (
+            <button
+              onClick={toggleCollapsed}
+              title={sbCollapsed ? 'Expandir sidebar' : 'Colapsar sidebar'}
+              className="flex-shrink-0 p-1.5 rounded-md hover:bg-white/10 transition-colors"
+            >
+              {sbCollapsed
+                ? <ChevronRight size={12} className="text-white/35" />
+                : <ChevronLeft  size={12} className="text-white/35" />
+              }
+            </button>
+          )}
         </div>
 
         {/* CMD+K */}
-        <div className="flex-shrink-0" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', padding: sbCollapsed ? '8px 6px' : '8px 10px' }}>
-          {!sbCollapsed ? (
+        <div className="flex-shrink-0" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', padding: effectiveCollapsed ? '8px 6px' : '8px 10px' }}>
+          {!effectiveCollapsed ? (
             <button
               onClick={() => setCmdOpen(true)}
               className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg transition-all text-left"
@@ -748,7 +754,7 @@ export default function MainLayout() {
             </button>
           ) : (
             <button onClick={() => setCmdOpen(true)} title="Buscar (⌘K)"
-              className="w-9 h-7 flex items-center justify-center mx-auto rounded-md hover:bg-white/10 transition-colors">
+              className="w-9 h-9 flex items-center justify-center mx-auto rounded-md hover:bg-white/10 transition-colors">
               <Search size={13} className="text-white/40" />
             </button>
           )}
@@ -760,7 +766,7 @@ export default function MainLayout() {
           onDoubleClick={toggleCollapsed}
           title="Arrastrar para redimensionar · Doble clic para colapsar"
           className="absolute right-0 top-0 bottom-0 z-10 flex items-center justify-center group/resize"
-          style={{ width: 6, cursor: sbCollapsed ? 'default' : 'col-resize' }}
+          style={{ width: 6, cursor: effectiveCollapsed ? 'default' : 'col-resize' }}
         >
           <div
             className="h-full w-px transition-colors duration-150"
@@ -778,16 +784,16 @@ export default function MainLayout() {
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 overflow-y-auto" style={{ scrollbarWidth: 'none', padding: sbCollapsed ? '8px 4px' : '8px 6px' }}>
+        <nav className="flex-1 overflow-y-auto" style={{ scrollbarWidth: 'none', padding: effectiveCollapsed ? '8px 4px' : '8px 6px' }}>
 
           {/* Dashboard — solo, arriba de todo */}
           <div className="mb-1">
-            <NavItem {...DASHBOARD_ITEM} collapsed={sbCollapsed} />
+            <NavItem {...DASHBOARD_ITEM} collapsed={effectiveCollapsed} />
           </div>
-          {!sbCollapsed && (
+          {!effectiveCollapsed && (
             <div className="mx-2 mb-2" style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.06)' }} />
           )}
-          {sbCollapsed && <div style={{ height: 4 }} />}
+          {effectiveCollapsed && <div style={{ height: 4 }} />}
 
           {/* Secciones colapsables */}
           <div className="space-y-0.5">
@@ -796,7 +802,7 @@ export default function MainLayout() {
               return (
                 <div key={section.key} className="mb-1">
                   {/* Section header — solo visible cuando expandido */}
-                  {!sbCollapsed && (
+                  {!effectiveCollapsed && (
                     <button
                       onClick={() => toggleSection(section.key)}
                       className="w-full flex items-center gap-1.5 px-2 py-1 rounded-md hover:bg-white/5 transition-colors group select-none"
@@ -812,7 +818,7 @@ export default function MainLayout() {
                   )}
 
                   {/* Items — siempre visibles cuando colapsado */}
-                  {(!isClosed || sbCollapsed) && (
+                  {(!isClosed || effectiveCollapsed) && (
                     <div className="space-y-0.5 mt-0.5">
                       {section.items.map(item => (
                         <NavItem
@@ -822,7 +828,7 @@ export default function MainLayout() {
                             item.to === '/plazos' ? plazosAlerta :
                             item.to === '/tareas' ? tareasAlerta : 0
                           }
-                          collapsed={sbCollapsed}
+                          collapsed={effectiveCollapsed}
                         />
                       ))}
                     </div>
@@ -835,32 +841,32 @@ export default function MainLayout() {
         </nav>
 
         {/* Campana de notificaciones */}
-        <div className="flex-shrink-0" style={{ borderTop: '1px solid rgba(255,255,255,0.06)', padding: sbCollapsed ? '8px 4px' : '8px 6px' }}>
-          <NotificationBell collapsed={sbCollapsed} side="right" />
+        <div className="flex-shrink-0" style={{ borderTop: '1px solid rgba(255,255,255,0.06)', padding: effectiveCollapsed ? '8px 4px' : '8px 6px' }}>
+          <NotificationBell collapsed={effectiveCollapsed} side="right" />
         </div>
 
         {/* Configuración */}
-        <div className="flex-shrink-0" style={{ borderTop: '1px solid rgba(255,255,255,0.06)', padding: sbCollapsed ? '8px 4px' : '8px 6px' }}>
-          <NavItem to="/configuracion" icon={Settings} label="Configuración" collapsed={sbCollapsed} />
+        <div className="flex-shrink-0" style={{ borderTop: '1px solid rgba(255,255,255,0.06)', padding: effectiveCollapsed ? '8px 4px' : '8px 6px' }}>
+          <NavItem to="/configuracion" icon={Settings} label="Configuración" collapsed={effectiveCollapsed} />
         </div>
 
         {/* Save status */}
-        <SaveStatusBadge collapsed={sbCollapsed} />
+        <SaveStatusBadge collapsed={effectiveCollapsed} />
 
         {/* User */}
-        <div className="flex-shrink-0" style={{ borderTop: '1px solid rgba(255,255,255,0.08)', padding: sbCollapsed ? '8px 4px' : '8px 6px' }}>
+        <div className="flex-shrink-0" style={{ borderTop: '1px solid rgba(255,255,255,0.08)', padding: effectiveCollapsed ? '8px 4px' : '8px 6px' }}>
           <button
             onClick={() => setUser(null)}
-            title={sbCollapsed ? `${user?.nombre || 'Usuario'} — Cambiar` : 'Cambiar usuario'}
+            title={effectiveCollapsed ? `${user?.nombre || 'Usuario'} — Cambiar` : 'Cambiar usuario'}
             className={`w-full flex items-center rounded-md cursor-pointer group transition-colors hover:bg-white/10 ${
-              sbCollapsed ? 'justify-center p-1.5' : 'gap-2.5 px-2.5 py-2'
+              effectiveCollapsed ? 'justify-center p-1.5' : 'gap-2.5 px-2.5 py-2'
             }`}
           >
             <div className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0"
               style={{ backgroundColor: user?.color || '#2570BA' }}>
               {user?.id || 'MT'}
             </div>
-            {!sbCollapsed && (
+            {!effectiveCollapsed && (
               <>
                 <span className="text-[13px] text-white/70 flex-1 truncate text-left">
                   {user ? `${user.nombre} ${user.apellido}` : 'Macarena T.'}

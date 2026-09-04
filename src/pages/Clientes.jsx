@@ -423,7 +423,7 @@ function FichaCliente({ cliente, onClose, onEstadoCambiar, onInlineSave, onReque
       </div>
 
       {/* ── Cuerpo ── */}
-      <div className="flex-1 overflow-hidden flex min-h-0">
+      <div className="flex-1 overflow-hidden flex min-h-0 bl-cliente-cols">
 
         {/* Causas */}
         <div className="flex-1 overflow-y-auto px-8 py-6 fab-clear">
