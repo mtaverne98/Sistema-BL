@@ -17,7 +17,7 @@ const TODAY = new Date().toISOString().slice(0, 10)
 const DB_FIELDS = new Set([
   'estado','notas','fecha','folio','causa_rit','causa_ruc',
   'cliente_nombre','solicitud','respuesta','documento_nombre','tiene_documento','fecha_respuesta',
-  'tipo_solicitud',
+  'tipo_solicitud','drive_url',
 ])
 
 const TIPO_CONFIG = {
@@ -58,6 +58,7 @@ function mapRow(row) {
     fecha_respuesta:  row.fecha_respuesta   || null,
     documento_nombre: row.documento_nombre  || '',
     tiene_documento:  row.tiene_documento   || false,
+    drive_url:        row.drive_url         || '',
     causa_rit:        row.causa_rit         || '',
     causa_ruc:        row.causa_ruc         || '',
     cliente_nombre:   row.cliente_nombre    || '',
@@ -369,6 +370,75 @@ function RespuestaInline({ registro, onUpdate }) {
   )
 }
 
+// ── Edición inline de documento_nombre ───────────────────────────────────────
+function DocNombreInline({ registro, onUpdate }) {
+  const [editing, setEditing] = useState(false)
+  const [draft,   setDraft]   = useState(registro.documento_nombre || '')
+  useEffect(() => { if (!editing) setDraft(registro.documento_nombre || '') }, [registro.documento_nombre, editing])
+
+  async function commit() {
+    setEditing(false)
+    const v = draft.trim() || null
+    if ((v || '') === (registro.documento_nombre || '')) return
+    await onUpdate(registro.id, { documento_nombre: v, tiene_documento: !!v })
+  }
+
+  if (editing) {
+    return (
+      <div className="flex items-center gap-2">
+        <input autoFocus type="text" value={draft} onChange={e => setDraft(e.target.value)}
+          onBlur={commit} onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') { setEditing(false); setDraft(registro.documento_nombre || '') } }}
+          className="flex-1 text-[12px] border border-blue-300 rounded px-2 py-1 focus:outline-none bg-white"/>
+      </div>
+    )
+  }
+  return (
+    <div className="flex items-center gap-1.5 cursor-pointer group" onClick={() => setEditing(true)}>
+      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Documento</p>
+      <span className="text-[12px] text-gray-700 group-hover:text-[#2570BA] transition-colors">
+        {registro.documento_nombre || <span className="text-gray-300 italic">— agregar nombre</span>}
+      </span>
+      <Edit2 size={10} className="text-gray-200 group-hover:text-[#2570BA] transition-colors"/>
+    </div>
+  )
+}
+
+// ── Edición inline de drive_url ───────────────────────────────────────────────
+function DriveUrlInline({ registro, onUpdate }) {
+  const [editing, setEditing] = useState(false)
+  const [draft,   setDraft]   = useState(registro.drive_url || '')
+  useEffect(() => { if (!editing) setDraft(registro.drive_url || '') }, [registro.drive_url, editing])
+
+  async function commit() {
+    setEditing(false)
+    const v = draft.trim() || null
+    if ((v || '') === (registro.drive_url || '')) return
+    await onUpdate(registro.id, { drive_url: v })
+  }
+
+  if (editing) {
+    return (
+      <div className="flex items-center gap-2">
+        <input autoFocus type="url" value={draft} onChange={e => setDraft(e.target.value)}
+          onBlur={commit} onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') { setEditing(false); setDraft(registro.drive_url || '') } }}
+          placeholder="https://drive.google.com/…"
+          className="flex-1 text-[12px] border border-blue-300 rounded px-2 py-1 focus:outline-none bg-white font-mono"/>
+      </div>
+    )
+  }
+  return (
+    <div className="flex items-center gap-1.5 cursor-pointer group" onClick={() => setEditing(true)}>
+      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Drive</p>
+      {registro.drive_url
+        ? <a href={registro.drive_url} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}
+            className="text-[12px] text-[#2570BA] hover:underline">Abrir ↗</a>
+        : <span className="text-[12px] text-gray-300 italic group-hover:text-[#2570BA] transition-colors">— agregar link de Drive</span>
+      }
+      <Edit2 size={10} className="text-gray-200 group-hover:text-[#2570BA] transition-colors"/>
+    </div>
+  )
+}
+
 // ── Tabla de solicitudes ──────────────────────────────────────────────────────
 export function SolicitudesTable({ grupo, registrosAll, onUpdate, onAdd, onDelete, causasInfo, onBack, clienteNombre, embedded = false }) {
   const registros  = useMemo(() =>
@@ -617,7 +687,16 @@ export function SolicitudesTable({ grupo, registrosAll, onUpdate, onAdd, onDelet
                             <span className="text-[11px] text-gray-500">{fmtFechaCorta(r.fecha_respuesta)}</span>
                           </td>
                           <td className="px-3 py-3 whitespace-nowrap">
-                            <span className="text-[11px] text-gray-400">{r.documento_nombre || '—'}</span>
+                            {r.documento_nombre ? (
+                              r.drive_url
+                                ? <a href={r.drive_url} target="_blank" rel="noreferrer"
+                                    className="text-[11px] text-[#2570BA] hover:underline flex items-center gap-1">
+                                    {r.documento_nombre} ↗
+                                  </a>
+                                : <span className="text-[11px] text-gray-600">{r.documento_nombre}</span>
+                            ) : (
+                              <span className="text-[11px] text-gray-300">—</span>
+                            )}
                           </td>
                           <td className="px-3 py-3">
                             <p className="text-[11px] text-gray-400 line-clamp-2">{r.notas || '—'}</p>
@@ -672,6 +751,10 @@ export function SolicitudesTable({ grupo, registrosAll, onUpdate, onAdd, onDelet
                               ) : (
                                 <RespuestaInline registro={r} onUpdate={onUpdate}/>
                               )}
+                              <div className="mt-3 pt-3 border-t border-[#1a2e4a]/10 space-y-2">
+                                <DocNombreInline registro={r} onUpdate={onUpdate}/>
+                                <DriveUrlInline registro={r} onUpdate={onUpdate}/>
+                              </div>
                               {r.notas && (
                                 <div className="mt-3 pt-3 border-t border-[#1a2e4a]/10">
                                   <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Notas internas</p>
