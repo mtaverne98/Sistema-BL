@@ -427,7 +427,7 @@ function PanelPlazo({ plazo, onClose, onUpdate, tareas }) {
           <div className="space-y-3">
             <div>
               <p className="text-[10px] text-gray-400 mb-1">Cliente</p>
-              <p className="text-[13px] text-gray-800">{plazo.cliente_nombre || '—'}</p>
+              <p className="text-[13px] text-gray-800 uppercase">{plazo.cliente_nombre || '—'}</p>
             </div>
 
             <div>

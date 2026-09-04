@@ -327,6 +327,48 @@ function FormNuevaSolicitud({ causa, causasInfo, globalMode, onSave, onClose }) 
   )
 }
 
+// ── Registrar respuesta inline ────────────────────────────────────────────────
+function RespuestaInline({ registro, onUpdate }) {
+  const [open,    setOpen]    = useState(false)
+  const [texto,   setTexto]   = useState('')
+  const [fecha,   setFecha]   = useState(new Date().toISOString().slice(0, 10))
+  const [saving,  setSaving]  = useState(false)
+
+  async function guardar() {
+    if (!texto.trim()) return
+    setSaving(true)
+    await onUpdate(registro.id, { respuesta: texto.trim(), fecha_respuesta: fecha, estado: 'Respondida' })
+    setSaving(false)
+    setOpen(false)
+  }
+
+  if (open) {
+    return (
+      <div className="space-y-2">
+        <textarea rows={3} value={texto} onChange={e => setTexto(e.target.value)} autoFocus
+          placeholder="Texto de la respuesta…"
+          className="w-full text-[12px] border border-blue-300 rounded-lg px-2.5 py-2 resize-none focus:outline-none bg-white"/>
+        <div className="flex items-center gap-2">
+          <input type="date" value={fecha} onChange={e => setFecha(e.target.value)}
+            className="text-[11px] border border-gray-200 rounded px-2 py-1 focus:outline-none focus:border-blue-300"/>
+          <button onClick={guardar} disabled={saving || !texto.trim()}
+            className="text-[11px] bg-[#1A2E4A] text-white px-3 py-1 rounded hover:opacity-80 disabled:opacity-40 no-touch-min">
+            {saving ? 'Guardando…' : 'Guardar'}
+          </button>
+          <button onClick={() => setOpen(false)} className="text-[11px] text-gray-400 hover:text-gray-600 no-touch-min">Cancelar</button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <button onClick={() => setOpen(true)}
+      className="w-full border-2 border-dashed border-gray-200 rounded-xl py-3 text-[11px] text-gray-400 hover:border-[#2570BA] hover:text-[#2570BA] transition-colors text-center no-touch-min">
+      + Registrar respuesta
+    </button>
+  )
+}
+
 // ── Tabla de solicitudes ──────────────────────────────────────────────────────
 export function SolicitudesTable({ grupo, registrosAll, onUpdate, onAdd, onDelete, causasInfo, onBack, clienteNombre, embedded = false }) {
   const registros  = useMemo(() =>
@@ -558,9 +600,18 @@ export function SolicitudesTable({ grupo, registrosAll, onUpdate, onAdd, onDelet
                             </p>
                           </td>
                           <td className="px-3 py-3">
-                            <p className={`text-xs text-gray-500 leading-relaxed ${isExpanded ? '' : 'line-clamp-2'}`}>
-                              {r.respuesta || <span className="text-gray-300 italic">—</span>}
-                            </p>
+                            {r.respuesta ? (
+                              <p className={`text-xs text-gray-500 leading-relaxed ${isExpanded ? '' : 'line-clamp-2'}`}>
+                                {r.respuesta}
+                              </p>
+                            ) : (
+                              <span className={`text-[10px] font-semibold tabular-nums flex items-center gap-0.5 ${
+                                (() => { const d = r.fecha ? Math.floor((Date.now()-new Date(r.fecha+'T00:00:00').getTime())/86400000) : null; return d !== null && d > 15 ? 'text-red-500' : 'text-gray-300' })()
+                              }`}>
+                                <Clock size={9}/>
+                                {r.fecha ? `${Math.floor((Date.now()-new Date(r.fecha+'T00:00:00').getTime())/86400000)}d` : '—'}
+                              </span>
+                            )}
                           </td>
                           <td className="px-3 py-3 whitespace-nowrap">
                             <span className="text-[11px] text-gray-500">{fmtFechaCorta(r.fecha_respuesta)}</span>
@@ -593,15 +644,34 @@ export function SolicitudesTable({ grupo, registrosAll, onUpdate, onAdd, onDelet
                     {/* Expanded detail row */}
                     {isExpanded && !isEditing && (
                       <tr key={`${r.id}_exp`} className={altRow ? 'bg-gray-50/60' : 'bg-white'}>
-                        <td colSpan={9} className="px-6 pb-5 pt-1">
+                        <td colSpan={10} className="px-6 pb-5 pt-1">
                           <div className="rounded-2xl border border-[#1a2e4a]/8 bg-[#1a2e4a]/[0.025] p-5 grid grid-cols-2 gap-5">
                             <div>
                               <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Solicitud completa</p>
                               <p className="text-[12px] text-gray-700 leading-relaxed whitespace-pre-wrap">{r.solicitud || '—'}</p>
+                              {r.fecha && (
+                                <p className="text-[10px] text-gray-400 mt-2">
+                                  Enviada: {fmtFecha(r.fecha)}
+                                  {!r.respuesta && (
+                                    <span className={`ml-2 font-semibold ${Math.floor((Date.now()-new Date(r.fecha+'T00:00:00').getTime())/86400000) > 15 ? 'text-red-500' : 'text-gray-400'}`}>
+                                      · {Math.floor((Date.now()-new Date(r.fecha+'T00:00:00').getTime())/86400000)} días sin respuesta
+                                    </span>
+                                  )}
+                                  {r.respuesta && r.fecha_respuesta && (
+                                    <span className="ml-2 text-emerald-600 font-semibold">
+                                      · Respondida en {Math.max(0, Math.floor((new Date(r.fecha_respuesta+'T00:00:00').getTime()-new Date(r.fecha+'T00:00:00').getTime())/86400000))}d
+                                    </span>
+                                  )}
+                                </p>
+                              )}
                             </div>
                             <div>
-                              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Respuesta completa</p>
-                              <p className="text-[12px] text-gray-600 leading-relaxed whitespace-pre-wrap">{r.respuesta || <span className="italic text-gray-300">Sin respuesta</span>}</p>
+                              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Respuesta</p>
+                              {r.respuesta ? (
+                                <p className="text-[12px] text-gray-600 leading-relaxed whitespace-pre-wrap">{r.respuesta}</p>
+                              ) : (
+                                <RespuestaInline registro={r} onUpdate={onUpdate}/>
+                              )}
                               {r.notas && (
                                 <div className="mt-3 pt-3 border-t border-[#1a2e4a]/10">
                                   <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Notas internas</p>
@@ -744,6 +814,8 @@ export default function SIAU() {
   const loadingRef = useRef(new Set())
   const loadedRef  = useRef(new Set())
 
+  const [fSinResp15,  setFSinResp15]  = useState(false)
+
   const [expandedIds, setExpandedIds] = useState(() => {
     try { return new Set(JSON.parse(sessionStorage.getItem('siau.expandedIds') || '[]')) }
     catch { return new Set() }
@@ -757,7 +829,7 @@ export default function SIAU() {
         .select('id,rit,ruc,materia,area,fiscalia,tribunal,cliente_nombre,cliente_id,estado')
         .in('estado', ['Abierta', 'En tramitación'])
         .order('cliente_nombre'),
-      supabase.from('siau').select('id,causa_id,estado').order('fecha', { ascending: false }),
+      supabase.from('siau').select('id,causa_id,estado,fecha,respuesta').order('fecha', { ascending: false }),
     ]).then(([{ data: cs }, { data: meta }]) => {
       setAllCausas(cs || [])
       setMetaRows((meta || []).filter(m => m.causa_id))
@@ -886,17 +958,34 @@ export default function SIAU() {
     allCausas.filter(c => causaIds.has(c.id))
   , [allCausas, causaIds])
 
+  // ── Causas con al menos 1 solicitud sin respuesta y >15 días ──────────────
+  const causamasWith15 = useMemo(() => {
+    const hoy = Date.now()
+    const ids = new Set()
+    metaRows.forEach(m => {
+      if (m.respuesta) return
+      if (!m.fecha) return
+      const dias = Math.floor((hoy - new Date(m.fecha + 'T00:00:00').getTime()) / 86400000)
+      if (dias > 15) ids.add(m.causa_id)
+    })
+    return ids
+  }, [metaRows])
+
+  const sinRespuesta15Count = causamasWith15.size
+
   // ── Filter by search ───────────────────────────────────────────────────────
   const causasFiltradas = useMemo(() => {
-    if (!search.trim()) return causasConSiau
+    let base = causasConSiau
+    if (fSinResp15) base = base.filter(c => causamasWith15.has(c.id))
+    if (!search.trim()) return base
     const q = search.toLowerCase()
-    return causasConSiau.filter(c =>
+    return base.filter(c =>
       (c.cliente_nombre || '').toLowerCase().includes(q) ||
       (c.rit || '').toLowerCase().includes(q) ||
       (c.ruc || '').toLowerCase().includes(q) ||
       (c.materia || '').toLowerCase().includes(q)
     )
-  }, [causasConSiau, search])
+  }, [causasConSiau, search, fSinResp15, causamasWith15])
 
   // ── A-Z grouping ───────────────────────────────────────────────────────────
   const byLetter = useMemo(() => {
@@ -949,11 +1038,24 @@ export default function SIAU() {
           </div>
         )}
 
-        <div className="relative max-w-sm">
-          <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300"/>
-          <input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Buscar cliente, RIT, materia…"
-            className="w-full pl-8 pr-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#2570ba] transition-all placeholder:text-gray-300 bg-white"/>
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="relative max-w-sm flex-1">
+            <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300"/>
+            <input value={search} onChange={e => setSearch(e.target.value)}
+              placeholder="Buscar cliente, RIT, materia…"
+              className="w-full pl-8 pr-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#2570ba] transition-all placeholder:text-gray-300 bg-white"/>
+          </div>
+          {sinRespuesta15Count > 0 && (
+            <button onClick={() => setFSinResp15(f => !f)}
+              className={`flex items-center gap-1.5 text-[11px] font-semibold px-3 py-1.5 rounded-xl border whitespace-nowrap transition-all no-touch-min ${
+                fSinResp15
+                  ? 'bg-red-600 text-white border-red-600'
+                  : 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'
+              }`}>
+              <Clock size={11}/>
+              +15 días sin respuesta ({sinRespuesta15Count})
+            </button>
+          )}
         </div>
       </div>
 

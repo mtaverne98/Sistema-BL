@@ -31,6 +31,9 @@
   }
 }
 
+/* ── Nombres de personas en mayúsculas (display only, sin tocar la BD) ─── */
+.persona { text-transform: uppercase; }
+
 /* ── Portrait / responsive utilities ───────────────────────────────── */
 @media (orientation: portrait) {
 

@@ -1824,7 +1824,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
             const dias = Math.round((new Date(p.fecha_vencimiento + 'T00:00:00') - new Date(TODAY_C + 'T00:00:00')) / 86400000)
             return p.estado === 'Activo' && dias <= 5
           }).length
-          const tareasUrgentes = tareas.filter(t => t.estado !== 'Completada' && (t.prioridad === 'Alta' || (t.fecha_vencimiento && t.fecha_vencimiento <= TODAY_C))).length
+          const tareasUrgentes = tareas.filter(t => t.estado !== 'Completada' && t.fecha_vencimiento && t.fecha_vencimiento <= TODAY_C).length
           const audProximas = audiencias.filter(a => {
             const dias = Math.round((new Date(a.fecha + 'T00:00:00') - new Date(TODAY_C + 'T00:00:00')) / 86400000)
             return dias >= 0 && dias <= 7
@@ -1835,7 +1835,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
             .filter(x => x.revisado === false).length
           const chips = [
             { key: 'resumen',     Icon: AlignLeft,   label: 'Resumen',     count: null,                    urgent: false },
-            { key: 'analisis',    Icon: FileSearch,  label: 'Análisis',    count: alertasSinResolver.length || null, urgent: alertasSinResolver.some(a => a.tipo === 'rojo'), nuevo: sinRevisar || null },
+            { key: 'analisis',    Icon: FileSearch,  label: 'Análisis',    count: alertasSinResolver.length || null, urgent: false, nuevo: sinRevisar || null },
             { key: 'siau',        Icon: Database,    label: 'SIAU',        count: siauRows.length || null, urgent: siauRows.some(r => r.estado === 'Urgente') },
             { key: 'pjud',        Icon: Shield,      label: 'PJUD',        count: pjudRows.length || null, urgent: pjudRows.some(r => r.estado === 'Urgente') },
             { key: 'audiencias',  Icon: Gavel,       label: 'Audiencias',  count: audiencias.length,       urgent: audProximas > 0 },
@@ -1846,6 +1846,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
             { key: 'entrevistas',   Icon: MessageSquare, label: 'Entrevistas', count: entrevistas.length || null, urgent: false },
             { key: 'seguimiento',   Icon: Target,   label: 'Seguimiento',   count: segRows.length || null, urgent: false },
             { key: 'revisiones',  Icon: BookOpen,    label: 'Revisiones',  count: revCount || null,        urgent: false },
+            { key: 'documentos',  Icon: FileText,    label: 'Documentos',  count: documentosDrive.length || null, urgent: false },
           ]
           return (
             <div className="flex items-center gap-1.5 pb-3 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
@@ -1943,76 +1944,120 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
           return (
           <div className="flex flex-col h-full overflow-hidden">
 
-            {/* ── 4 PULSE CARDS ────────────────────────────────────────── */}
-            <div className="flex-shrink-0 grid grid-cols-4 border-b border-gray-100">
-              {[
-                { label:'PENDIENTES',
-                  value: pendienteParents.length===0?'Sin pendientes':`${pendienteParents.length} pendiente${pendienteParents.length>1?'s':''}`,
-                  sub:   (() => {
-                    if (pendienteParents.length === 0) return null
-                    const oldest = pendienteParents.reduce((a, b) => a.created_at < b.created_at ? a : b)
-                    const dias = Math.floor((Date.now() - new Date(oldest.created_at).getTime()) / 86400000)
-                    return `Más antiguo: hace ${dias}d`
-                  })(),
-                  urgent: pendienteParents.length > 0, color:'amber', Icon:ListTodo, onClick:()=>setTab('pendientes') },
-                { label:'Próxima audiencia',
-                  value: proxAud?`${fmtFechaCausa(proxAud.fecha)}${proxAud.hora?` · ${proxAud.hora}`:''}` :'Sin programar',
-                  sub:   audDias!==null?(audDias===0?'Hoy':audDias===1?'Mañana':`En ${audDias} días`):null,
-                  urgent:audDias!==null&&audDias<=1, color:'green', Icon:Gavel, onClick:()=>setTab('audiencias') },
-                { label:'Último seguimiento',
-                  value: lastSegDias===null?'Sin registros':lastSegDias===0?'Hoy':lastSegDias===1?'Ayer':`Hace ${lastSegDias} días`,
-                  sub:   (segRows[0]?.por_hacer||segRows[0]?.nota)?.slice(0,45)||null,
-                  urgent:false, color:'gray', Icon:BookOpen, onClick:()=>setTab('seguimiento') },
-                { label:'Tareas pendientes',
-                  value: tareasPendList.length===0?'Sin pendientes':`${tareasPendList.length} tarea${tareasPendList.length>1?'s':''}`,
-                  sub:   tareasPendList[0]?.titulo?.slice(0,40)||null,
-                  urgent:tareasPendList.length>0, color:'red', Icon:CheckSquare, onClick:()=>setTab('tareas') },
-              ].map(({ label,value,sub,urgent,color,Icon,onClick })=>(
-                <button key={label} onClick={onClick}
-                  className={`text-left p-3.5 border-r border-gray-100 last:border-r-0 transition-colors hover:bg-gray-50/80 ${urgent?'bg-rose-50/40':''}`}>
-                  <div className={`flex items-center gap-1 mb-1.5 text-[9px] font-bold uppercase tracking-widest ${
-                    urgent?'text-rose-400':color==='amber'?'text-amber-500':color==='green'?'text-emerald-500':color==='gray'?'text-slate-400':'text-rose-400'
-                  }`}><Icon size={9}/>{label}</div>
-                  <p className={`text-[13px] font-semibold leading-snug ${urgent?'text-rose-700':'text-gray-800'}`}>{value}</p>
-                  {sub&&<p className={`text-[10px] mt-0.5 truncate ${urgent?'text-rose-400':'text-gray-400'}`}>{sub}</p>}
-                </button>
-              ))}
+            {/* ── RECUADRO DE RESUMEN ──────────────────────────────────── */}
+            <div className="flex-shrink-0 mx-4 mt-3 mb-2 rounded-xl bg-[#F5F6F8] border border-[#E3E7EC] px-4 py-3">
+              <div className="grid grid-cols-3 gap-x-6 gap-y-3">
+                {/* Querellante */}
+                <div>
+                  <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-0.5">Querellante</p>
+                  <InlineField value={causa.querellante} onSave={v=>onUpdate?.({querellante:v||null})}
+                    placeholder="Agregar…" textClassName="text-[12px] font-semibold text-gray-800"/>
+                </div>
+                {/* Imputado */}
+                <div>
+                  <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-0.5">Imputado</p>
+                  <InlineField value={causa.imputado} onSave={v=>onUpdate?.({imputado:v||null})}
+                    placeholder="Agregar…" textClassName="text-[12px] font-semibold text-gray-800"/>
+                </div>
+                {/* Tribunal */}
+                <div>
+                  <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-0.5">Tribunal</p>
+                  <InlineField value={causa.tribunal} onSave={v=>onUpdate?.({tribunal:v?.trim()||null})}
+                    placeholder="Agregar…" textClassName="text-[12px] font-semibold text-gray-800"/>
+                  {(causa.tribunal_direccion||causa.tribunal_telefono)&&(
+                    <p className="text-[10px] text-gray-400 mt-0.5 flex items-center gap-1.5 flex-wrap">
+                      {causa.tribunal_direccion&&<span>{causa.tribunal_direccion}</span>}
+                      {causa.tribunal_telefono&&<CopyValue value={causa.tribunal_telefono} className="font-mono text-[10px]"/>}
+                    </p>
+                  )}
+                  {!causa.tribunal_telefono&&(
+                    <InlineField value={causa.tribunal_telefono} onSave={v=>onUpdate?.({tribunal_telefono:v||null})}
+                      placeholder="+ teléfono" textClassName="text-[10px] text-gray-400"/>
+                  )}
+                </div>
+                {/* Estado */}
+                <div>
+                  <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-0.5">Estado</p>
+                  <EstadoDropdown estado={causa.estado} onCambiar={e=>onUpdate?.({estado:e})}/>
+                </div>
+                {/* Fiscalía */}
+                <div>
+                  <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-0.5">Fiscalía</p>
+                  <InlineField value={causa.fiscalia} onSave={v=>onUpdate?.({fiscalia:v?.trim()||null})}
+                    placeholder="Agregar…" textClassName="text-[12px] font-semibold text-gray-800"/>
+                </div>
+                {/* Fiscal */}
+                <div>
+                  <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-0.5">Fiscal</p>
+                  <InlineField value={causa.fiscal} onSave={v=>onUpdate?.({fiscal:v?.trim()||null})}
+                    placeholder="Agregar…" textClassName="text-[12px] font-semibold text-gray-800"/>
+                  {(causa.fiscal_telefono||causa.fiscal_email)&&(
+                    <p className="text-[10px] text-gray-400 mt-0.5 flex items-center gap-1.5 flex-wrap">
+                      {causa.fiscal_telefono&&<CopyValue value={causa.fiscal_telefono} className="font-mono text-[10px]"/>}
+                      {causa.fiscal_email&&<CopyValue value={causa.fiscal_email} className="text-[10px]"/>}
+                    </p>
+                  )}
+                  {!causa.fiscal_telefono&&!causa.fiscal_email&&(
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <InlineField value={causa.fiscal_telefono} onSave={v=>onUpdate?.({fiscal_telefono:v||null})}
+                        placeholder="+ teléfono" textClassName="text-[10px] text-gray-400"/>
+                      <InlineField value={causa.fiscal_email} onSave={v=>onUpdate?.({fiscal_email:v||null})}
+                        placeholder="+ correo" textClassName="text-[10px] text-gray-400"/>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
 
-            {/* ── BANNER REVISIÓN SEMANAL ──────────────────────────────── */}
-            <div className="flex-shrink-0 mx-4 my-2 rounded-xl border border-[#E2E5EA] bg-white flex items-center gap-3 px-4 py-2.5">
-              <Calendar size={13} className="text-gray-400 flex-shrink-0"/>
-              <span className="text-[12px] font-medium text-gray-600 flex-shrink-0">{weekLabel}</span>
-              <span className="text-gray-200 flex-shrink-0">·</span>
-              <span className="text-[12px] text-gray-500 flex-shrink-0">Revisado esta semana:</span>
-              {currentWeekRev===undefined ? (
-                <div className="h-6 w-28 bg-gray-100 rounded-lg animate-pulse"/>
-              ) : (
-                <select
-                  value={currentWeekRev?.revisada===true?'SI':currentWeekRev?.revisada===false?'NO':''}
-                  onChange={async e=>{
-                    const v=e.target.value
-                    await handleSaveWeekRev(v==='SI'?true:v==='NO'?false:null, currentWeekRev?.nota||null)
-                  }}
-                  disabled={weekRevSaving}
-                  className="text-[12px] border border-[#E2E5EA] bg-[#F7F8FA] rounded-lg px-3 py-1 focus:outline-none focus:border-gray-300 text-gray-600 cursor-pointer appearance-none min-w-[120px] disabled:opacity-60"
-                  style={{backgroundImage:`url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`,backgroundRepeat:'no-repeat',backgroundPosition:'right 8px center',paddingRight:'24px'}}
-                >
-                  <option value="">— Sin marcar</option>
-                  <option value="SI">✓ Sí, revisada</option>
-                  <option value="NO">✗ No revisada</option>
-                </select>
-              )}
-              {currentWeekRev?.revisada&&(
-                currentWeekRev?.nota
-                  ?<span className="text-[11px] text-gray-500 truncate flex-1 mx-1">{currentWeekRev.nota}</span>
-                  :<button onClick={()=>setShowRevForm(true)} className="text-[11px] text-gray-400 hover:text-gray-600 mx-1 underline">+ agregar nota</button>
-              )}
-              <button onClick={()=>setTab('seguimiento')}
-                className="ml-auto flex-shrink-0 flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-lg border border-[#E2E5EA] bg-[#F7F8FA] text-gray-500 hover:text-gray-700 hover:border-gray-300 transition-colors whitespace-nowrap">
-                <Clock size={11}/>
-                Ver historial
-              </button>
+            {/* ── FRANJA DE ATENCIÓN ───────────────────────────────────── */}
+            <div className="flex-shrink-0 mx-4 mb-2 rounded-xl border border-[#E2E5EA] bg-white flex items-center gap-2 px-3.5 py-2">
+              {/* Alertas */}
+              <div className="flex items-center gap-1.5 flex-1 min-w-0 flex-wrap">
+                {(()=>{
+                  const items = []
+                  if (audDias !== null && audDias <= 3)
+                    items.push(<button key="aud" onClick={()=>setTab('audiencias')}
+                      className="flex items-center gap-1 text-[10px] font-semibold text-red-600 bg-red-50 border border-red-200 rounded-full px-2 py-0.5 whitespace-nowrap no-touch-min">
+                      <Gavel size={9}/>{audDias===0?'Audiencia hoy':audDias===1?'Audiencia mañana':`Audiencia en ${audDias}d`}
+                    </button>)
+                  if (tareasPendList.filter(t=>t.prioridad==='Alta').length > 0)
+                    items.push(<button key="tar" onClick={()=>setTab('tareas')}
+                      className="flex items-center gap-1 text-[10px] font-semibold text-rose-600 bg-rose-50 border border-rose-200 rounded-full px-2 py-0.5 whitespace-nowrap no-touch-min">
+                      <CheckSquare size={9}/>{tareasPendList.filter(t=>t.prioridad==='Alta').length} tarea{tareasPendList.filter(t=>t.prioridad==='Alta').length>1?'s':''} urgente{tareasPendList.filter(t=>t.prioridad==='Alta').length>1?'s':''}
+                    </button>)
+                  if (pendienteParents.length > 0)
+                    items.push(<button key="pend" onClick={()=>setTab('pendientes')}
+                      className="flex items-center gap-1 text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5 whitespace-nowrap no-touch-min">
+                      <ListTodo size={9}/>{pendienteParents.length} pendiente{pendienteParents.length>1?'s':''}
+                    </button>)
+                  if (items.length === 0)
+                    return <span className="text-[10px] text-gray-300 font-medium">Al día · sin elementos urgentes</span>
+                  return items
+                })()}
+              </div>
+              {/* Revisión semanal integrada */}
+              <div className="flex items-center gap-2 flex-shrink-0 border-l border-gray-100 pl-3">
+                <span className="text-[10px] text-gray-400 hidden sm:block">{weekLabel}</span>
+                {currentWeekRev===undefined ? (
+                  <div className="h-5 w-24 bg-gray-100 rounded animate-pulse"/>
+                ) : (
+                  <select
+                    value={currentWeekRev?.revisada===true?'SI':currentWeekRev?.revisada===false?'NO':''}
+                    onChange={async e=>{const v=e.target.value;await handleSaveWeekRev(v==='SI'?true:v==='NO'?false:null,currentWeekRev?.nota||null)}}
+                    disabled={weekRevSaving}
+                    className="text-[10px] border border-[#E2E5EA] bg-[#F7F8FA] rounded-lg px-2 py-0.5 focus:outline-none text-gray-600 cursor-pointer appearance-none disabled:opacity-60"
+                    style={{backgroundImage:`url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`,backgroundRepeat:'no-repeat',backgroundPosition:'right 6px center',paddingRight:'18px'}}
+                  >
+                    <option value="">Sin marcar</option>
+                    <option value="SI">✓ Revisada</option>
+                    <option value="NO">✗ No revisada</option>
+                  </select>
+                )}
+                <button onClick={()=>setTab('seguimiento')}
+                  className="flex items-center gap-1 text-[10px] text-gray-400 hover:text-gray-600 whitespace-nowrap no-touch-min">
+                  <Clock size={9}/>Historial
+                </button>
+              </div>
             </div>
 
             {/* ── DOS COLUMNAS ─────────────────────────────────────────── */}
@@ -2147,153 +2192,21 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                 </div>
               </div>
 
-              {/* ── DERECHA 40% — Paneles compactos ─────────────────── */}
-              <div className="flex-[2] min-w-0 overflow-y-auto px-4 py-4 space-y-4">
-
-                {/* Info procesal */}
-                <section className="rounded-xl bg-gray-50/60 border border-gray-100 p-3 space-y-1.5">
-                  {[
-                    ['RIT',     causa.rit,            true ],
-                    ['RUC',     causa.ruc,            true ],
-                    ['Tribunal',causa.tribunal,       false],
-                    ['Fiscalía',causa.fiscalia,       false],
-                    ['Fiscal',  causa.fiscal,         false],
-                    ['Etapa',   causa.etapa_procesal, false],
-                    ['Parte',   causa.parte,          false],
-                  ].filter(([,v])=>v).map(([lbl,val,mono])=>(
-                    <div key={lbl} className="flex items-start gap-2">
-                      <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider w-12 flex-shrink-0 pt-0.5">{lbl}</span>
-                      {mono?<CopyValue value={val} className="text-[11px] text-gray-700"/>
-                           :<span className="text-[11px] text-gray-700 leading-snug">{val}</span>}
-                    </div>
-                  ))}
-                </section>
-
-                {/* Próxima audiencia */}
-                {proxAud&&(
-                  <section>
-                    <p className="text-[9px] font-bold uppercase tracking-widest text-gray-300 mb-1.5">Próxima audiencia</p>
-                    <button onClick={()=>setTab('audiencias')}
-                      className={`w-full text-left px-3 py-2.5 rounded-xl border transition-colors ${
-                        audDias!==null&&audDias<=1?'border-red-200 bg-red-50/40 hover:bg-red-50/60':'border-purple-100 bg-purple-50/30 hover:bg-purple-50/50'
-                      }`}>
-                      <p className="text-[12px] font-semibold text-gray-800">{proxAud.tipo||'Audiencia'}</p>
-                      <p className={`text-[11px] mt-0.5 font-medium ${audDias!==null&&audDias<=1?'text-red-600':'text-purple-600'}`}>
-                        {fmtFechaCausa(proxAud.fecha)}{proxAud.hora?` · ${proxAud.hora}`:''}
-                        {audDias===0?' — hoy':audDias===1?' — mañana':audDias!==null?` — en ${audDias}d`:''}
-                      </p>
-                    </button>
-                  </section>
-                )}
-
-                {/* Tareas pendientes */}
-                {tareasPendList.length>0&&(
-                  <section>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <p className="text-[9px] font-bold uppercase tracking-widest text-gray-300">Tareas pendientes</p>
-                      <button onClick={()=>setTab('tareas')} className="text-[9px] text-gray-400 hover:text-gray-600">Ver todas →</button>
-                    </div>
-                    <div className="space-y-1">
-                      {tareasPendList.slice(0,5).map(t=>(
-                        <div key={t.id} className="flex items-center gap-2 py-0.5">
-                          <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${t.prioridad==='Alta'?'bg-red-400':'bg-amber-300'}`}/>
-                          <p className="text-[11px] text-gray-700 flex-1 truncate">{t.titulo}</p>
-                          {t.fecha_vencimiento&&<span className="text-[10px] text-gray-400 flex-shrink-0">{fmtFechaCausa(t.fecha_vencimiento)}</span>}
-                        </div>
-                      ))}
-                    </div>
-                  </section>
-                )}
-
-                {/* Último SIAU */}
-                {lastSiau&&(
-                  <section>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <p className="text-[9px] font-bold uppercase tracking-widest text-gray-300">Último SIAU</p>
-                      <button onClick={()=>setTab('siau')} className="text-[9px] text-gray-400 hover:text-gray-600">Ver todos →</button>
-                    </div>
-                    <div onClick={()=>setTab('siau')}
-                      className="px-3 py-2.5 rounded-xl border border-violet-100 bg-violet-50/30 hover:bg-violet-50/50 cursor-pointer transition-colors">
-                      {lastSiau.folio&&<span onClick={e=>e.stopPropagation()}><CopyValue value={lastSiau.folio} className="font-mono text-[10px] text-violet-600 mb-1 block"/></span>}
-                      <p className="text-[11px] text-gray-700 line-clamp-2 leading-snug">{lastSiau.solicitud||'—'}</p>
-                      <p className="text-[10px] text-gray-400 mt-0.5">{[lastSiau.estado,fmtRelDate(lastSiau.fecha)].filter(Boolean).join(' · ')}</p>
-                    </div>
-                  </section>
-                )}
-
-                {/* Último PJUD */}
-                {lastPjud&&(
-                  <section>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <p className="text-[9px] font-bold uppercase tracking-widest text-gray-300">Último PJUD</p>
-                      <button onClick={()=>setTab('pjud')} className="text-[9px] text-gray-400 hover:text-gray-600">Ver todos →</button>
-                    </div>
-                    <div onClick={()=>setTab('pjud')}
-                      className="px-3 py-2.5 rounded-xl border border-emerald-100 bg-emerald-50/30 hover:bg-emerald-50/50 cursor-pointer transition-colors">
-                      {lastPjud.folio&&<span onClick={e=>e.stopPropagation()}><CopyValue value={lastPjud.folio} className="font-mono text-[10px] text-emerald-600 mb-1 block"/></span>}
-                      <p className="text-[11px] text-gray-700 line-clamp-2 leading-snug">{lastPjud.solicitud||'—'}</p>
-                      <p className="text-[10px] text-gray-400 mt-0.5">{[lastPjud.estado,fmtRelDate(lastPjud.fecha)].filter(Boolean).join(' · ')}</p>
-                    </div>
-                  </section>
-                )}
-
-                {/* Próximo plazo */}
-                {proxPlazo&&(
-                  <section>
-                    <p className="text-[9px] font-bold uppercase tracking-widest text-gray-300 mb-1.5">Próximo plazo</p>
-                    <button onClick={()=>setTab('plazos')}
-                      className="w-full text-left px-3 py-2.5 rounded-xl border border-amber-100 bg-amber-50/30 hover:bg-amber-50/50 transition-colors">
-                      <p className="text-[11px] font-semibold text-gray-800">{proxPlazo.titulo||'—'}</p>
-                      <p className="text-[10px] text-amber-600 mt-0.5">Vence {fmtRelDate(proxPlazo.fecha_vencimiento)}</p>
-                    </button>
-                  </section>
-                )}
-
-                {/* Entrevistas recientes */}
-                {entrevistas.length > 0 && (
-                  <section>
-                    <p className="text-[9px] font-bold uppercase tracking-widest text-gray-300 mb-1.5">Entrevistas</p>
-                    <div className="space-y-1">
-                      {entrevistas.slice(0, 3).map(e => {
-                        const tipoClr = { 'Entrevista': 'text-violet-600', 'Llamada': 'text-blue-600', 'Reunión': 'text-teal-600' }
-                        const fmtF = iso => { if (!iso) return '—'; const [y,m,d]=iso.split('-'); return `${d}/${m}` }
-                        return (
-                          <button key={e.id} onClick={() => setTab('entrevistas')}
-                            className="w-full text-left px-3 py-2 rounded-xl border border-gray-100 hover:bg-gray-50 transition-colors">
-                            <div className="flex items-center gap-1.5">
-                              <span className={`text-[9px] font-bold uppercase ${tipoClr[e.tipo] || 'text-gray-400'}`}>{e.tipo || '—'}</span>
-                              <span className="text-[9px] text-gray-300 tabular-nums ml-auto">{fmtF(e.fecha)}</span>
-                            </div>
-                            <p className="text-[11px] font-medium text-gray-700 mt-0.5 truncate">{e.persona || 'Sin nombre'}</p>
-                            {e.institucion && <p className="text-[10px] text-gray-400 truncate">{e.institucion}</p>}
-                          </button>
-                        )
-                      })}
-                      {entrevistas.length > 3 && (
-                        <button onClick={() => setTab('entrevistas')}
-                          className="w-full text-center text-[10px] text-gray-400 hover:text-[#2570BA] py-1 transition-colors">
-                          Ver {entrevistas.length - 3} más…
-                        </button>
-                      )}
-                    </div>
-                  </section>
-                )}
-
-                {/* Notas */}
-                <section>
-                  <p className="text-[9px] font-bold uppercase tracking-widest text-gray-300 mb-1.5">Notas</p>
-                  <div className="bg-gray-50 rounded-xl p-3">
-                    <InlineField
-                      value={causa.observaciones}
-                      onSave={v=>onUpdate?.({observaciones:v||null})}
-                      type="textarea"
-                      placeholder="Notas sobre esta causa…"
-                      debounce={1200}
-                      textClassName="text-[12px] text-gray-700 leading-relaxed whitespace-pre-line"
-                      inputClassName="text-[12px] bg-transparent"
-                    />
-                  </div>
-                </section>
+              {/* ── DERECHA 40% — Notas ──────────────────────────────── */}
+              <div className="flex-[2] min-w-0 flex flex-col px-4 py-4">
+                <p className="text-[9px] font-bold uppercase tracking-widest text-gray-300 mb-2 flex-shrink-0">Notas</p>
+                <div className="flex-1 bg-gray-50 rounded-xl p-3 min-h-0">
+                  <InlineField
+                    value={causa.observaciones}
+                    onSave={v=>onUpdate?.({observaciones:v||null})}
+                    type="textarea"
+                    placeholder="Notas sobre esta causa…"
+                    debounce={1200}
+                    className="h-full"
+                    textClassName="text-[12px] text-gray-700 leading-relaxed whitespace-pre-line"
+                    inputClassName="text-[12px] bg-transparent h-full min-h-[200px]"
+                  />
+                </div>
               </div>
             </div>
           </div>
@@ -4357,6 +4270,60 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
             </div>
           )
         })()}
+
+        {/* DOCUMENTOS */}
+        {tab === 'documentos' && (
+          <div className="px-6 py-5">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-[15px] font-semibold text-[#1C2533]">Documentos</h3>
+                <p className="text-[11px] text-gray-400 mt-0.5">{documentosDrive.length} documento{documentosDrive.length !== 1 ? 's' : ''} de Drive vinculados</p>
+              </div>
+              {analisisMeta?.drive_folder_id && (
+                <a href={`https://drive.google.com/drive/folders/${analisisMeta.drive_folder_id}`}
+                  target="_blank" rel="noreferrer"
+                  className="text-[11px] text-[#2570BA] hover:underline flex items-center gap-1">
+                  Ver carpeta en Drive →
+                </a>
+              )}
+            </div>
+
+            {documentosDrive.length === 0 ? (
+              <p className="text-[13px] text-gray-400 py-8 text-center">Sin documentos de Drive vinculados</p>
+            ) : (
+              <div className="border border-gray-100 rounded-xl overflow-hidden">
+                <table className="w-full text-[11px]">
+                  <thead>
+                    <tr className="border-b border-gray-100 bg-gray-50">
+                      <th className="text-left px-4 py-2.5 font-semibold text-gray-400 text-[9px] uppercase tracking-widest">Fecha</th>
+                      <th className="text-left px-4 py-2.5 font-semibold text-gray-400 text-[9px] uppercase tracking-widest">Documento</th>
+                      <th className="text-left px-4 py-2.5 font-semibold text-gray-400 text-[9px] uppercase tracking-widest">Tipo</th>
+                      <th className="text-left px-4 py-2.5 font-semibold text-gray-400 text-[9px] uppercase tracking-widest">Origen</th>
+                      <th className="text-left px-4 py-2.5 font-semibold text-gray-400 text-[9px] uppercase tracking-widest">Drive</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {documentosDrive.map((doc, i) => (
+                      <tr key={doc.id} className={`border-b border-gray-50 last:border-b-0 ${i % 2 === 0 ? '' : 'bg-gray-50/50'}`}>
+                        <td className="px-4 py-2.5 text-gray-500 tabular-nums whitespace-nowrap">
+                          {doc.fecha ? (() => { const [y,m,d] = doc.fecha.split('-'); return `${d}-${m}-${y}` })() : '—'}
+                        </td>
+                        <td className="px-4 py-2.5 text-gray-800 font-medium max-w-[280px] truncate">{doc.nombre || '—'}</td>
+                        <td className="px-4 py-2.5 text-gray-500">{doc.tipo || '—'}</td>
+                        <td className="px-4 py-2.5 text-gray-400">{doc.fuente || '—'}</td>
+                        <td className="px-4 py-2.5">
+                          {doc.drive_url
+                            ? <a href={doc.drive_url} target="_blank" rel="noreferrer" className="text-[#2570BA] hover:underline">Abrir ↗</a>
+                            : <span className="text-gray-300">— sin link</span>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
 
       </div>
     </div>
