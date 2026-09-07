@@ -179,7 +179,8 @@ function SeguimientoPicker({ nota, causas, onConfirm, onClose }) {
 // Items externos (audiencias, plazos, tareas, reuniones, Google).
 // isOculto = ya está en agenda_ocultos para este día.
 // onOcultar / onDesocultar = callbacks para marcar/desmarcar.
-function EventoItem({ tipo, label, sub, hora, href, cliente, isOculto, onOcultar, onDesocultar }) {
+// subColor: color opcional para el texto del sub (p.ej. ámbar/rojo para atrasadas).
+function EventoItem({ tipo, label, sub, subColor, hora, href, cliente, isOculto, onOcultar, onDesocultar }) {
   const t = TIPOS[tipo] || TIPOS.nota
   const done = !!isOculto
 
@@ -188,7 +189,7 @@ function EventoItem({ tipo, label, sub, hora, href, cliente, isOculto, onOcultar
   const chipColor = done ? '#9CA3AF' : t.color
   const chipBg    = done ? '#F3F4F6' : t.bg
 
-  const inner = (
+  return (
     <div className="flex items-center gap-2 py-1.5 group/ev">
       {/* Checkbox */}
       <button
@@ -223,10 +224,10 @@ function EventoItem({ tipo, label, sub, hora, href, cliente, isOculto, onOcultar
         ) : label}
       </span>
 
-      {/* Sub (tipo audiencia, etc.) */}
+      {/* Sub (tipo audiencia, fecha atrasada, etc.) */}
       {sub && (
-        <span className="text-[10px] flex-shrink-0 truncate max-w-[100px]"
-          style={{ color: done ? '#D1D5DB' : '#9CA3AF' }}>{sub}</span>
+        <span className="text-[10px] flex-shrink-0 truncate max-w-[130px] font-medium"
+          style={{ color: done ? '#D1D5DB' : (subColor || '#9CA3AF') }}>{sub}</span>
       )}
 
       {/* Cliente: nombre completo en negrita */}
@@ -236,8 +237,106 @@ function EventoItem({ tipo, label, sub, hora, href, cliente, isOculto, onOcultar
       )}
     </div>
   )
+}
 
-  return inner
+// ── VieneDAntes ───────────────────────────────────────────────────────────────
+// Bloque de tareas y notas de semanas anteriores sin completar.
+function VieneDAntes({ tareas, notas, ocultos, weekMonday, onOcultar, onDesocultar, onToggleNota }) {
+  const [collapsed, setCollapsed] = useState(false)
+
+  function diasAtras(fecha) {
+    const ref = new Date(weekMonday + 'T00:00:00')
+    const d   = new Date(fecha + 'T00:00:00')
+    return Math.max(0, Math.floor((ref - d) / 86400000))
+  }
+
+  function fmtFecha(fecha) {
+    const d  = new Date(fecha + 'T00:00:00')
+    const dd = String(d.getDate()).padStart(2, '0')
+    const mm = String(d.getMonth() + 1).padStart(2, '0')
+    return `${dd}-${mm}`
+  }
+
+  // Construir lista mixta de items atrasados
+  const items = [
+    ...tareas.map(t => ({ tipo: 'tarea', item: t, fecha: t.fecha_vencimiento })),
+    ...notas.map(n => ({ tipo: 'nota',  item: n, fecha: n.fecha })),
+  ].sort((a, b) => b.fecha.localeCompare(a.fecha)) // más reciente primero
+
+  if (items.length === 0) return null
+
+  // Contar solo los pendientes (no ocultos/completados)
+  const pendCount = items.filter(({ tipo, item, fecha }) => {
+    if (tipo === 'tarea') return !(ocultos[fecha] || new Set()).has(`tarea:${item.id}`)
+    return !item.completada
+  }).length
+
+  return (
+    <div className="border-b-2 border-amber-200 bg-amber-50/40">
+      {/* Header del bloque */}
+      <div className="flex items-center justify-between px-5 py-2">
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-bold text-amber-700 uppercase tracking-widest">Viene de antes</span>
+          {pendCount > 0 && (
+            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+              style={{ background: '#FEF3C7', color: '#92400E' }}>
+              {pendCount} pendiente{pendCount !== 1 ? 's' : ''}
+            </span>
+          )}
+        </div>
+        <button
+          onClick={() => setCollapsed(s => !s)}
+          className="text-[11px] text-amber-600 hover:text-amber-800 transition-colors"
+        >
+          {collapsed
+            ? `▸ Mostrar ${items.length} de semanas anteriores`
+            : `▾ Ocultar ${items.length} de semanas anteriores`}
+        </button>
+      </div>
+
+      {/* Items */}
+      {!collapsed && (
+        <div className="px-5 pb-2">
+          {items.map(({ tipo, item, fecha }) => {
+            const dias = diasAtras(fecha)
+            const late = dias > 15
+            const subLabel = `${fmtFecha(fecha)} · hace ${dias} día${dias === 1 ? '' : 's'}`
+            const subColor = late ? '#C0392B' : '#C8862B'
+
+            if (tipo === 'tarea') {
+              const isOculto = (ocultos[fecha] || new Set()).has(`tarea:${item.id}`)
+              return (
+                <EventoItem key={`at-${item.id}`}
+                  tipo="tarea"
+                  label={item.titulo}
+                  sub={subLabel}
+                  subColor={isOculto ? undefined : subColor}
+                  cliente={item.cliente_nombre || null}
+                  isOculto={isOculto}
+                  onOcultar={() => onOcultar(fecha, 'tarea', String(item.id))}
+                  onDesocultar={() => onDesocultar(fecha, 'tarea', String(item.id))}
+                />
+              )
+            } else {
+              // Nota propia: completada se guarda en agenda_notas.completada
+              return (
+                <EventoItem key={`an-${item.id}`}
+                  tipo="nota"
+                  label={item.texto}
+                  sub={subLabel}
+                  subColor={item.completada ? undefined : subColor}
+                  cliente={null}
+                  isOculto={item.completada}
+                  onOcultar={() => onToggleNota(item)}
+                  onDesocultar={() => onToggleNota(item)}
+                />
+              )
+            }
+          })}
+        </div>
+      )}
+    </div>
+  )
 }
 
 // ── NotaRow ───────────────────────────────────────────────────────────────────
@@ -951,7 +1050,9 @@ export default function Apuntes() {
   const [loading,      setLoading]      = useState(false)
   const [segPicker,    setSegPicker]    = useState(null)
   const [gcalEventos,  setGcalEventos]  = useState({})
-  const [ocultos,      setOcultos]      = useState({}) // { [fecha]: Set<"origen:itemId"> }
+  const [ocultos,          setOcultos]          = useState({}) // { [fecha]: Set<"origen:itemId"> }
+  const [atrasadasTareas,  setAtrasadasTareas]  = useState([])
+  const [atrasadasNotas,   setAtrasadasNotas]   = useState([])
 
   const [pendientes,      setPendientes]      = useState([])
   const [pendienteInput,  setPendienteInput]  = useState('')
@@ -978,8 +1079,9 @@ export default function Apuntes() {
 
   // ── Fetch week data ─────────────────────────────────────────────────────────
   useEffect(() => {
-    const start = weekMonday
-    const end   = addDays(weekMonday, 4)
+    const start     = weekMonday
+    const end       = addDays(weekMonday, 4)
+    const pastStart = addDays(weekMonday, -60) // hasta 60 días atrás para atrasadas
 
     async function fetchAll() {
       setLoading(true)
@@ -997,6 +1099,8 @@ export default function Apuntes() {
         { data: clientesData },
         { data: causasData },
         { data: ocultosData },
+        { data: atTareasData },
+        { data: atNotasData },
       ] = await Promise.all([
         supabase.from('agenda_notas').select('*').gte('fecha', start).lte('fecha', end).order('hora'),
         supabase.from('audiencias').select('id, fecha, hora, rit, causa_rit, cliente_nombre, tipo')
@@ -1010,8 +1114,15 @@ export default function Apuntes() {
         supabase.from('clientes').select('id, nombre'),
         supabase.from('causas').select('id, rit, ruc, materia, cliente_nombre, estado')
           .in('estado', ['Abierta', 'Revisar', 'En tramitación']).order('cliente_nombre'),
+        // Ocultos cubre la semana actual + el rango de atrasadas
         supabase.from('agenda_ocultos').select('fecha, origen, item_id')
-          .gte('fecha', start).lte('fecha', end),
+          .gte('fecha', pastStart).lte('fecha', end),
+        // Tareas atrasadas: pendientes con vencimiento anterior a este lunes
+        supabase.from('tareas').select('id, titulo, fecha_vencimiento, cliente_nombre, estado, prioridad')
+          .eq('estado', 'Pendiente').lt('fecha_vencimiento', weekMonday).gte('fecha_vencimiento', pastStart),
+        // Notas atrasadas: no completadas de semanas anteriores
+        supabase.from('agenda_notas').select('*')
+          .eq('completada', false).lt('fecha', weekMonday).gte('fecha', pastStart),
       ])
       setNotas(groupBy(notasData, 'fecha'))
       setAudiencias(groupBy(audData, 'fecha'))
@@ -1020,8 +1131,10 @@ export default function Apuntes() {
       setReuniones(groupBy(reunData, 'fecha_jueves'))
       setClientes(clientesData || [])
       setCausas(causasData || [])
+      setAtrasadasTareas(atTareasData || [])
+      setAtrasadasNotas(atNotasData || [])
 
-      // Construir mapa de ocultos por fecha
+      // Construir mapa de ocultos por fecha (cubre semana actual + rango pasado)
       const ocMap = {}
       for (const o of (ocultosData || [])) {
         if (!ocMap[o.fecha]) ocMap[o.fecha] = new Set()
@@ -1131,11 +1244,16 @@ export default function Apuntes() {
   }, [clientes])
 
   const handleToggleNota = useCallback(async (nota) => {
-    const { error } = await supabase.from('agenda_notas').update({ completada: !nota.completada }).eq('id', nota.id)
-    if (!error) setNotas(prev => ({
-      ...prev,
-      [nota.fecha]: (prev[nota.fecha] || []).map(n => n.id === nota.id ? { ...n, completada: !n.completada } : n)
-    }))
+    const newVal = !nota.completada
+    const { error } = await supabase.from('agenda_notas').update({ completada: newVal }).eq('id', nota.id)
+    if (!error) {
+      setNotas(prev => ({
+        ...prev,
+        [nota.fecha]: (prev[nota.fecha] || []).map(n => n.id === nota.id ? { ...n, completada: newVal } : n)
+      }))
+      // Actualizar también en atrasadas si aplica
+      setAtrasadasNotas(prev => prev.map(n => n.id === nota.id ? { ...n, completada: newVal } : n))
+    }
   }, [])
 
   const handleDeleteNota = useCallback(async (nota) => {
@@ -1413,7 +1531,17 @@ export default function Apuntes() {
                 <div className="w-5 h-5 border-2 border-[#1a2e4a]/20 border-t-[#1a2e4a] rounded-full animate-spin" />
               </div>
             ) : (
-              weekDays.map((date) => (
+              <>
+              <VieneDAntes
+                tareas={atrasadasTareas}
+                notas={atrasadasNotas}
+                ocultos={ocultos}
+                weekMonday={weekMonday}
+                onOcultar={handleOcultar}
+                onDesocultar={handleDesocultar}
+                onToggleNota={handleToggleNota}
+              />
+              {weekDays.map((date) => (
                 <DayBlock
                   key={date}
                   iso={date}
@@ -1435,7 +1563,8 @@ export default function Apuntes() {
                   onConvertNota={handleConvertNota}
                   onSaveContenido={handleSaveContenidoNota}
                 />
-              ))
+              ))}
+              </>
             )}
             <div className="h-8" />
           </div>
