@@ -18,9 +18,10 @@ const MESES      = ['enero','febrero','marzo','abril','mayo','junio','julio',
 const TIPOS = {
   audiencia: { label: 'Audiencia', color: '#2570BA', bg: '#EBF3FB' },
   plazo:     { label: 'Plazo',     color: '#C0392B', bg: '#FDECEA' },
-  tarea:     { label: 'Tarea',     color: '#C8862B', bg: '#FDF3E7' },
+  tarea:     { label: 'Tarea',     color: '#1E9E6A', bg: '#E8F8F0' },
   reunion:   { label: 'Reunión',   color: '#7C3AED', bg: '#F3EFFE' },
   gcal:      { label: 'Google',    color: '#4285F4', bg: '#EEF3FD' },
+  nota:      { label: 'Nota',      color: '#C8862B', bg: '#FDF3E7' },
 }
 
 const ACTION_VERBS = new Set([
@@ -175,46 +176,132 @@ function SeguimientoPicker({ nota, causas, onConfirm, onClose }) {
 }
 
 // ── EventoItem ────────────────────────────────────────────────────────────────
-function EventoItem({ tipo, label, sub, hora, href }) {
-  const t = TIPOS[tipo]
+// Items externos (audiencias, plazos, tareas, reuniones, Google).
+// isOculto = ya está en agenda_ocultos para este día.
+// onOcultar / onDesocultar = callbacks para marcar/desmarcar.
+function EventoItem({ tipo, label, sub, hora, href, cliente, isOculto, onOcultar, onDesocultar }) {
+  const t = TIPOS[tipo] || TIPOS.nota
+  const done = !!isOculto
+
+  const barColor = done ? '#D1D5DB' : t.color
+  const textColor = done ? '#9CA3AF' : '#374151'
+  const chipColor = done ? '#9CA3AF' : t.color
+  const chipBg    = done ? '#F3F4F6' : t.bg
+
   const inner = (
-    <div className="flex items-center gap-2 py-1.5">
-      <div className="w-0.5 self-stretch rounded-full flex-shrink-0" style={{ background: t.color }} />
-      <span
-        className="text-[10px] font-bold px-1.5 py-0.5 rounded flex-shrink-0"
-        style={{ color: t.color, background: t.bg }}
+    <div className="flex items-center gap-2 py-1.5 group/ev">
+      {/* Checkbox */}
+      <button
+        onClick={e => { e.preventDefault(); done ? onDesocultar?.() : onOcultar?.() }}
+        className="flex-shrink-0 w-4 h-4 rounded border flex items-center justify-center transition-colors no-touch-min"
+        style={{
+          borderColor: done ? '#1E9E6A' : '#CBD5E1',
+          background:  done ? '#1E9E6A' : 'transparent',
+          minHeight: 'unset',
+        }}
       >
+        {done && <Check size={9} color="white" strokeWidth={3} />}
+      </button>
+
+      {/* Barra de color */}
+      <div className="w-0.5 self-stretch rounded-full flex-shrink-0" style={{ background: barColor }} />
+
+      {/* Chip de tipo */}
+      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded flex-shrink-0"
+        style={{ color: chipColor, background: chipBg }}>
         {t.label.toUpperCase()}
       </span>
-      {hora && <span className="text-[11px] font-mono text-gray-400 flex-shrink-0">{fmtHora(hora)}</span>}
-      <span className="text-[12px] text-gray-700 font-medium truncate flex-1">{label}</span>
-      {sub && <span className="text-[11px] text-gray-400 flex-shrink-0 truncate max-w-[160px]">{sub}</span>}
+
+      {/* Hora */}
+      {hora && <span className="text-[11px] font-mono flex-shrink-0" style={{ color: done ? '#9CA3AF' : '#6B7280' }}>{fmtHora(hora)}</span>}
+
+      {/* Label */}
+      <span className="text-[12px] font-medium truncate flex-1"
+        style={{ color: textColor, textDecoration: done ? 'line-through' : 'none' }}>
+        {href ? (
+          <a href={href} target="_blank" rel="noreferrer" className="hover:underline">{label}</a>
+        ) : label}
+      </span>
+
+      {/* Sub (tipo audiencia, etc.) */}
+      {sub && (
+        <span className="text-[10px] flex-shrink-0 truncate max-w-[100px]"
+          style={{ color: done ? '#D1D5DB' : '#9CA3AF' }}>{sub}</span>
+      )}
+
+      {/* Cliente: nombre completo en negrita */}
+      {cliente && (
+        <span className="text-[11px] font-bold flex-shrink-0 truncate max-w-[150px]"
+          style={{ color: done ? '#9CA3AF' : '#374151' }}>{cliente}</span>
+      )}
     </div>
   )
-  return href
-    ? <a href={href} target="_blank" rel="noreferrer" className="block hover:opacity-75 transition-opacity">{inner}</a>
-    : inner
+
+  return inner
 }
 
 // ── NotaRow ───────────────────────────────────────────────────────────────────
-function NotaRow({ nota, onToggle, onDelete, isPast, newNotaId, onConvert }) {
-  const [showConv, setShowConv] = useState(false)
+// Notas propias de agenda_notas (barra ámbar). Expandibles con contenido.
+function NotaRow({ nota, onToggle, onDelete, isPast, newNotaId, onConvert, onSaveContenido }) {
+  const [showConv,   setShowConv]   = useState(false)
+  const [expanded,   setExpanded]   = useState(false)
+  const [contenido,  setContenido]  = useState(nota.contenido || '')
+  const textareaRef = useRef(null)
   const isNew = nota.id === newNotaId
+  const hasContenido = !!(nota.contenido || '').trim()
+
+  useEffect(() => {
+    setContenido(nota.contenido || '')
+  }, [nota.contenido])
+
+  useEffect(() => {
+    if (expanded) setTimeout(() => textareaRef.current?.focus(), 30)
+  }, [expanded])
+
+  function handleContenidoBlur() {
+    const txt = contenido.trim()
+    if (txt !== (nota.contenido || '').trim()) {
+      onSaveContenido?.(nota, txt || null)
+    }
+  }
 
   return (
-    <div className="group">
-      <div className="flex items-center gap-2 py-1 hover:bg-gray-50/60 rounded px-1 -mx-1">
+    <div>
+      {/* Fila principal */}
+      <div
+        className="group flex items-center gap-1.5 py-1 hover:bg-gray-50/60 rounded px-1 -mx-1"
+        style={expanded ? { background: '#F0F7FF', borderRadius: 6 } : {}}
+      >
+        {/* Flecha expand (solo notas propias) */}
         <button
-          onClick={() => !isPast && onToggle(nota)}
-          disabled={isPast}
-          className="flex-shrink-0 w-4 h-4 rounded border flex items-center justify-center transition-colors"
+          onClick={() => setExpanded(s => !s)}
+          className="flex-shrink-0 w-4 h-4 flex items-center justify-center text-gray-300 hover:text-[#2570BA] transition-colors no-touch-min"
+          style={{ minHeight: 'unset' }}
+          title={expanded ? 'Cerrar' : 'Expandir'}
+        >
+          {expanded
+            ? <ChevronDown size={10} />
+            : <ChevronRight size={10} strokeWidth={2} className={hasContenido ? 'text-[#C8862B]' : ''} />
+          }
+        </button>
+
+        {/* Barra ámbar */}
+        <div className="w-0.5 self-stretch rounded-full flex-shrink-0"
+          style={{ background: nota.completada ? '#D1D5DB' : '#C8862B' }} />
+
+        {/* Checkbox completar — funciona en cualquier día, sin restricción por fecha */}
+        <button
+          onClick={e => { e.stopPropagation(); onToggle(nota) }}
+          className="flex-shrink-0 w-5 h-5 rounded border-2 flex items-center justify-center transition-colors"
           style={{
             borderColor: nota.completada ? '#1E9E6A' : '#CBD5E1',
             background:  nota.completada ? '#1E9E6A' : 'transparent',
           }}
         >
-          {nota.completada && <Check size={9} color="white" strokeWidth={3} />}
+          {nota.completada && <Check size={10} color="white" strokeWidth={3} />}
         </button>
+
+        {/* Texto */}
         <span
           className="flex-1 text-[12px] leading-snug"
           style={{
@@ -230,11 +317,17 @@ function NotaRow({ nota, onToggle, onDelete, isPast, newNotaId, onConvert }) {
               {nota.tag === 'tarea' ? '→ Tarea' : '→ Seguimiento'}
             </span>
           )}
+          {/* Indicador de contenido */}
+          {hasContenido && !expanded && (
+            <span className="ml-1.5 inline-block w-1.5 h-1.5 rounded-full bg-[#C8862B]/60 align-middle" title="Tiene contenido" />
+          )}
         </span>
+
         {!isPast && !nota.completada && !nota.tag && (
           <button
             onClick={() => setShowConv(s => !s)}
-            className="opacity-0 group-hover:opacity-100 text-[9px] text-[#2570BA]/50 hover:text-[#2570BA] px-1.5 py-0.5 border border-[#2570BA]/20 rounded transition-all"
+            className="opacity-0 group-hover:opacity-100 text-[9px] text-[#2570BA]/50 hover:text-[#2570BA] px-1.5 py-0.5 border border-[#2570BA]/20 rounded transition-all no-touch-min"
+            style={{ minHeight: 'unset' }}
           >
             convertir
           </button>
@@ -242,12 +335,32 @@ function NotaRow({ nota, onToggle, onDelete, isPast, newNotaId, onConvert }) {
         {!isPast && (
           <button
             onClick={() => onDelete(nota)}
-            className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-400 transition-all"
+            className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-400 transition-all no-touch-min"
+            style={{ minHeight: 'unset' }}
           >
             <X size={11} />
           </button>
         )}
       </div>
+
+      {/* Área expandida */}
+      {expanded && (
+        <div
+          className="ml-8 mb-1 mt-0.5 rounded-lg p-2.5"
+          style={{ background: '#F8FAFC', borderLeft: '2px solid #2570BA' }}
+        >
+          <textarea
+            ref={textareaRef}
+            value={contenido}
+            onChange={e => setContenido(e.target.value)}
+            onBlur={handleContenidoBlur}
+            placeholder="Notas, explicaciones, artículos…"
+            rows={3}
+            className="w-full text-[11px] text-gray-700 bg-transparent border-0 outline-none resize-none placeholder:text-gray-300 leading-relaxed"
+          />
+        </div>
+      )}
+
       {(showConv || (isNew && isActionText(nota.texto) && !nota.tag)) && (
         <ConvMenu
           nota={nota}
@@ -313,20 +426,49 @@ function AnotarInput({ date, onSave, isPast }) {
 function DayBlock({
   iso, isToday, isPast,
   audiencias, plazos, tareas, reuniones, notas,
-  onToggleNota, onAddNota, onDeleteNota, onConvertNota,
+  onToggleNota, onAddNota, onDeleteNota, onConvertNota, onSaveContenido,
   clientes, gcalEventos,
+  ocultosSet, onOcultar, onDesocultar,
 }) {
   const [newNotaId,     setNewNotaId]     = useState(null)
   const [showCompleted, setShowCompleted] = useState(false)
 
+  const gcalItems = gcalEventos || []
+
+  // Helper para la clave de agenda_ocultos
+  const oKey = (origen, id) => `${origen}:${String(id)}`
+
+  // Separar cada tipo en visible / oculto
+  const visAud  = audiencias.filter(a => !ocultosSet.has(oKey('audiencia', a.id)))
+  const doneAud = audiencias.filter(a =>  ocultosSet.has(oKey('audiencia', a.id)))
+
+  const visPlaz  = plazos.filter(p => !ocultosSet.has(oKey('plazo', p.id)))
+  const donePlaz = plazos.filter(p =>  ocultosSet.has(oKey('plazo', p.id)))
+
+  const visTar  = tareas.filter(t => !ocultosSet.has(oKey('tarea', t.id)))
+  const doneTar = tareas.filter(t =>  ocultosSet.has(oKey('tarea', t.id)))
+
+  const visReu  = reuniones.filter(r => !ocultosSet.has(oKey('reunion', r.id)))
+  const doneReu = reuniones.filter(r =>  ocultosSet.has(oKey('reunion', r.id)))
+
+  const visGcal  = gcalItems.filter(e => !ocultosSet.has(oKey('google', e.id)))
+  const doneGcal = gcalItems.filter(e =>  ocultosSet.has(oKey('google', e.id)))
+
   const pendingNotas   = notas.filter(n => !n.completada)
   const completedNotas = notas.filter(n =>  n.completada)
-  const hiddenCount    = showCompleted ? 0 : completedNotas.length
-  const gcalItems      = gcalEventos || []
 
-  const hasItems = (audiencias.length + plazos.length + tareas.length +
-                    reuniones.length + pendingNotas.length + gcalItems.length) > 0
-  const isEmpty  = !hasItems && completedNotas.length === 0
+  // Todos los completados (externos + notas)
+  const allDoneExternal = [...doneAud, ...donePlaz, ...doneTar, ...doneReu, ...doneGcal]
+  const totalDone = allDoneExternal.length + completedNotas.length
+
+  // Contadores para la barra de progreso
+  const totalAll = audiencias.length + plazos.length + tareas.length +
+                   reuniones.length + gcalItems.length + notas.length
+  const pct = totalAll > 0 ? Math.round((totalDone / totalAll) * 100) : 0
+
+  const hasVisible = (visAud.length + visPlaz.length + visTar.length +
+                      visReu.length + visGcal.length + pendingNotas.length) > 0
+  const isEmpty = totalAll === 0
 
   const headerLabel = `${dowShort(iso)}, ${dayMonth(iso)}`
 
@@ -367,50 +509,60 @@ function DayBlock({
             HOY
           </span>
         )}
-        {hiddenCount > 0 && (
-          <span className="ml-auto text-[10px] text-gray-300 tabular-nums">{hiddenCount} oculta{hiddenCount !== 1 ? 's' : ''}</span>
+
+        {/* Contador y barra de progreso */}
+        {totalAll > 0 && (
+          <div className="ml-auto flex items-center gap-2">
+            <span className="text-[10px] tabular-nums" style={{ color: totalDone === totalAll ? '#1E9E6A' : '#9CA3AF' }}>
+              {totalDone} de {totalAll}
+            </span>
+            <div className="w-16 h-1 rounded-full bg-gray-100 overflow-hidden">
+              <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: '#1E9E6A' }} />
+            </div>
+          </div>
         )}
       </div>
 
-      {/* Items del sistema */}
-      {(audiencias.length + plazos.length + tareas.length + reuniones.length) > 0 && (
+      {/* Items externos visibles */}
+      {(visAud.length + visPlaz.length + visTar.length + visReu.length + visGcal.length) > 0 && (
         <div className="px-5 pb-1">
-          {audiencias.map(a => (
+          {visAud.map(a => (
             <EventoItem key={a.id} tipo="audiencia"
               label={a.cliente_nombre || a.causa_rit || a.rit}
-              sub={a.tipo || (a.rit !== a.causa_rit ? (a.rit || a.causa_rit) : null)}
-              hora={a.hora} />
+              sub={a.tipo}
+              hora={a.hora}
+              cliente={null}
+              onOcultar={() => onOcultar(iso, 'audiencia', String(a.id))} />
           ))}
-          {plazos.map(p => (
+          {visPlaz.map(p => (
             <EventoItem key={p.id} tipo="plazo"
               label={p.descripcion}
-              sub={p.cliente_nombre}
-              hora={null} />
+              sub={null}
+              cliente={p.cliente_nombre || null}
+              onOcultar={() => onOcultar(iso, 'plazo', String(p.id))} />
           ))}
-          {tareas.map(t => (
+          {visTar.map(t => (
             <EventoItem key={t.id} tipo="tarea"
               label={t.titulo}
-              sub={t.cliente_nombre}
-              hora={null} />
+              sub={null}
+              cliente={t.cliente_nombre || null}
+              onOcultar={() => onOcultar(iso, 'tarea', String(t.id))} />
           ))}
-          {reuniones.map(r => (
+          {visReu.map(r => (
             <EventoItem key={r.id} tipo="reunion"
               label={r.titulo || 'Reunión'}
               sub={null}
-              hora={null} />
+              cliente={null}
+              onOcultar={() => onOcultar(iso, 'reunion', String(r.id))} />
           ))}
-        </div>
-      )}
-
-      {/* Eventos externos de Google Calendar (calendar principal) */}
-      {gcalItems.length > 0 && (
-        <div className="px-5 pb-1">
-          {gcalItems.map(e => (
+          {visGcal.map(e => (
             <EventoItem key={e.id} tipo="gcal"
               label={e.title}
               sub={null}
               hora={e.hora}
-              href={e.htmlLink} />
+              href={e.htmlLink}
+              cliente={null}
+              onOcultar={() => onOcultar(iso, 'google', String(e.id))} />
           ))}
         </div>
       )}
@@ -423,21 +575,7 @@ function DayBlock({
               onToggle={onToggleNota}
               onDelete={onDeleteNota}
               onConvert={onConvertNota}
-              isPast={isPast}
-              newNotaId={newNotaId}
-            />
-          ))}
-        </div>
-      )}
-
-      {/* Notas completadas (plegadas) */}
-      {completedNotas.length > 0 && showCompleted && (
-        <div className="px-5 pb-1">
-          {completedNotas.map(n => (
-            <NotaRow key={n.id} nota={n}
-              onToggle={onToggleNota}
-              onDelete={onDeleteNota}
-              onConvert={onConvertNota}
+              onSaveContenido={onSaveContenido}
               isPast={isPast}
               newNotaId={newNotaId}
             />
@@ -446,16 +584,77 @@ function DayBlock({
       )}
 
       {/* Toggle completadas */}
-      {completedNotas.length > 0 && (
+      {totalDone > 0 && (
         <div className="px-5 pb-1">
           <button
             onClick={() => setShowCompleted(s => !s)}
             className="text-[11px] text-gray-300 hover:text-gray-500 transition-colors"
           >
             {showCompleted
-              ? `▾ Ocultar ${completedNotas.length} completada${completedNotas.length !== 1 ? 's' : ''}`
-              : `▸ Mostrar ${completedNotas.length} completada${completedNotas.length !== 1 ? 's' : ''}`}
+              ? `▾ Ocultar ${totalDone} completada${totalDone !== 1 ? 's' : ''}`
+              : `▸ Mostrar ${totalDone} completada${totalDone !== 1 ? 's' : ''}`}
           </button>
+        </div>
+      )}
+
+      {/* Items completados */}
+      {showCompleted && totalDone > 0 && (
+        <div className="px-5 pb-1">
+          {/* Externos completados */}
+          {doneAud.map(a => (
+            <EventoItem key={a.id} tipo="audiencia"
+              label={a.cliente_nombre || a.causa_rit || a.rit}
+              sub={a.tipo}
+              hora={a.hora}
+              cliente={null}
+              isOculto
+              onDesocultar={() => onDesocultar(iso, 'audiencia', String(a.id))} />
+          ))}
+          {donePlaz.map(p => (
+            <EventoItem key={p.id} tipo="plazo"
+              label={p.descripcion}
+              sub={null}
+              cliente={p.cliente_nombre || null}
+              isOculto
+              onDesocultar={() => onDesocultar(iso, 'plazo', String(p.id))} />
+          ))}
+          {doneTar.map(t => (
+            <EventoItem key={t.id} tipo="tarea"
+              label={t.titulo}
+              sub={null}
+              cliente={t.cliente_nombre || null}
+              isOculto
+              onDesocultar={() => onDesocultar(iso, 'tarea', String(t.id))} />
+          ))}
+          {doneReu.map(r => (
+            <EventoItem key={r.id} tipo="reunion"
+              label={r.titulo || 'Reunión'}
+              sub={null}
+              cliente={null}
+              isOculto
+              onDesocultar={() => onDesocultar(iso, 'reunion', String(r.id))} />
+          ))}
+          {doneGcal.map(e => (
+            <EventoItem key={e.id} tipo="gcal"
+              label={e.title}
+              sub={null}
+              hora={e.hora}
+              href={e.htmlLink}
+              cliente={null}
+              isOculto
+              onDesocultar={() => onDesocultar(iso, 'google', String(e.id))} />
+          ))}
+          {/* Notas completadas */}
+          {completedNotas.map(n => (
+            <NotaRow key={n.id} nota={n}
+              onToggle={onToggleNota}
+              onDelete={onDeleteNota}
+              onConvert={onConvertNota}
+              onSaveContenido={onSaveContenido}
+              isPast={isPast}
+              newNotaId={newNotaId}
+            />
+          ))}
         </div>
       )}
 
@@ -532,8 +731,8 @@ function PendienteRow({
         />
         <span className="flex-1 text-[12px] text-gray-700 leading-snug">{p.texto}</span>
         {linkedCausa && (
-          <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-[#2570BA] font-medium flex-shrink-0 truncate max-w-[110px]">
-            {linkedCausa.cliente_nombre?.split(' ')[0] || linkedCausa.rit || '⚖'}
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 font-bold text-[#2570BA] flex-shrink-0 truncate max-w-[130px]">
+            {linkedCausa.cliente_nombre || linkedCausa.rit || '⚖'}
           </span>
         )}
         {children.length > 0 && (
@@ -606,7 +805,7 @@ function PendienteRow({
             className="w-full text-[11px] text-gray-600 bg-transparent border-0 outline-none resize-none placeholder:text-gray-300 leading-relaxed"
           />
 
-          {/* Acciones de conversión / mover */}
+          {/* Acciones */}
           <div className="flex items-center gap-1.5 flex-wrap mt-2 pt-2 border-t border-gray-100">
             {!linkedCausa && (
               <div className="relative">
@@ -630,7 +829,7 @@ function PendienteRow({
                 onClick={() => onUnlink(p)}
                 className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] text-[#2570BA] border border-blue-200 rounded-md hover:bg-blue-50"
               >
-                <Scale size={9} />{linkedCausa.cliente_nombre?.split(' ')[0]} · ×
+                <Scale size={9} />{linkedCausa.cliente_nombre || linkedCausa.rit} · ×
               </button>
             )}
             <div className="relative">
@@ -710,6 +909,31 @@ function CausaLinkDropdown({ causas, onLink, onClose }) {
   )
 }
 
+// ── Leyenda de tipos ──────────────────────────────────────────────────────────
+function Leyenda() {
+  const items = [
+    { tipo: 'audiencia', label: 'Audiencia' },
+    { tipo: 'plazo',     label: 'Plazo' },
+    { tipo: 'tarea',     label: 'Tarea' },
+    { tipo: 'reunion',   label: 'Reunión' },
+    { tipo: 'gcal',      label: 'Google' },
+    { tipo: 'nota',      label: 'Mis notas' },
+  ]
+  return (
+    <div className="px-5 py-2 border-t border-gray-100 bg-gray-50/60 flex flex-wrap gap-x-4 gap-y-1">
+      {items.map(({ tipo, label }) => {
+        const t = TIPOS[tipo]
+        return (
+          <span key={tipo} className="flex items-center gap-1 text-[10px] text-gray-400">
+            <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: t.color }} />
+            {label}
+          </span>
+        )
+      })}
+    </div>
+  )
+}
+
 // ── Componente principal ──────────────────────────────────────────────────────
 export default function Apuntes() {
   const [weekMonday, setWeekMonday] = useState(() => {
@@ -717,7 +941,6 @@ export default function Apuntes() {
     catch { return getMonday(TODAY) }
   })
 
-  // Semana: datos por fecha
   const [notas,        setNotas]        = useState({})
   const [audiencias,   setAudiencias]   = useState({})
   const [tareas,       setTareas]       = useState({})
@@ -728,8 +951,8 @@ export default function Apuntes() {
   const [loading,      setLoading]      = useState(false)
   const [segPicker,    setSegPicker]    = useState(null)
   const [gcalEventos,  setGcalEventos]  = useState({})
+  const [ocultos,      setOcultos]      = useState({}) // { [fecha]: Set<"origen:itemId"> }
 
-  // Pendientes
   const [pendientes,      setPendientes]      = useState([])
   const [pendienteInput,  setPendienteInput]  = useState('')
   const [pendTab,         setPendTab]         = useState('lista')
@@ -773,6 +996,7 @@ export default function Apuntes() {
         { data: reunData },
         { data: clientesData },
         { data: causasData },
+        { data: ocultosData },
       ] = await Promise.all([
         supabase.from('agenda_notas').select('*').gte('fecha', start).lte('fecha', end).order('hora'),
         supabase.from('audiencias').select('id, fecha, hora, rit, causa_rit, cliente_nombre, tipo')
@@ -786,6 +1010,8 @@ export default function Apuntes() {
         supabase.from('clientes').select('id, nombre'),
         supabase.from('causas').select('id, rit, ruc, materia, cliente_nombre, estado')
           .in('estado', ['Abierta', 'Revisar', 'En tramitación']).order('cliente_nombre'),
+        supabase.from('agenda_ocultos').select('fecha, origen, item_id')
+          .gte('fecha', start).lte('fecha', end),
       ])
       setNotas(groupBy(notasData, 'fecha'))
       setAudiencias(groupBy(audData, 'fecha'))
@@ -794,6 +1020,15 @@ export default function Apuntes() {
       setReuniones(groupBy(reunData, 'fecha_jueves'))
       setClientes(clientesData || [])
       setCausas(causasData || [])
+
+      // Construir mapa de ocultos por fecha
+      const ocMap = {}
+      for (const o of (ocultosData || [])) {
+        if (!ocMap[o.fecha]) ocMap[o.fecha] = new Set()
+        ocMap[o.fecha].add(`${o.origen}:${o.item_id}`)
+      }
+      setOcultos(ocMap)
+
       setLoading(false)
     }
     fetchAll()
@@ -828,12 +1063,10 @@ export default function Apuntes() {
       .order('created_at', { ascending: true })
       .then(({ data, error }) => {
         if (error) console.error('[agenda_pendientes] fetch:', error.message)
-        // Filtrar pendiente con texto solo "-"
         setPendientes((data || []).filter(p => p.texto !== '-'))
       })
   }, [])
 
-  // Limpia timers al desmontar
   useEffect(() => () => {
     Object.values(resolveBatches.current).forEach(b => clearTimeout(b.timer))
   }, [])
@@ -859,7 +1092,30 @@ export default function Apuntes() {
         await supabase.from('agenda_notas').update({ completada: true }).in('id', data.map(n => n.id))
         if (inserted?.length) setPendientes(prev => [...prev, ...inserted])
       })
-  }, []) // solo al montar
+  }, [])
+
+  // ── Handlers: ocultos ───────────────────────────────────────────────────────
+  const handleOcultar = useCallback(async (fecha, origen, itemId) => {
+    const { error } = await supabase.from('agenda_ocultos')
+      .insert({ fecha, origen, item_id: String(itemId) })
+    if (error) { console.error('[agenda_ocultos] insert:', error.message); return }
+    setOcultos(prev => {
+      const s = new Set(prev[fecha] || [])
+      s.add(`${origen}:${itemId}`)
+      return { ...prev, [fecha]: s }
+    })
+  }, [])
+
+  const handleDesocultar = useCallback(async (fecha, origen, itemId) => {
+    await supabase.from('agenda_ocultos')
+      .delete()
+      .eq('fecha', fecha).eq('origen', origen).eq('item_id', String(itemId))
+    setOcultos(prev => {
+      const s = new Set(prev[fecha] || [])
+      s.delete(`${origen}:${itemId}`)
+      return { ...prev, [fecha]: s }
+    })
+  }, [])
 
   // ── Handlers: agenda ────────────────────────────────────────────────────────
   const handleAddNota = useCallback(async (date, text) => {
@@ -887,6 +1143,14 @@ export default function Apuntes() {
     if (!error) setNotas(prev => ({
       ...prev,
       [nota.fecha]: (prev[nota.fecha] || []).filter(n => n.id !== nota.id)
+    }))
+  }, [])
+
+  const handleSaveContenidoNota = useCallback(async (nota, contenido) => {
+    await supabase.from('agenda_notas').update({ contenido: contenido || null }).eq('id', nota.id)
+    setNotas(prev => ({
+      ...prev,
+      [nota.fecha]: (prev[nota.fecha] || []).map(n => n.id === nota.id ? { ...n, contenido: contenido || null } : n)
     }))
   }, [])
 
@@ -1065,7 +1329,6 @@ export default function Apuntes() {
   const antesFiltered = filterByTab(pendAntes)
   const estaFiltered  = filterByTab(pendEsta)
 
-  // "Por causa" grouping
   const estaGrouped = useMemo(() => {
     if (pendTab !== 'por-causa') return null
     const groups = {}
@@ -1087,7 +1350,6 @@ export default function Apuntes() {
   return (
     <div className="h-full flex flex-col bg-[#F5F6F8] overflow-hidden">
 
-      {/* Picker de causa */}
       {segPicker && (
         <SeguimientoPicker
           nota={segPicker.item}
@@ -1164,15 +1426,21 @@ export default function Apuntes() {
                   notas={notas[date] || []}
                   clientes={clientes}
                   gcalEventos={gcalEventos[date] || []}
+                  ocultosSet={ocultos[date] || new Set()}
+                  onOcultar={handleOcultar}
+                  onDesocultar={handleDesocultar}
                   onToggleNota={handleToggleNota}
                   onAddNota={handleAddNota}
                   onDeleteNota={handleDeleteNota}
                   onConvertNota={handleConvertNota}
+                  onSaveContenido={handleSaveContenidoNota}
                 />
               ))
             )}
             <div className="h-8" />
           </div>
+          {/* Leyenda de tipos */}
+          <Leyenda />
         </div>
 
         {/* ── Columna derecha: Pendientes (40%) ── */}
@@ -1215,7 +1483,6 @@ export default function Apuntes() {
           {/* Lista scrollable */}
           <div className="flex-1 overflow-y-auto">
 
-          {/* Pendientes anteriores */}
           {antesFiltered.length > 0 && (
             <div>
               <div className="px-5 py-2 bg-amber-50 border-b border-amber-100">
@@ -1244,7 +1511,6 @@ export default function Apuntes() {
                     onLink={handleLinkPendiente}
                     onUnlink={handleUnlinkPendiente}
                   />
-                  {/* Chip de semana */}
                   {!resolvingIds.has(p.id) && p.created_at && (
                     <span
                       className="absolute right-10 top-2.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full pointer-events-none"
@@ -1258,7 +1524,6 @@ export default function Apuntes() {
             </div>
           )}
 
-          {/* Pendientes de esta semana */}
           {pendTab !== 'por-causa' && estaFiltered.length > 0 && (
             <div>
               {antesFiltered.length > 0 && (
@@ -1291,7 +1556,6 @@ export default function Apuntes() {
             </div>
           )}
 
-          {/* Por causa: agrupado */}
           {pendTab === 'por-causa' && estaGrouped && (
             <div>
               {antesFiltered.length > 0 && (
@@ -1304,7 +1568,7 @@ export default function Apuntes() {
                 return (
                   <div key={causaId}>
                     <div className="px-5 py-1.5 border-b border-gray-100 bg-blue-50/30">
-                      <span className="text-[10px] font-semibold text-[#2570BA]">
+                      <span className="text-[10px] font-bold text-[#2570BA]">
                         {causa ? (causa.cliente_nombre || causa.rit || '—') : 'Sin causa'}
                       </span>
                       {causa?.rit && <span className="text-[10px] text-gray-400 ml-1.5 font-mono">{causa.rit}</span>}
@@ -1343,11 +1607,10 @@ export default function Apuntes() {
             </div>
           )}
 
-          {/* Pie */}
           <div className="h-6" />
-          </div>{/* /lista scrollable */}
-        </div>{/* /bg-white flex col */}
-        </div>{/* /columna derecha */}
+          </div>
+        </div>
+        </div>
       </div>
     </div>
   )
