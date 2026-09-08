@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   Search, Plus, X, Check, ChevronDown, ChevronRight,
   Calendar, Clock, Flag, CheckSquare, Activity,
-  AlignLeft, Layers, Tag, Trash2, Edit2, Loader2, AlertCircle,
+  AlignLeft, Layers, Tag, Trash2, Edit2, Loader2, AlertCircle, Undo2,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal'
@@ -522,7 +522,24 @@ function DropdownSelect({ value, onChange, options, getStyle, label, compact = f
 }
 
 // ── TaskRow ───────────────────────────────────────────────────────────────────
-function TaskRow({ tarea, onClick, onToggle, onDeleteRequest, panelOpen, onOpenCausa }) {
+function TaskRow({ tarea, onClick, onToggle, onDeleteRequest, panelOpen, onOpenCausa, isResolviendo, onUndo }) {
+  if (isResolviendo) {
+    return (
+      <div className="flex items-center gap-3 px-4 py-3.5 border-l-[3px] border-l-transparent border-b border-gray-50">
+        <div className="w-[18px] h-[18px] rounded-full border-2 border-emerald-400 bg-emerald-400 flex items-center justify-center flex-shrink-0">
+          <Check size={9} className="text-white" />
+        </div>
+        <span className="flex-1 text-[13px] text-gray-300 line-through leading-snug">{tarea.titulo}</span>
+        <button
+          onClick={() => onUndo(tarea.id)}
+          className="flex items-center gap-1 text-[11px] font-medium text-[#2570BA] hover:underline flex-shrink-0"
+        >
+          <Undo2 size={11} /> Deshacer
+        </button>
+      </div>
+    )
+  }
+
   const eE    = efectivoEstado(tarea)
   const eS    = ESTADO_STYLES[eE]     || ESTADO_STYLES['Pendiente']
   const pS    = PRIORIDAD_STYLES[tarea.prioridad] || PRIORIDAD_STYLES['Media']
@@ -642,7 +659,7 @@ function TaskRow({ tarea, onClick, onToggle, onDeleteRequest, panelOpen, onOpenC
 }
 
 // ── GroupSection ──────────────────────────────────────────────────────────────
-function GroupSection({ grupo, onTaskClick, onToggle, onDeleteRequest, panelOpen, onOpenCausa }) {
+function GroupSection({ grupo, onTaskClick, onToggle, onDeleteRequest, panelOpen, onOpenCausa, resolviendo, onUndo }) {
   const [open, setOpen] = useState(true)
 
   return (
@@ -671,6 +688,8 @@ function GroupSection({ grupo, onTaskClick, onToggle, onDeleteRequest, panelOpen
               onDeleteRequest={onDeleteRequest}
               panelOpen={panelOpen}
               onOpenCausa={onOpenCausa}
+              isResolviendo={resolviendo?.has(t.id)}
+              onUndo={onUndo}
             />
           ))}
         </div>
@@ -1158,14 +1177,17 @@ export default function Tareas() {
     catch { return {} }
   })
 
-  const [tareas,       setTareas]       = useState([])
-  const [allCausas,    setAllCausas]    = useState([])
-  const [cargando,     setCargando]     = useState(true)
-  const [error,        setError]        = useState(null)
-  const [seleccionada, setSeleccionada] = useState(null)
-  const [showForm,     setShowForm]     = useState(false)
-  const [busqueda,     setBusqueda]     = useState(_ps.busqueda ?? '')
-  const [groupBy,      setGroupBy]      = useState(_ps.groupBy ?? 'Por fecha')
+  const [tareas,         setTareas]         = useState([])
+  const [allCausas,      setAllCausas]      = useState([])
+  const [cargando,       setCargando]       = useState(true)
+  const [error,          setError]          = useState(null)
+  const [seleccionada,   setSeleccionada]   = useState(null)
+  const [showForm,       setShowForm]       = useState(false)
+  const [busqueda,       setBusqueda]       = useState(_ps.busqueda ?? '')
+  const [groupBy,        setGroupBy]        = useState(_ps.groupBy ?? 'Por fecha')
+  const [showCompletadas,setShowCompletadas]= useState(false)
+  const [resolviendo,    setResolviendo]    = useState(new Set())
+  const timeoutsRef = useRef(new Map())
 
   const [fEstado,      setFEstado]      = useState(_ps.fEstado ?? 'Todos')
   const [fPrioridad,   setFPrioridad]   = useState(_ps.fPrioridad ?? 'Todas')
@@ -1271,19 +1293,41 @@ export default function Tareas() {
     if (err) console.error('Error actualizando tarea:', err.message)
   }, [])
 
+  // ── Deshacer completado (dentro de ventana de 3s) ──
+  const handleUndoToggle = useCallback((id) => {
+    const tid = timeoutsRef.current.get(id)
+    if (tid) clearTimeout(tid)
+    timeoutsRef.current.delete(id)
+    setResolviendo(prev => { const s = new Set(prev); s.delete(id); return s })
+    setTareas(prev => prev.map(t => t.id === id ? { ...t, estado: 'Pendiente' } : t))
+  }, [])
+
   // ── Toggle completada ──
   const handleToggle = useCallback(async (id) => {
     const tarea = tareas.find(t => t.id === id)
     if (!tarea) return
-    const done      = ['Completada','Cancelada'].includes(tarea.estado)
-    const nuevoEstado = done ? 'Pendiente' : 'Completada'
-    setTareas(prev => prev.map(t => t.id === id ? { ...t, estado: nuevoEstado } : t))
-    const { error: err } = await supabase
-      .from('tareas')
-      .update({ estado: nuevoEstado })
-      .eq('id', id)
-    if (err) console.error('Error toggling tarea:', err.message)
-  }, [tareas])
+    if (resolviendo.has(id)) return // ya en ventana de undo
+
+    const done = ['Completada','Cancelada'].includes(tarea.estado)
+
+    if (done) {
+      // Reabrir inmediatamente
+      setTareas(prev => prev.map(t => t.id === id ? { ...t, estado: 'Pendiente' } : t))
+      await supabase.from('tareas').update({ estado: 'Pendiente', fecha_completada: null }).eq('id', id)
+      return
+    }
+
+    // Completar: marcar en UI + 3s para persistir
+    setTareas(prev => prev.map(t => t.id === id ? { ...t, estado: 'Completada' } : t))
+    setResolviendo(prev => { const s = new Set(prev); s.add(id); return s })
+
+    const tid = setTimeout(async () => {
+      timeoutsRef.current.delete(id)
+      setResolviendo(prev => { const s = new Set(prev); s.delete(id); return s })
+      await supabase.from('tareas').update({ estado: 'Completada', fecha_completada: TODAY }).eq('id', id)
+    }, 3000)
+    timeoutsRef.current.set(id, tid)
+  }, [tareas, resolviendo])
 
   // ── Crear tarea ──
   const handleAdd = useCallback(async (form) => {
@@ -1331,6 +1375,14 @@ export default function Tareas() {
   // Filter
   const filtradas = useMemo(() => {
     let r = tareas
+
+    // Ocultar completadas/canceladas por defecto (excepto las en ventana de undo)
+    if (!showCompletadas) {
+      r = r.filter(t =>
+        resolviendo.has(t.id) || !['Completada','Cancelada'].includes(t.estado)
+      )
+    }
+
     if (busqueda.trim()) {
       const q = busqueda.toLowerCase()
       r = r.filter(t =>
@@ -1345,7 +1397,7 @@ export default function Tareas() {
     if (fCategoria !== 'Todas')  r = r.filter(t => t.categoria  === fCategoria)
     if (fGeneral)                r = r.filter(t => !t.causa_id)
     return r
-  }, [tareas, busqueda, fEstado, fPrioridad, fResp, fCategoria, fGeneral])
+  }, [tareas, busqueda, fEstado, fPrioridad, fResp, fCategoria, fGeneral, showCompletadas, resolviendo])
 
   const grupos = useMemo(() => computeGrupos(filtradas, groupBy), [filtradas, groupBy])
   const hayFiltros = busqueda || fEstado !== 'Todos' || fPrioridad !== 'Todas' || fResp !== 'Todas' || fCategoria !== 'Todas' || fGeneral
@@ -1437,6 +1489,23 @@ export default function Tareas() {
                   Solo generales
                 </button>
 
+                <button
+                  onClick={() => setShowCompletadas(v => !v)}
+                  className={`flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1.5 rounded-lg border transition-colors whitespace-nowrap ${
+                    showCompletadas
+                      ? 'bg-emerald-500 text-white border-emerald-500'
+                      : 'bg-gray-50 text-gray-400 border-gray-100 hover:text-gray-600'
+                  }`}
+                >
+                  <Check size={10} />
+                  Completadas
+                  {!showCompletadas && (
+                    <span className="text-[9px] opacity-70 tabular-nums">
+                      {tareas.filter(t => ['Completada','Cancelada'].includes(t.estado)).length}
+                    </span>
+                  )}
+                </button>
+
                 <div className="flex items-center gap-1 ml-auto border-l border-gray-100 pl-3">
                   <Layers size={12} className="text-gray-300 flex-shrink-0" />
                   {GRUPO_OPTIONS.map(g => (
@@ -1493,6 +1562,8 @@ export default function Tareas() {
                         onDeleteRequest={t => setDeleteTarget({ id: t.id, name: t.titulo })}
                         panelOpen={panelOpen}
                         onOpenCausa={handleOpenCausa}
+                        resolviendo={resolviendo}
+                        onUndo={handleUndoToggle}
                       />
                     ))}
                   </div>
