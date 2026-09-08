@@ -19,7 +19,7 @@ const TIPOS = {
   audiencia: { label: 'Audiencia', color: '#2570BA', bg: '#EBF3FB' },
   plazo:     { label: 'Plazo',     color: '#C0392B', bg: '#FDECEA' },
   tarea:     { label: 'Tarea',     color: '#1E9E6A', bg: '#E8F8F0' },
-  reunion:   { label: 'Reunión',   color: '#7C3AED', bg: '#F3EFFE' },
+  reunion:   { label: 'Reunión',   color: '#8E7CC3', bg: '#EDE9F7' },
   gcal:      { label: 'Google',    color: '#4285F4', bg: '#EEF3FD' },
   nota:      { label: 'Nota',      color: '#C8862B', bg: '#FDF3E7' },
 }
@@ -240,8 +240,10 @@ function EventoItem({ tipo, label, sub, subColor, hora, href, cliente, isOculto,
 }
 
 // ── VieneDAntes ───────────────────────────────────────────────────────────────
-// Bloque de tareas y notas de semanas anteriores sin completar.
-function VieneDAntes({ tareas, notas, ocultos, weekMonday, onOcultar, onDesocultar, onToggleNota }) {
+// Bloque en la columna de pendientes con tareas y notas de semanas anteriores.
+// Al marcar una tarea: agenda_ocultos + seguimiento en su causa.
+// Al marcar una nota: completada en agenda_notas.
+function VieneDAntes({ tareas, notas, ocultos, weekMonday, onOcultarTarea, onDesocultarTarea, onToggleNota }) {
   const [collapsed, setCollapsed] = useState(false)
 
   function diasAtras(fecha) {
@@ -257,30 +259,28 @@ function VieneDAntes({ tareas, notas, ocultos, weekMonday, onOcultar, onDesocult
     return `${dd}-${mm}`
   }
 
-  // Construir lista mixta de items atrasados
   const items = [
     ...tareas.map(t => ({ tipo: 'tarea', item: t, fecha: t.fecha_vencimiento })),
     ...notas.map(n => ({ tipo: 'nota',  item: n, fecha: n.fecha })),
-  ].sort((a, b) => b.fecha.localeCompare(a.fecha)) // más reciente primero
+  ].sort((a, b) => b.fecha.localeCompare(a.fecha))
 
   if (items.length === 0) return null
 
-  // Contar solo los pendientes (no ocultos/completados)
   const pendCount = items.filter(({ tipo, item, fecha }) => {
     if (tipo === 'tarea') return !(ocultos[fecha] || new Set()).has(`tarea:${item.id}`)
     return !item.completada
   }).length
 
   return (
-    <div className="border-b-2 border-amber-200 bg-amber-50/40">
-      {/* Header del bloque */}
-      <div className="flex items-center justify-between px-5 py-2">
+    <div className="border-t border-[#E3E7EC] mt-2">
+      {/* Header */}
+      <div className="flex items-center justify-between px-5 py-2.5 bg-amber-50/60">
         <div className="flex items-center gap-2">
           <span className="text-[10px] font-bold text-amber-700 uppercase tracking-widest">Viene de antes</span>
           {pendCount > 0 && (
-            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+            <span className="text-[9px] font-bold tabular-nums px-1.5 py-0.5 rounded-full"
               style={{ background: '#FEF3C7', color: '#92400E' }}>
-              {pendCount} pendiente{pendCount !== 1 ? 's' : ''}
+              {pendCount}
             </span>
           )}
         </div>
@@ -288,50 +288,73 @@ function VieneDAntes({ tareas, notas, ocultos, weekMonday, onOcultar, onDesocult
           onClick={() => setCollapsed(s => !s)}
           className="text-[11px] text-amber-600 hover:text-amber-800 transition-colors"
         >
-          {collapsed
-            ? `▸ Mostrar ${items.length} de semanas anteriores`
-            : `▾ Ocultar ${items.length} de semanas anteriores`}
+          {collapsed ? `▸ Mostrar ${items.length}` : '▾ Ocultar'}
         </button>
       </div>
 
-      {/* Items */}
       {!collapsed && (
-        <div className="px-5 pb-2">
+        <div>
           {items.map(({ tipo, item, fecha }) => {
             const dias = diasAtras(fecha)
             const late = dias > 15
-            const subLabel = `${fmtFecha(fecha)} · hace ${dias} día${dias === 1 ? '' : 's'}`
-            const subColor = late ? '#C0392B' : '#C8862B'
+            const fechaLabel = `${fmtFecha(fecha)} · hace ${dias}d`
+            const fechaColor = late ? '#C0392B' : '#C8862B'
+            const done = tipo === 'tarea'
+              ? (ocultos[fecha] || new Set()).has(`tarea:${item.id}`)
+              : item.completada
+            const cliente = tipo === 'tarea' ? item.cliente_nombre : null
+            const texto   = tipo === 'tarea' ? item.titulo : item.texto
+            const tipoLabel = tipo === 'tarea' ? 'TAREA' : 'NOTA'
+            const tipoColor = tipo === 'tarea' ? TIPOS.tarea : TIPOS.nota
 
-            if (tipo === 'tarea') {
-              const isOculto = (ocultos[fecha] || new Set()).has(`tarea:${item.id}`)
-              return (
-                <EventoItem key={`at-${item.id}`}
-                  tipo="tarea"
-                  label={item.titulo}
-                  sub={subLabel}
-                  subColor={isOculto ? undefined : subColor}
-                  cliente={item.cliente_nombre || null}
-                  isOculto={isOculto}
-                  onOcultar={() => onOcultar(fecha, 'tarea', String(item.id))}
-                  onDesocultar={() => onDesocultar(fecha, 'tarea', String(item.id))}
-                />
-              )
-            } else {
-              // Nota propia: completada se guarda en agenda_notas.completada
-              return (
-                <EventoItem key={`an-${item.id}`}
-                  tipo="nota"
-                  label={item.texto}
-                  sub={subLabel}
-                  subColor={item.completada ? undefined : subColor}
-                  cliente={null}
-                  isOculto={item.completada}
-                  onOcultar={() => onToggleNota(item)}
-                  onDesocultar={() => onToggleNota(item)}
-                />
-              )
-            }
+            return (
+              <div key={`vda-${tipo}-${item.id}`}
+                className="flex items-start gap-2 px-5 py-2 border-b border-gray-50 group/vda"
+                style={{ opacity: done ? 0.55 : 1 }}
+              >
+                {/* Checkbox */}
+                <button
+                  onClick={() => {
+                    if (tipo === 'tarea') done ? onDesocultarTarea(item) : onOcultarTarea(item)
+                    else onToggleNota(item)
+                  }}
+                  className="flex-shrink-0 mt-0.5 w-4 h-4 rounded border flex items-center justify-center transition-colors"
+                  style={{
+                    borderColor: done ? '#1E9E6A' : '#CBD5E1',
+                    background:  done ? '#1E9E6A' : 'transparent',
+                  }}
+                >
+                  {done && <Check size={9} color="white" strokeWidth={3} />}
+                </button>
+
+                {/* Contenido */}
+                <div className="flex-1 min-w-0">
+                  {/* Tipo + Texto */}
+                  <div className="flex items-start gap-1.5">
+                    <span className="text-[9px] font-bold px-1 py-0.5 rounded flex-shrink-0 mt-0.5"
+                      style={{ color: tipoColor.color, background: tipoColor.bg }}>
+                      {tipoLabel}
+                    </span>
+                    <span className="text-[12px] text-gray-700 leading-snug"
+                      style={{ textDecoration: done ? 'line-through' : 'none', color: done ? '#9CA3AF' : '#374151' }}>
+                      {texto}
+                    </span>
+                  </div>
+                  {/* Cliente */}
+                  {cliente ? (
+                    <p className="text-[11px] font-bold text-gray-700 mt-0.5 pl-0.5">{cliente}</p>
+                  ) : (
+                    <p className="text-[11px] text-gray-300 mt-0.5 pl-0.5">sin causa</p>
+                  )}
+                </div>
+
+                {/* Fecha y atraso */}
+                <span className="text-[10px] font-medium tabular-nums flex-shrink-0 mt-0.5"
+                  style={{ color: done ? '#D1D5DB' : fechaColor }}>
+                  {fechaLabel}
+                </span>
+              </div>
+            )
           })}
         </div>
       )}
@@ -342,24 +365,24 @@ function VieneDAntes({ tareas, notas, ocultos, weekMonday, onOcultar, onDesocult
 // ── NotaRow ───────────────────────────────────────────────────────────────────
 // Notas propias de agenda_notas (barra ámbar). Expandibles con contenido.
 function NotaRow({ nota, onToggle, onDelete, isPast, newNotaId, onConvert, onSaveContenido }) {
-  const [showConv,   setShowConv]   = useState(false)
-  const [expanded,   setExpanded]   = useState(false)
-  const [contenido,  setContenido]  = useState(nota.contenido || '')
+  const [showConv,  setShowConv]  = useState(false)
+  const [expanded,  setExpanded]  = useState(false)
+  const [detalle,   setDetalle]   = useState(nota.detalle || '')
   const textareaRef = useRef(null)
   const isNew = nota.id === newNotaId
-  const hasContenido = !!(nota.contenido || '').trim()
+  const hasDetalle = !!(nota.detalle || '').trim()
 
   useEffect(() => {
-    setContenido(nota.contenido || '')
-  }, [nota.contenido])
+    setDetalle(nota.detalle || '')
+  }, [nota.detalle])
 
   useEffect(() => {
     if (expanded) setTimeout(() => textareaRef.current?.focus(), 30)
   }, [expanded])
 
-  function handleContenidoBlur() {
-    const txt = contenido.trim()
-    if (txt !== (nota.contenido || '').trim()) {
+  function handleDetalleBlur() {
+    const txt = detalle.trim()
+    if (txt !== (nota.detalle || '').trim()) {
       onSaveContenido?.(nota, txt || null)
     }
   }
@@ -380,7 +403,7 @@ function NotaRow({ nota, onToggle, onDelete, isPast, newNotaId, onConvert, onSav
         >
           {expanded
             ? <ChevronDown size={10} />
-            : <ChevronRight size={10} strokeWidth={2} className={hasContenido ? 'text-[#C8862B]' : ''} />
+            : <ChevronRight size={10} strokeWidth={2} className={hasDetalle ? 'text-[#C8862B]' : ''} />
           }
         </button>
 
@@ -416,8 +439,8 @@ function NotaRow({ nota, onToggle, onDelete, isPast, newNotaId, onConvert, onSav
               {nota.tag === 'tarea' ? '→ Tarea' : '→ Seguimiento'}
             </span>
           )}
-          {/* Indicador de contenido */}
-          {hasContenido && !expanded && (
+          {/* Indicador de detalle */}
+          {hasDetalle && !expanded && (
             <span className="ml-1.5 inline-block w-1.5 h-1.5 rounded-full bg-[#C8862B]/60 align-middle" title="Tiene contenido" />
           )}
         </span>
@@ -450,9 +473,9 @@ function NotaRow({ nota, onToggle, onDelete, isPast, newNotaId, onConvert, onSav
         >
           <textarea
             ref={textareaRef}
-            value={contenido}
-            onChange={e => setContenido(e.target.value)}
-            onBlur={handleContenidoBlur}
+            value={detalle}
+            onChange={e => setDetalle(e.target.value)}
+            onBlur={handleDetalleBlur}
             placeholder="Notas, explicaciones, artículos…"
             rows={3}
             className="w-full text-[11px] text-gray-700 bg-transparent border-0 outline-none resize-none placeholder:text-gray-300 leading-relaxed"
@@ -822,20 +845,22 @@ function PendienteRow({
         : { borderLeft: '2px solid transparent' }}
     >
       {/* Fila principal */}
-      <div className="flex items-center gap-2 px-5 py-2 group">
+      <div className="flex items-start gap-2 px-5 py-2 group">
         <button
           onClick={() => onToggle(p)}
-          className="flex-shrink-0 w-4 h-4 rounded border flex items-center justify-center hover:border-green-500 transition-colors"
+          className="flex-shrink-0 mt-0.5 w-4 h-4 rounded border flex items-center justify-center hover:border-green-500 transition-colors"
           style={{ borderColor: '#CBD5E1' }}
         />
-        <span className="flex-1 text-[12px] text-gray-700 leading-snug">{p.texto}</span>
-        {linkedCausa && (
-          <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 font-bold text-[#2570BA] flex-shrink-0 truncate max-w-[130px]">
-            {linkedCausa.cliente_nombre || linkedCausa.rit || '⚖'}
-          </span>
-        )}
+        <div className="flex-1 min-w-0">
+          <span className="text-[12px] text-gray-700 leading-snug">{p.texto}</span>
+          {linkedCausa && (
+            <p className="text-[11px] font-bold text-gray-700 mt-0.5">
+              {linkedCausa.cliente_nombre || linkedCausa.rit || '⚖'}
+            </p>
+          )}
+        </div>
         {children.length > 0 && (
-          <span className="text-[10px] text-gray-300 flex-shrink-0">
+          <span className="text-[10px] text-gray-300 flex-shrink-0 mt-0.5">
             {children.length}p
           </span>
         )}
@@ -1056,7 +1081,6 @@ export default function Apuntes() {
 
   const [pendientes,      setPendientes]      = useState([])
   const [pendienteInput,  setPendienteInput]  = useState('')
-  const [pendTab,         setPendTab]         = useState('lista')
   const [expandedPendId,  setExpandedPendId]  = useState(null)
   const [resolvingIds,    setResolvingIds]    = useState(new Set())
   const resolveBatches = useRef({})
@@ -1117,8 +1141,8 @@ export default function Apuntes() {
         // Ocultos cubre la semana actual + el rango de atrasadas
         supabase.from('agenda_ocultos').select('fecha, origen, item_id')
           .gte('fecha', pastStart).lte('fecha', end),
-        // Tareas atrasadas: pendientes con vencimiento anterior a este lunes
-        supabase.from('tareas').select('id, titulo, fecha_vencimiento, cliente_nombre, estado, prioridad')
+        // Tareas atrasadas: pendientes con vencimiento anterior a este lunes (incluye causa_id para seguimiento)
+        supabase.from('tareas').select('id, titulo, fecha_vencimiento, cliente_nombre, causa_id, causa_rit, estado, prioridad')
           .eq('estado', 'Pendiente').lt('fecha_vencimiento', weekMonday).gte('fecha_vencimiento', pastStart),
         // Notas atrasadas: no completadas de semanas anteriores
         supabase.from('agenda_notas').select('*')
@@ -1219,6 +1243,41 @@ export default function Apuntes() {
     })
   }, [])
 
+  // Ocultar tarea atrasada del panel + registrar seguimiento en su causa
+  const handleOcultarAtrasadaTarea = useCallback(async (tarea) => {
+    const fecha = tarea.fecha_vencimiento
+    await supabase.from('agenda_ocultos')
+      .insert({ fecha, origen: 'tarea', item_id: String(tarea.id) })
+    if (tarea.causa_id) {
+      await supabase.from('revisiones').insert({
+        causa_id: tarea.causa_id,
+        causa_rit: tarea.causa_rit || null,
+        cliente_nombre: tarea.cliente_nombre || null,
+        fecha_revision: TODAY,
+        por_hacer: tarea.titulo,
+        que_se_hizo: 'Revisado desde la agenda. Pendiente sin completar.',
+        revisada: false,
+        origen: 'agenda',
+      })
+    }
+    setOcultos(prev => {
+      const s = new Set(prev[fecha] || [])
+      s.add(`tarea:${tarea.id}`)
+      return { ...prev, [fecha]: s }
+    })
+  }, [])
+
+  const handleDesocultarAtrasadaTarea = useCallback(async (tarea) => {
+    const fecha = tarea.fecha_vencimiento
+    await supabase.from('agenda_ocultos')
+      .delete().eq('fecha', fecha).eq('origen', 'tarea').eq('item_id', String(tarea.id))
+    setOcultos(prev => {
+      const s = new Set(prev[fecha] || [])
+      s.delete(`tarea:${tarea.id}`)
+      return { ...prev, [fecha]: s }
+    })
+  }, [])
+
   const handleDesocultar = useCallback(async (fecha, origen, itemId) => {
     await supabase.from('agenda_ocultos')
       .delete()
@@ -1264,11 +1323,11 @@ export default function Apuntes() {
     }))
   }, [])
 
-  const handleSaveContenidoNota = useCallback(async (nota, contenido) => {
-    await supabase.from('agenda_notas').update({ contenido: contenido || null }).eq('id', nota.id)
+  const handleSaveContenidoNota = useCallback(async (nota, detalle) => {
+    await supabase.from('agenda_notas').update({ detalle: detalle || null }).eq('id', nota.id)
     setNotas(prev => ({
       ...prev,
-      [nota.fecha]: (prev[nota.fecha] || []).map(n => n.id === nota.id ? { ...n, contenido: contenido || null } : n)
+      [nota.fecha]: (prev[nota.fecha] || []).map(n => n.id === nota.id ? { ...n, detalle: detalle || null } : n)
     }))
   }, [])
 
@@ -1425,38 +1484,8 @@ export default function Apuntes() {
     await resolvePendienteGroupSilent(p)
   }
 
-  // ── Pendientes: agrupación por semana ───────────────────────────────────────
-  const weekMondayDate = new Date(weekMonday + 'T00:00:00')
-
-  const [pendAntes, pendEsta] = useMemo(() => {
-    const antes = [], esta = []
-    for (const p of pendienteParents) {
-      const created = p.created_at ? new Date(p.created_at) : new Date()
-      if (created < weekMondayDate) antes.push(p)
-      else esta.push(p)
-    }
-    return [antes, esta]
-  }, [pendienteParents, weekMondayDate])
-
-  function filterByTab(list) {
-    if (pendTab === 'por-causa') return list.filter(p => p.causa_id)
-    if (pendTab === 'sin-causa') return list.filter(p => !p.causa_id)
-    return list
-  }
-
-  const antesFiltered = filterByTab(pendAntes)
-  const estaFiltered  = filterByTab(pendEsta)
-
-  const estaGrouped = useMemo(() => {
-    if (pendTab !== 'por-causa') return null
-    const groups = {}
-    for (const p of estaFiltered) {
-      const k = p.causa_id || '__sin__'
-      if (!groups[k]) groups[k] = []
-      groups[k].push(p)
-    }
-    return groups
-  }, [estaFiltered, pendTab])
+  // Todos los pendientes propios (planos, sin jerarquía de tabs)
+  const todosPendientes = pendienteParents
 
   function navWeek(delta) {
     const next = addDays(weekMonday, delta * 7)
@@ -1518,10 +1547,10 @@ export default function Apuntes() {
       </div>
 
       {/* ── Contenido: dos columnas ── */}
-      <div className="flex-1 flex flex-col min-[900px]:flex-row overflow-hidden">
+      <div className="flex-1 flex flex-col min-[1100px]:flex-row overflow-hidden">
 
         {/* ── Columna izquierda: La semana (60%) ── */}
-        <div className="min-[900px]:w-[60%] flex-shrink-0 flex flex-col overflow-hidden border-r border-gray-200">
+        <div className="min-[1100px]:w-[60%] flex-shrink-0 flex flex-col overflow-hidden border-r border-gray-200">
           <div className="px-5 py-2 bg-gray-50 border-b border-gray-100 flex-shrink-0">
             <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">La semana</span>
           </div>
@@ -1532,15 +1561,6 @@ export default function Apuntes() {
               </div>
             ) : (
               <>
-              <VieneDAntes
-                tareas={atrasadasTareas}
-                notas={atrasadasNotas}
-                ocultos={ocultos}
-                weekMonday={weekMonday}
-                onOcultar={handleOcultar}
-                onDesocultar={handleDesocultar}
-                onToggleNota={handleToggleNota}
-              />
               {weekDays.map((date) => (
                 <DayBlock
                   key={date}
@@ -1573,15 +1593,10 @@ export default function Apuntes() {
         </div>
 
         {/* ── Columna derecha: Pendientes (40%) ── */}
-        <div className="min-[900px]:flex-1 flex flex-col overflow-hidden">
-        <div className="bg-white flex flex-col flex-1 overflow-hidden">
-          <div className="px-5 py-2 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
-            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Pendientes</span>
-            <span className="text-[10px] text-gray-300">{pendienteParents.length} sin resolver</span>
-          </div>
+        <div className="min-[1100px]:flex-1 flex flex-col overflow-hidden bg-white">
 
           {/* Input */}
-          <div className="px-5 py-3 border-b border-gray-100">
+          <div className="px-5 py-3 border-b border-[#E3E7EC] flex-shrink-0">
             <div className="flex items-center gap-2">
               <div className="w-4 h-4 rounded border border-gray-200 flex-shrink-0" />
               <input
@@ -1595,72 +1610,23 @@ export default function Apuntes() {
             </div>
           </div>
 
-          {/* Tabs */}
-          <div className="flex border-b border-gray-100 flex-shrink-0">
-            {[['lista','Lista'],['por-causa','Por causa'],['sin-causa','Sin causa']].map(([k, label]) => (
-              <button key={k} onClick={() => setPendTab(k)}
-                className="px-4 py-2 text-[11px] font-medium transition-colors border-b-2"
-                style={{
-                  color: pendTab === k ? '#2570BA' : '#9CA3AF',
-                  borderBottomColor: pendTab === k ? '#2570BA' : 'transparent',
-                }}>
-                {label}
-              </button>
-            ))}
-          </div>
-
           {/* Lista scrollable */}
           <div className="flex-1 overflow-y-auto">
 
-          {antesFiltered.length > 0 && (
-            <div>
-              <div className="px-5 py-2 bg-amber-50 border-b border-amber-100">
-                <span className="text-[10px] font-bold text-amber-600 uppercase tracking-widest">
-                  Vienen de la semana pasada · {antesFiltered.length}
-                </span>
-              </div>
-              {antesFiltered.map(p => (
-                <div key={p.id} className="relative">
-                  <PendienteRow
-                    p={p}
-                    children={childrenByParent[p.id] || []}
-                    causas={causas}
-                    expanded={expandedPendId === p.id}
-                    isResolving={resolvingIds.has(p.id)}
-                    onToggleExpand={() => setExpandedPendId(prev => prev === p.id ? null : p.id)}
-                    onToggle={handleTogglePendiente}
-                    onUndo={handleUndoPendiente}
-                    onAddChild={handleAddChild}
-                    onEditNota={handleEditNota}
-                    onDelete={handleDeletePendiente}
-                    weekDays={weekDays}
-                    onMover={handleMoverPendiente}
-                    onConvertTarea={handleConvertPendienteTarea}
-                    onConvertSeguimiento={handleConvertPendienteSeguimiento}
-                    onLink={handleLinkPendiente}
-                    onUnlink={handleUnlinkPendiente}
-                  />
-                  {!resolvingIds.has(p.id) && p.created_at && (
-                    <span
-                      className="absolute right-10 top-2.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full pointer-events-none"
-                      style={{ background: '#FEF3C7', color: '#92400E' }}
-                    >
-                      {semChip(p.created_at.slice(0, 10))}
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {pendTab !== 'por-causa' && estaFiltered.length > 0 && (
-            <div>
-              {antesFiltered.length > 0 && (
-                <div className="px-5 py-2 bg-gray-50 border-b border-gray-100">
-                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Esta semana</span>
-                </div>
+            {/* ── MIS PENDIENTES ── */}
+            <div className="px-5 pt-3 pb-1 flex items-center justify-between">
+              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Mis pendientes</span>
+              {todosPendientes.length > 0 && (
+                <span className="text-[10px] tabular-nums text-gray-300">{todosPendientes.length}</span>
               )}
-              {estaFiltered.map(p => (
+            </div>
+
+            {todosPendientes.length === 0 ? (
+              <div className="px-5 py-4">
+                <p className="text-[11px] text-gray-300">Sin pendientes · todo en orden</p>
+              </div>
+            ) : (
+              todosPendientes.map(p => (
                 <PendienteRow
                   key={p.id}
                   p={p}
@@ -1681,64 +1647,22 @@ export default function Apuntes() {
                   onLink={handleLinkPendiente}
                   onUnlink={handleUnlinkPendiente}
                 />
-              ))}
-            </div>
-          )}
+              ))
+            )}
 
-          {pendTab === 'por-causa' && estaGrouped && (
-            <div>
-              {antesFiltered.length > 0 && (
-                <div className="px-5 py-2 bg-gray-50 border-b border-gray-100">
-                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Esta semana</span>
-                </div>
-              )}
-              {Object.entries(estaGrouped).map(([causaId, pList]) => {
-                const causa = causaId === '__sin__' ? null : causas.find(c => c.id === causaId)
-                return (
-                  <div key={causaId}>
-                    <div className="px-5 py-1.5 border-b border-gray-100 bg-blue-50/30">
-                      <span className="text-[10px] font-bold text-[#2570BA]">
-                        {causa ? (causa.cliente_nombre || causa.rit || '—') : 'Sin causa'}
-                      </span>
-                      {causa?.rit && <span className="text-[10px] text-gray-400 ml-1.5 font-mono">{causa.rit}</span>}
-                    </div>
-                    {pList.map(p => (
-                      <PendienteRow
-                        key={p.id}
-                        p={p}
-                        children={childrenByParent[p.id] || []}
-                        causas={causas}
-                        expanded={expandedPendId === p.id}
-                        isResolving={resolvingIds.has(p.id)}
-                        onToggleExpand={() => setExpandedPendId(prev => prev === p.id ? null : p.id)}
-                        onToggle={handleTogglePendiente}
-                        onUndo={handleUndoPendiente}
-                        onAddChild={handleAddChild}
-                        onEditNota={handleEditNota}
-                        onDelete={handleDeletePendiente}
-                        weekDays={weekDays}
-                        onMover={handleMoverPendiente}
-                        onConvertTarea={handleConvertPendienteTarea}
-                        onConvertSeguimiento={handleConvertPendienteSeguimiento}
-                        onLink={handleLinkPendiente}
-                        onUnlink={handleUnlinkPendiente}
-                      />
-                    ))}
-                  </div>
-                )
-              })}
-            </div>
-          )}
+            {/* ── VIENE DE ANTES ── */}
+            <VieneDAntes
+              tareas={atrasadasTareas}
+              notas={atrasadasNotas}
+              ocultos={ocultos}
+              weekMonday={weekMonday}
+              onOcultarTarea={handleOcultarAtrasadaTarea}
+              onDesocultarTarea={handleDesocultarAtrasadaTarea}
+              onToggleNota={handleToggleNota}
+            />
 
-          {pendienteParents.length === 0 && (
-            <div className="px-5 py-10 text-center">
-              <p className="text-[12px] text-gray-300">Sin pendientes · todo en orden</p>
-            </div>
-          )}
-
-          <div className="h-6" />
+            <div className="h-8" />
           </div>
-        </div>
         </div>
       </div>
     </div>
