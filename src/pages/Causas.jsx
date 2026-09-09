@@ -9,7 +9,7 @@ import {
   Loader2, AlertTriangle, RefreshCw, Trash2, Check,
   Calendar, Activity, Flame, PlusSquare,
   UserCheck, Upload, Table2, Database, Shield, ExternalLink,
-  ListTodo, Inbox, FileSearch, Link2,
+  ListTodo, Inbox, FileSearch, Link2, Download,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 
@@ -889,6 +889,331 @@ function CellDropdown({ value, options, onSelect, onClose, renderOption, rect })
   )
 }
 
+// ── ExportarFichaModal ────────────────────────────────────────────────────────
+function ExportarFichaModal({ causa, audiencias, siauRows, pjudRows, tareas, segRows, revisiones, diligencias, entrevistas, entPuntos, onClose }) {
+  const SECCIONES = [
+    { key: 'estado',      label: 'Estado actual',     default: true  },
+    { key: 'notas',       label: 'Notas de la causa', default: false },
+    { key: 'audiencias',  label: 'Audiencias',        default: true  },
+    { key: 'diligencias', label: 'Diligencias',       default: true  },
+    { key: 'siau',        label: 'SIAU',              default: true  },
+    { key: 'pjud',        label: 'PJUD',              default: true  },
+    { key: 'tareas',      label: 'Tareas abiertas',   default: true  },
+    { key: 'entrevistas', label: 'Entrevistas',        default: true  },
+    { key: 'seguimiento', label: 'Seguimiento',        default: true  },
+    { key: 'revisiones',  label: 'Revisiones',         default: false },
+  ]
+
+  const [sel, setSel] = useState(() => {
+    const s = {}
+    SECCIONES.forEach(sec => { s[sec.key] = sec.default })
+    return s
+  })
+
+  const MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre']
+
+  function fmtLarga(iso) {
+    if (!iso) return '—'
+    const [y, m, d] = iso.split('-').map(Number)
+    return `${d} de ${MESES[m-1]} de ${y}`
+  }
+
+  function fmtCorta(iso) {
+    if (!iso) return '—'
+    const [y, m, d] = iso.split('-').map(Number)
+    return `${String(d).padStart(2,'0')}-${String(m).padStart(2,'0')}-${y}`
+  }
+
+  function escapeCell(str) {
+    return (str || '').replace(/\|/g, '\\|').replace(/\n/g, ' ').trim()
+  }
+
+  function diasAtraso(fechaISO) {
+    if (!fechaISO) return 0
+    const today = new Date().toISOString().split('T')[0]
+    if (fechaISO >= today) return 0
+    return Math.floor((new Date(today) - new Date(fechaISO + 'T00:00:00')) / 86400000)
+  }
+
+  function nombreArchivo() {
+    const rit = causa.rit ? `RIT-${causa.rit}` : (causa.ruc ? `RUC-${causa.ruc}` : 'Ficha')
+    const partes = (causa.cliente_nombre || '').trim().split(/\s+/)
+    const apellido = partes[partes.length - 1] || ''
+    return apellido ? `${rit} ${apellido}.md` : `${rit}.md`
+  }
+
+  function generarMarkdown() {
+    const hoy = new Date().toISOString().split('T')[0]
+    const lines = []
+
+    // ── Encabezado (siempre) ──────────────────────────────────────────────
+    const ritLabel = causa.rit || causa.ruc || '—'
+    lines.push(`# ${causa.cliente_nombre || 'Sin nombre'} · ${ritLabel}`)
+    lines.push('')
+
+    const idFields = [
+      ['RUC',            causa.ruc],
+      ['RIT',            causa.rit],
+      ['Tribunal',       causa.tribunal],
+      ['Fiscalía',       causa.fiscalia],
+      ['Fiscal',         [causa.fiscal, causa.fiscal_telefono, causa.fiscal_email].filter(Boolean).join(' · ')],
+      ['Materia',        causa.materia],
+      ['Calidad',        causa.parte],
+      ['Estado',         causa.estado],
+      ['Etapa procesal', causa.etapa_procesal],
+      ['Querellante',    causa.querellante],
+      ['Imputado',       causa.imputado],
+    ]
+    for (const [lbl, val] of idFields) {
+      if (val) lines.push(`**${lbl}:** ${val}`)
+    }
+    lines.push('')
+    lines.push(`*Exportado el ${fmtLarga(hoy)} · Sistema BL · Bianchi Leiva Abogadas*`)
+    lines.push('')
+    lines.push('---')
+    lines.push('')
+
+    // ── Estado actual ─────────────────────────────────────────────────────
+    if (sel.estado) {
+      const partes = [causa.etapa_procesal, causa.observaciones].filter(Boolean)
+      if (partes.length > 0) {
+        lines.push('## Estado actual')
+        lines.push('')
+        if (causa.etapa_procesal) lines.push(`**Etapa:** ${causa.etapa_procesal}`)
+        if (causa.observaciones)  lines.push('', causa.observaciones)
+        lines.push('')
+        lines.push('---')
+        lines.push('')
+      }
+    }
+
+    // ── Notas de la causa ─────────────────────────────────────────────────
+    if (sel.notas && causa.observaciones) {
+      lines.push('## Notas de la causa')
+      lines.push('')
+      lines.push(causa.observaciones)
+      lines.push('')
+      lines.push('---')
+      lines.push('')
+    }
+
+    // ── Audiencias ────────────────────────────────────────────────────────
+    if (sel.audiencias && audiencias.length > 0) {
+      lines.push('## Audiencias')
+      lines.push('')
+      lines.push('| Fecha | Hora | Tipo | Resultado | Notas |')
+      lines.push('|-------|------|------|-----------|-------|')
+      for (const a of [...audiencias].sort((x,y) => (y.fecha||'').localeCompare(x.fecha||''))) {
+        lines.push(`| ${fmtLarga(a.fecha)} | ${a.hora||'—'} | ${escapeCell(a.tipo)} | ${escapeCell(a.resultado)} | ${escapeCell(a.notas).substring(0,80)} |`)
+      }
+      lines.push('')
+      lines.push('---')
+      lines.push('')
+    }
+
+    // ── Diligencias ───────────────────────────────────────────────────────
+    if (sel.diligencias && diligencias.length > 0) {
+      lines.push('## Diligencias')
+      lines.push('')
+      for (const d of diligencias) {
+        lines.push(`### ${d.nombre || 'Diligencia'} — ${d.estado || '—'}`)
+        if (d.organismo)      lines.push(`**Organismo:** ${d.organismo}`)
+        if (d.instruccion)    lines.push(`**Instrucción/OI:** ${d.instruccion}`)
+        if (d.folio)          lines.push(`**Folio:** ${d.folio}`)
+        if (d.fecha_solicitud)lines.push(`**Solicitada:** ${fmtLarga(d.fecha_solicitud)}`)
+        if (d.fecha_recepcion)lines.push(`**Recibida:** ${fmtLarga(d.fecha_recepcion)}`)
+        if (d.notas)          lines.push('', d.notas)
+        lines.push('')
+      }
+      lines.push('---')
+      lines.push('')
+    }
+
+    // ── SIAU ──────────────────────────────────────────────────────────────
+    if (sel.siau && siauRows.length > 0) {
+      lines.push('## SIAU')
+      lines.push('')
+      lines.push('| Folio | Fecha | Solicitud | Estado | Fecha respuesta |')
+      lines.push('|-------|-------|-----------|--------|-----------------|')
+      for (const s of siauRows) {
+        lines.push(`| ${escapeCell(s.folio)} | ${fmtLarga(s.fecha)} | ${escapeCell(s.solicitud).substring(0,80)} | ${escapeCell(s.estado)} | ${fmtLarga(s.fecha_respuesta)} |`)
+      }
+      lines.push('')
+      lines.push('---')
+      lines.push('')
+    }
+
+    // ── PJUD ──────────────────────────────────────────────────────────────
+    if (sel.pjud && pjudRows.length > 0) {
+      lines.push('## PJUD')
+      lines.push('')
+      lines.push('| Fecha | Folio | Estado | Notas |')
+      lines.push('|-------|-------|--------|-------|')
+      for (const p of pjudRows) {
+        lines.push(`| ${fmtLarga(p.fecha)} | ${escapeCell(p.folio)} | ${escapeCell(p.estado)} | ${escapeCell(p.notas).substring(0,100)} |`)
+      }
+      lines.push('')
+      lines.push('---')
+      lines.push('')
+    }
+
+    // ── Tareas abiertas ───────────────────────────────────────────────────
+    if (sel.tareas) {
+      const abiertas = tareas.filter(t => !['Completada','Cancelada'].includes(t.estado))
+      if (abiertas.length > 0) {
+        lines.push('## Tareas abiertas')
+        lines.push('')
+        for (const t of abiertas) {
+          const atraso = diasAtraso(t.fecha_vencimiento)
+          const vencida = atraso > 0
+          let row = '- [ ] '
+          if (t.fecha_vencimiento) row += `**${fmtCorta(t.fecha_vencimiento)}** — `
+          row += vencida ? `*${t.titulo} (${atraso}d de atraso)*` : t.titulo
+          lines.push(row)
+        }
+        lines.push('')
+        lines.push('---')
+        lines.push('')
+      }
+    }
+
+    // ── Entrevistas ───────────────────────────────────────────────────────
+    if (sel.entrevistas && entrevistas.length > 0) {
+      lines.push('## Entrevistas y contacto')
+      lines.push('')
+      for (const e of entrevistas) {
+        const interlocutor = [e.persona, e.cargo, e.institucion].filter(Boolean).join(' · ')
+        lines.push(`### ${e.tipo || 'Entrevista'} — ${fmtLarga(e.fecha)}`)
+        if (interlocutor) lines.push(`**Interlocutor:** ${interlocutor}`)
+        if (e.relato) lines.push('', e.relato)
+        const puntos = entPuntos[e.id] || []
+        if (puntos.length > 0) {
+          lines.push('', '**Puntos relevantes:**')
+          for (const p of puntos) lines.push(`- ${p.texto}`)
+        }
+        lines.push('')
+      }
+      lines.push('---')
+      lines.push('')
+    }
+
+    // ── Seguimiento ───────────────────────────────────────────────────────
+    if (sel.seguimiento && segRows.length > 0) {
+      lines.push('## Seguimiento')
+      lines.push('')
+      lines.push('| Fecha | Por hacer | Qué se hizo | Responsable |')
+      lines.push('|-------|-----------|-------------|-------------|')
+      for (const r of segRows) {
+        const fecha = fmtLarga(r.fecha_revision || r.fecha)
+        lines.push(`| ${fecha} | ${escapeCell(r.por_hacer).substring(0,100)} | ${escapeCell(r.que_se_hizo).substring(0,100)} | ${r.responsable||'—'} |`)
+      }
+      lines.push('')
+      lines.push('---')
+      lines.push('')
+    }
+
+    // ── Revisiones ────────────────────────────────────────────────────────
+    if (sel.revisiones && revisiones.length > 0) {
+      lines.push('## Revisiones')
+      lines.push('')
+      lines.push('| Fecha | Responsable | Nota | Urgente |')
+      lines.push('|-------|-------------|------|---------|')
+      for (const r of revisiones) {
+        const fecha = fmtLarga(r.fecha_revision || r.fecha || r.semana_key)
+        const nota = escapeCell(r.nota || r.notas).substring(0,120)
+        lines.push(`| ${fecha} | ${r.responsable||'—'} | ${nota} | ${r.urgente ? 'Sí' : 'No'} |`)
+      }
+      lines.push('')
+    }
+
+    return lines.join('\n')
+  }
+
+  function handleDescargar() {
+    const content = generarMarkdown()
+    const blob = new Blob([content], { type: 'text/markdown; charset=utf-8' })
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href     = url
+    a.download = nombreArchivo()
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+    onClose()
+  }
+
+  // Cerrar con Escape
+  useEffect(() => {
+    const fn = e => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', fn)
+    return () => document.removeEventListener('keydown', fn)
+  }, [onClose])
+
+  return (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div className="absolute inset-0 bg-black/30 backdrop-blur-[2px]" />
+      <div className="relative bg-white rounded-2xl shadow-2xl border border-gray-100 w-full max-w-sm flex flex-col overflow-hidden">
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-lg bg-[#1A2E4A]/8 flex items-center justify-center">
+              <Download size={13} className="text-[#1A2E4A]" />
+            </div>
+            <div>
+              <h2 className="text-[13px] font-bold text-[#1A2E4A] leading-none">Exportar ficha</h2>
+              <p className="text-[10px] text-gray-400 mt-0.5">{nombreArchivo()}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1 rounded-lg text-gray-300 hover:text-gray-500 hover:bg-gray-100 transition-colors">
+            <X size={14} />
+          </button>
+        </div>
+
+        {/* Secciones */}
+        <div className="px-5 py-4 space-y-0.5">
+          <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-3">
+            Encabezado incluido siempre · Elige las secciones adicionales
+          </p>
+          {SECCIONES.map(sec => (
+            <label key={sec.key}
+              className="flex items-center gap-3 py-1.5 cursor-pointer group rounded-lg hover:bg-gray-50 px-1 -mx-1 transition-colors">
+              <div
+                onClick={() => setSel(p => ({ ...p, [sec.key]: !p[sec.key] }))}
+                className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 transition-colors ${
+                  sel[sec.key]
+                    ? 'bg-[#2570BA] border-[#2570BA]'
+                    : 'border-gray-200 bg-white group-hover:border-gray-300'
+                }`}>
+                {sel[sec.key] && <Check size={9} color="white" strokeWidth={3} />}
+              </div>
+              <span className="text-[12px] text-gray-700 leading-none select-none">{sec.label}</span>
+              {!sec.default && (
+                <span className="ml-auto text-[9px] text-gray-300 font-medium">interno</span>
+              )}
+            </label>
+          ))}
+        </div>
+
+        {/* Footer */}
+        <div className="flex gap-2 px-5 py-3.5 border-t border-gray-100 bg-gray-50/40">
+          <button onClick={onClose}
+            className="flex-1 text-[12px] text-gray-400 hover:text-gray-600 py-2 rounded-xl hover:bg-gray-100 transition-colors font-medium">
+            Cancelar
+          </button>
+          <button onClick={handleDescargar}
+            className="flex-1 flex items-center justify-center gap-1.5 text-[12px] font-semibold bg-[#1A2E4A] text-white py-2 rounded-xl hover:bg-[#1A2E4A]/90 transition-colors">
+            <Download size={12} />
+            Descargar .md
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── CausaView — Vista completa de expediente jurídico ──────────────────────
 function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCliente }) {
   const navigate = useNavigate()
@@ -898,6 +1223,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
   const [tab, setTabRaw] = useState(() => activeTab ?? 'resumen')
   const setTab = useCallback((t) => { setTabRaw(t); setActiveTab(t) }, [setActiveTab])
   const [showTareasComp, setShowTareasComp] = useState(false)
+  const [showExport,     setShowExport]     = useState(false)
 
   // ── Exponer contexto al Quick Add global ──
   const { setCtx } = useQuickAdd()
@@ -1677,6 +2003,13 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
               className="flex items-center gap-1 text-[11px] font-medium text-gray-400 hover:text-[#2570ba] hover:bg-blue-50 px-2 py-1 rounded-lg transition-colors"
             >
               <Database size={11} /> SIAU
+            </button>
+            <button
+              onClick={() => setShowExport(true)}
+              title="Exportar ficha como Markdown"
+              className="flex items-center gap-1 text-[11px] font-medium text-gray-400 hover:text-[#2570ba] hover:bg-blue-50 px-2 py-1 rounded-lg transition-colors"
+            >
+              <Download size={11} /> Exportar
             </button>
             <button
               onClick={onDelete}
@@ -4315,6 +4648,22 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
         }}
         onClose={() => setShowCargaMasivaSeg(false)}
         onSuccess={rows => setSegRows(prev => [...rows, ...prev])}
+      />
+    )}
+
+    {showExport && (
+      <ExportarFichaModal
+        causa={causa}
+        audiencias={audiencias}
+        siauRows={siauRows}
+        pjudRows={pjudRows}
+        tareas={tareas}
+        segRows={segRows}
+        revisiones={revisiones}
+        diligencias={diligencias}
+        entrevistas={entrevistas}
+        entPuntos={entPuntos}
+        onClose={() => setShowExport(false)}
       />
     )}
 
