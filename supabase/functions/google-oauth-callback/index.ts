@@ -8,17 +8,25 @@ const GOOGLE_CLIENT_SECRET = Deno.env.get('GOOGLE_CLIENT_SECRET')!
 const GOOGLE_REDIRECT_URI  = Deno.env.get('GOOGLE_REDIRECT_URI')!
 const APP_URL              = Deno.env.get('APP_URL')!
 
-// Single-tenant: fixed token row id
-const TOKEN_ROW_ID = '00000000-0000-0000-0000-000000000001'
+// Single-tenant: fixed token row ids
+const CALENDAR_ROW_ID = '00000000-0000-0000-0000-000000000001'
+const DRIVE_ROW_ID    = '00000000-0000-0000-0000-000000000002'
 
 serve(async (req) => {
   const url   = new URL(req.url)
   const code  = url.searchParams.get('code')
   const error = url.searchParams.get('error')
+  const state = url.searchParams.get('state') ?? ''
+  const isDrive = state === 'drive'
+
+  const errorParam = isDrive ? 'drive' : 'calendar'
+
+  console.log('callback received', { hasCode: !!code, error, isDrive, url: url.toString().slice(0, 100) })
 
   if (error || !code) {
     const msg = encodeURIComponent(error || 'cancelled')
-    return Response.redirect(`${APP_URL}/configuracion?calendar=error&msg=${msg}`, 302)
+    console.log('no code, redirecting to error')
+    return Response.redirect(`${APP_URL}/configuracion?${errorParam}=error&msg=${msg}`, 302)
   }
 
   // Exchange authorization code for tokens
@@ -35,27 +43,38 @@ serve(async (req) => {
   })
 
   const tokens = await tokenRes.json()
+  console.log('token exchange result', { ok: !tokens.error, error: tokens.error })
 
   if (tokens.error) {
     const msg = encodeURIComponent(tokens.error_description || tokens.error)
-    return Response.redirect(`${APP_URL}/configuracion?calendar=error&msg=${msg}`, 302)
+    return Response.redirect(`${APP_URL}/configuracion?${errorParam}=error&msg=${msg}`, 302)
   }
 
-  const expiresAt = new Date(Date.now() + ((tokens.expires_in ?? 3600) - 60) * 1000).toISOString()
+  const expiresAt  = new Date(Date.now() + ((tokens.expires_in ?? 3600) - 60) * 1000).toISOString()
+  const tokenRowId = isDrive ? DRIVE_ROW_ID : CALENDAR_ROW_ID
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+  console.log('upserting tokens to DB...', { isDrive, tokenRowId })
   const { error: dbErr } = await supabase.from('google_tokens').upsert({
-    id:            TOKEN_ROW_ID,
+    id:            tokenRowId,
+    tipo:          isDrive ? 'drive' : 'calendar',
     access_token:  tokens.access_token,
     refresh_token: tokens.refresh_token ?? null,
     expires_at:    expiresAt,
     created_at:    new Date().toISOString(),
   })
 
+  console.log('upsert result', { dbErr: dbErr?.message })
+
   if (dbErr) {
     const msg = encodeURIComponent('Error al guardar tokens: ' + dbErr.message)
-    return Response.redirect(`${APP_URL}/configuracion?calendar=error&msg=${msg}`, 302)
+    return Response.redirect(`${APP_URL}/configuracion?${errorParam}=error&msg=${msg}`, 302)
   }
 
-  return Response.redirect(`${APP_URL}/configuracion?calendar=connected`, 302)
+  const successRedirect = isDrive
+    ? `${APP_URL}/configuracion?drive=connected`
+    : `${APP_URL}/configuracion?calendar=connected`
+
+  console.log('success, redirecting to', successRedirect)
+  return Response.redirect(successRedirect, 302)
 })

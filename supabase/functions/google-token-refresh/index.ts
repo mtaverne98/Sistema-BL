@@ -4,7 +4,8 @@ const SUPABASE_URL    = Deno.env.get('SUPABASE_URL')!
 const SERVICE_KEY     = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 const CLIENT_ID       = Deno.env.get('GOOGLE_CLIENT_ID')!
 const CLIENT_SECRET   = Deno.env.get('GOOGLE_CLIENT_SECRET')!
-const TOKEN_ROW_ID    = '00000000-0000-0000-0000-000000000001'
+const CALENDAR_ROW_ID = '00000000-0000-0000-0000-000000000001'
+const DRIVE_ROW_ID    = '00000000-0000-0000-0000-000000000002'
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -22,6 +23,10 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: CORS })
 
   try {
+    const url  = new URL(req.url)
+    const tipo = url.searchParams.get('tipo') || 'calendar'
+    const TOKEN_ROW_ID = tipo === 'drive' ? DRIVE_ROW_ID : CALENDAR_ROW_ID
+
     const sb = createClient(SUPABASE_URL, SERVICE_KEY)
     const { data: row } = await sb
       .from('google_tokens')

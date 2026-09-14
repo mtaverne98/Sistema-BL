@@ -24,6 +24,7 @@ import { PendientesPanel } from '../components/PendientesPanel'
 import { SolicitudesTable } from './SIAU'
 import { MovimientosTable } from './PJUD'
 import useResizableColumns from '../hooks/useResizableColumns'
+import { getValidDriveToken, findOrCreateCausaFolder, uploadFileToDrive } from '../lib/driveApi'
 
 // ── Exportación vacía para compatibilidad con CMD+K en MainLayout ──────────
 export const CAUSAS = []
@@ -1611,7 +1612,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
     supabase.from('causa_recomendaciones').select('*').eq('causa_id', causa.id)
       .order('created_at', { ascending: false })
       .then(({ data }) => setRecomendaciones(data || []))
-    supabase.from('documentos').select('*').eq('causa_id', causa.id).eq('fuente', 'drive_auto')
+    supabase.from('documentos').select('*').eq('causa_id', causa.id)
       .order('fecha_creacion', { ascending: false })
       .then(({ data }) => setDocumentosDrive(data || []))
   }, [causa?.id])
@@ -2176,6 +2177,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
             { key: 'tareas',      Icon: CheckSquare, label: 'Tareas',      count: tareasPend,                        urgent: tareasUrgentes > 0 },
             { key: 'pendientes',  Icon: ListTodo,    label: 'Pendientes',  count: pendienteParents.length || null,   urgent: pendienteParents.length > 0 },
             { key: 'plazos',      Icon: Clock,       label: 'Plazos',      count: plazosActivos,                     urgent: plazosUrgentes > 0 },
+            { key: 'documentos',    Icon: FileText,  label: 'Documentos',    count: documentosDrive.length || null, urgent: false },
             { key: 'diligencias',   Icon: Inbox,    label: 'Diligencias',   count: diligencias.length || null, urgent: false },
             { key: 'entrevistas',   Icon: MessageSquare, label: 'Entrevistas', count: entrevistas.length || null, urgent: false },
             { key: 'seguimiento',   Icon: Target,   label: 'Seguimiento',   count: segRows.length || null, urgent: false },
@@ -2547,6 +2549,128 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
         })()}
 
         {/* REVISIONES FORMALES */}
+
+        {tab === 'documentos' && (() => {
+          const docsAuto   = documentosDrive.filter(d => d.fuente === 'drive_auto')
+          const docsManual = documentosDrive.filter(d => d.fuente !== 'drive_auto')
+
+          function fmtDocFecha(iso) {
+            if (!iso) return '—'
+            const d = new Date(iso)
+            return d.toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric' })
+          }
+
+          async function handleUpload(e) {
+            const file = e.target.files?.[0]
+            if (!file) return
+            e.target.value = ''
+            try {
+              const token     = await getValidDriveToken()
+              const folderId  = await findOrCreateCausaFolder(token, causa, analisisMeta, supabase)
+              const driveFile = await uploadFileToDrive(token, folderId, file)
+              await supabase.from('documentos').insert({
+                causa_id:          causa.id,
+                nombre:            driveFile.name,
+                url:               driveFile.webViewLink,
+                drive_file_id:     driveFile.id,
+                drive_url:         driveFile.webViewLink,
+                drive_mime:        driveFile.mimeType,
+                drive_modified_at: driveFile.modifiedTime,
+                fuente:            'drive_manual',
+                fecha_creacion:    new Date().toISOString().slice(0, 10),
+              })
+              setDocumentosDrive(prev => [{
+                nombre:            driveFile.name,
+                url:               driveFile.webViewLink,
+                drive_url:         driveFile.webViewLink,
+                drive_mime:        driveFile.mimeType,
+                fuente:            'drive_manual',
+                fecha_creacion:    new Date().toISOString().slice(0, 10),
+              }, ...prev])
+            } catch (err) {
+              if (err.message?.includes('reconectar')) {
+                alert('El acceso a Drive expiró. Ve a Configuración → Integraciones y reconecta Google Drive.')
+              } else {
+                alert('Error al subir: ' + err.message)
+              }
+            }
+          }
+
+          function mimeIcon(mime) {
+            if (!mime) return '📄'
+            if (mime.includes('pdf'))         return '📄'
+            if (mime.includes('word') || mime.includes('document')) return '📝'
+            if (mime.includes('spreadsheet') || mime.includes('excel')) return '📊'
+            if (mime.includes('presentation') || mime.includes('powerpoint')) return '📋'
+            if (mime.includes('image'))       return '🖼'
+            return '📎'
+          }
+
+          return (
+            <div className="flex flex-col">
+              <div className="px-6 py-3 border-b border-[#E2E5EA] border-t flex items-center justify-between flex-shrink-0 bg-[#F7F8FA]">
+                <p className="text-[11px] font-semibold text-[#4A5568] uppercase tracking-wider">
+                  Documentos · {documentosDrive.length} archivo{documentosDrive.length !== 1 ? 's' : ''}
+                </p>
+                <label className="flex items-center gap-1.5 text-[11px] font-semibold text-white px-3 py-1.5 rounded-lg bg-[#2570BA] hover:bg-[#2570BA]/90 cursor-pointer transition-colors">
+                  <FileText size={11} />
+                  Subir a Drive
+                  <input type="file" className="hidden" onChange={handleUpload} />
+                </label>
+              </div>
+
+              <div className="flex-1 overflow-y-auto">
+                {documentosDrive.length === 0 && (
+                  <div className="px-8 py-10 text-center">
+                    <FileText size={32} className="mx-auto text-gray-200 mb-3" />
+                    <p className="text-[13px] font-medium text-gray-400">Sin documentos</p>
+                    <p className="text-[11px] text-gray-300 mt-1">Usa "Subir a Drive" para agregar archivos a esta causa</p>
+                  </div>
+                )}
+
+                {docsManual.length > 0 && (
+                  <div className="px-6 pt-5">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Subidos manualmente</p>
+                    <div className="space-y-1">
+                      {docsManual.map((d, i) => (
+                        <div key={d.id || i} className="flex items-center gap-3 py-2.5 px-3 rounded-lg hover:bg-gray-50 group">
+                          <span className="text-base flex-shrink-0">{mimeIcon(d.drive_mime)}</span>
+                          <div className="flex-1 min-w-0">
+                            <a href={d.drive_url || d.url || undefined} target="_blank" rel="noreferrer"
+                              className="text-[12px] font-medium text-[#2570BA] hover:underline truncate block">
+                              {d.nombre}
+                            </a>
+                          </div>
+                          <span className="text-[11px] text-gray-400 flex-shrink-0">{fmtDocFecha(d.fecha_creacion)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {docsAuto.length > 0 && (
+                  <div className="px-6 pt-5 pb-4">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Ingresados automáticamente</p>
+                    <div className="space-y-1">
+                      {docsAuto.map((d, i) => (
+                        <div key={d.id || i} className="flex items-center gap-3 py-2.5 px-3 rounded-lg hover:bg-gray-50">
+                          <span className="text-base flex-shrink-0">{mimeIcon(d.drive_mime)}</span>
+                          <div className="flex-1 min-w-0">
+                            <a href={d.drive_url || d.url || undefined} target="_blank" rel="noreferrer"
+                              className="text-[12px] font-medium text-[#2570BA] hover:underline truncate block">
+                              {d.nombre}
+                            </a>
+                          </div>
+                          <span className="text-[11px] text-gray-400 flex-shrink-0">{fmtDocFecha(d.fecha_creacion)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )
+        })()}
 
         {tab === 'revisiones' && (
           <div className="px-8 py-6">
@@ -3767,8 +3891,8 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                   <section>
                     <h3 className="text-[11px] font-bold text-emerald-700 uppercase tracking-wide mb-2">🟢 Últimos documentos</h3>
                     <div className="space-y-1">
-                      {documentosDrive.length === 0 && <p className="text-[11px] text-gray-300 italic">Sin documentos de Drive vinculados.</p>}
-                      {documentosDrive.slice(0, 6).map(d => (
+                      {documentosDrive.filter(d => d.fuente === 'drive_auto').length === 0 && <p className="text-[11px] text-gray-300 italic">Sin documentos de Drive vinculados.</p>}
+                      {documentosDrive.filter(d => d.fuente === 'drive_auto').slice(0, 6).map(d => (
                         <div key={d.id} className="flex items-center justify-between text-[11px] py-1 border-b border-gray-100 last:border-0">
                           <a href={d.url || undefined} target="_blank" rel="noreferrer" className="text-[#2570BA] hover:underline truncate pr-2">{d.nombre}</a>
                           <span className="text-gray-400 flex-shrink-0">{fmtFA(d.fecha_creacion) || '—'}</span>
