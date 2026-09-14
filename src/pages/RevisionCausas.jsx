@@ -562,6 +562,7 @@ export default function RevisionCausas() {
   const [cargando,    setCargando]    = useState(true)
   const [search,      setSearch]      = useState('')
   const [filtroClEst, setFiltroClEst] = useState('')
+  const [dbError,            setDbError]            = useState(null)
   const [showReset,          setShowReset]          = useState(false)
   const [editingFechaInicio, setEditingFechaInicio] = useState(false)
 
@@ -711,15 +712,27 @@ export default function RevisionCausas() {
     })
 
     // DB — revision_causas (fuente de verdad del período actual)
-    const { error: rcErr } = await supabase.from('revision_causas').upsert(
+    const { data: rcData, error: rcErr } = await supabase.from('revision_causas').upsert(
       { periodo_id: revActiva.id, causa_id: causaId, notas: datos.notas || '', responsable: datos.responsable || 'MT', fecha: datos.fecha || TODAY },
       { onConflict: 'periodo_id,causa_id' }
-    )
+    ).select()
     if (rcErr) {
-      console.error('revision_causas upsert error:', rcErr)
-      // Revertir optimista
-      setRcRows(prev => prev.filter(r => r.causa_id !== causaId || !String(r.id).startsWith('tmp_')))
+      const msg = `revision_causas upsert falló: ${rcErr.message} (code: ${rcErr.code}, hint: ${rcErr.hint ?? '—'}, details: ${rcErr.details ?? '—'})`
+      console.error(msg, rcErr)
+      setDbError(msg)
+      // NO revertir: dejar el estado optimista y el error visible para diagnóstico
       return
+    }
+    setDbError(null)
+    // Reemplazar fila optimista con la real devuelta por Supabase
+    if (rcData?.[0]) {
+      const real = rcData[0]
+      setRcRows(prev => {
+        const filtered = prev.filter(r => !(String(r.id).startsWith('tmp_') && String(r.causa_id) === cid))
+        const existing = filtered.find(r => String(r.causa_id) === cid)
+        if (existing) return filtered.map(r => String(r.causa_id) === cid ? { ...r, ...real } : r)
+        return [...filtered, real]
+      })
     }
 
     // revisiones — mantiene historial para períodos anteriores
@@ -847,6 +860,15 @@ export default function RevisionCausas() {
 
   return (
     <div className="flex flex-col h-screen bg-white overflow-hidden">
+
+      {/* ── Banner error DB ── */}
+      {dbError && (
+        <div className="flex-shrink-0 bg-red-50 border-b border-red-200 px-6 py-3 flex items-start gap-3">
+          <AlertCircle size={15} className="text-red-500 flex-shrink-0 mt-0.5" />
+          <p className="text-[12px] text-red-800 flex-1 font-mono break-all">{dbError}</p>
+          <button onClick={() => setDbError(null)} className="text-red-400 hover:text-red-600 flex-shrink-0">✕</button>
+        </div>
+      )}
 
       {/* ── Banner período vencido ── */}
       {periodExpired && (
