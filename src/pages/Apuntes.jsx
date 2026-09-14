@@ -244,7 +244,9 @@ function EventoItem({ tipo, label, sub, subColor, hora, href, cliente, isOculto,
 // Al marcar una tarea: agenda_ocultos + seguimiento en su causa.
 // Al marcar una nota: completada en agenda_notas.
 function VieneDAntes({ tareas, notas, ocultos, weekMonday, onOcultarTarea, onDesocultarTarea, onToggleNota }) {
-  const [collapsed, setCollapsed] = useState(false)
+  const [collapsed,   setCollapsed]   = useState(false)
+  const [resolviendo, setResolviendo] = useState(new Set()) // Set de `${tipo}:${id}`
+  const timeoutsRef = useRef(new Map())
 
   function diasAtras(fecha) {
     const ref = new Date(weekMonday + 'T00:00:00')
@@ -259,16 +261,58 @@ function VieneDAntes({ tareas, notas, ocultos, weekMonday, onOcultarTarea, onDes
     return `${dd}-${mm}`
   }
 
-  const items = [
+  function handleCheck(tipo, item) {
+    if (tipo === 'nota') { onToggleNota(item); return }
+
+    const key = `tarea:${item.id}`
+    const done = (ocultos[item.fecha_vencimiento] || new Set()).has(key)
+
+    if (done) {
+      // Ya está oculto → deshacer (quitar de ocultos)
+      onDesocultarTarea(item)
+      return
+    }
+
+    if (resolviendo.has(key)) return // ya en ventana de undo
+
+    // Marcar localmente de inmediato
+    setResolviendo(prev => { const s = new Set(prev); s.add(key); return s })
+
+    const tid = setTimeout(() => {
+      timeoutsRef.current.delete(key)
+      setResolviendo(prev => { const s = new Set(prev); s.delete(key); return s })
+      onOcultarTarea(item) // escribe en DB y actualiza ocultos en el padre
+    }, 3000)
+    timeoutsRef.current.set(key, tid)
+  }
+
+  function handleUndo(tipo, item) {
+    const key = `tarea:${item.id}`
+    const tid = timeoutsRef.current.get(key)
+    if (tid) clearTimeout(tid)
+    timeoutsRef.current.delete(key)
+    setResolviendo(prev => { const s = new Set(prev); s.delete(key); return s })
+  }
+
+  const allItems = [
     ...tareas.map(t => ({ tipo: 'tarea', item: t, fecha: t.fecha_vencimiento })),
     ...notas.map(n => ({ tipo: 'nota',  item: n, fecha: n.fecha })),
   ].sort((a, b) => b.fecha.localeCompare(a.fecha))
 
+  // Ocultar filas que ya están en ocultos Y no están en ventana de undo
+  const items = allItems.filter(({ tipo, item, fecha }) => {
+    if (tipo === 'nota') return !item.completada
+    const key  = `tarea:${item.id}`
+    const done = (ocultos[fecha] || new Set()).has(key)
+    return !done || resolviendo.has(key)
+  })
+
   if (items.length === 0) return null
 
-  const pendCount = items.filter(({ tipo, item, fecha }) => {
-    if (tipo === 'tarea') return !(ocultos[fecha] || new Set()).has(`tarea:${item.id}`)
-    return !item.completada
+  const pendCount = items.filter(({ tipo, item }) => {
+    if (tipo === 'nota') return !item.completada
+    const key = `tarea:${item.id}`
+    return !resolviendo.has(key) && !(ocultos[item.fecha_vencimiento] || new Set()).has(key)
   }).length
 
   return (
@@ -295,17 +339,40 @@ function VieneDAntes({ tareas, notas, ocultos, weekMonday, onOcultarTarea, onDes
       {!collapsed && (
         <div>
           {items.map(({ tipo, item, fecha }) => {
+            const key  = `tarea:${item.id}`
             const dias = diasAtras(fecha)
             const late = dias > 15
             const fechaLabel = `${fmtFecha(fecha)} · hace ${dias}d`
             const fechaColor = late ? '#C0392B' : '#C8862B'
+            const isResolviendo = tipo === 'tarea' && resolviendo.has(key)
             const done = tipo === 'tarea'
-              ? (ocultos[fecha] || new Set()).has(`tarea:${item.id}`)
+              ? (ocultos[fecha] || new Set()).has(key)
               : item.completada
-            const cliente = tipo === 'tarea' ? item.cliente_nombre : null
-            const texto   = tipo === 'tarea' ? item.titulo : item.texto
+            const cliente   = tipo === 'tarea' ? item.cliente_nombre : null
+            const texto     = tipo === 'tarea' ? item.titulo : item.texto
             const tipoLabel = tipo === 'tarea' ? 'TAREA' : 'NOTA'
             const tipoColor = tipo === 'tarea' ? TIPOS.tarea : TIPOS.nota
+
+            // Fila en ventana de undo
+            if (isResolviendo) {
+              return (
+                <div key={`vda-${tipo}-${item.id}`}
+                  className="flex items-center gap-2 px-5 py-2 border-b border-gray-50"
+                >
+                  <div className="flex-shrink-0 mt-0.5 w-4 h-4 rounded border flex items-center justify-center"
+                    style={{ borderColor: '#1E9E6A', background: '#1E9E6A' }}>
+                    <Check size={9} color="white" strokeWidth={3} />
+                  </div>
+                  <span className="flex-1 text-[12px] text-gray-300 line-through leading-snug">{texto}</span>
+                  <button
+                    onClick={() => handleUndo(tipo, item)}
+                    className="flex items-center gap-1 text-[11px] font-medium text-[#2570BA] hover:underline flex-shrink-0"
+                  >
+                    <Undo2 size={11} /> Deshacer
+                  </button>
+                </div>
+              )
+            }
 
             return (
               <div key={`vda-${tipo}-${item.id}`}
@@ -314,10 +381,7 @@ function VieneDAntes({ tareas, notas, ocultos, weekMonday, onOcultarTarea, onDes
               >
                 {/* Checkbox */}
                 <button
-                  onClick={() => {
-                    if (tipo === 'tarea') done ? onDesocultarTarea(item) : onOcultarTarea(item)
-                    else onToggleNota(item)
-                  }}
+                  onClick={() => handleCheck(tipo, item)}
                   className="flex-shrink-0 mt-0.5 w-4 h-4 rounded border flex items-center justify-center transition-colors"
                   style={{
                     borderColor: done ? '#1E9E6A' : '#CBD5E1',
@@ -329,18 +393,16 @@ function VieneDAntes({ tareas, notas, ocultos, weekMonday, onOcultarTarea, onDes
 
                 {/* Contenido */}
                 <div className="flex-1 min-w-0">
-                  {/* Tipo + Texto */}
                   <div className="flex items-start gap-1.5">
                     <span className="text-[9px] font-bold px-1 py-0.5 rounded flex-shrink-0 mt-0.5"
                       style={{ color: tipoColor.color, background: tipoColor.bg }}>
                       {tipoLabel}
                     </span>
-                    <span className="text-[12px] text-gray-700 leading-snug"
+                    <span className="text-[12px] leading-snug"
                       style={{ textDecoration: done ? 'line-through' : 'none', color: done ? '#9CA3AF' : '#374151' }}>
                       {texto}
                     </span>
                   </div>
-                  {/* Cliente */}
                   {cliente ? (
                     <p className="text-[11px] font-bold text-gray-700 mt-0.5 pl-0.5">{cliente}</p>
                   ) : (
@@ -348,7 +410,7 @@ function VieneDAntes({ tareas, notas, ocultos, weekMonday, onOcultarTarea, onDes
                   )}
                 </div>
 
-                {/* Fecha y atraso */}
+                {/* Fecha */}
                 <span className="text-[10px] font-medium tabular-nums flex-shrink-0 mt-0.5"
                   style={{ color: done ? '#D1D5DB' : fechaColor }}>
                   {fechaLabel}
