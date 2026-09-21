@@ -21,15 +21,22 @@ const DB_FIELDS = new Set([
   'tipo_solicitud','drive_url',
 ])
 
-const TIPO_CONFIG = {
-  'Copia de carpeta investigativa': 'bg-[#f1f5f9] text-[#475569] border-[#e2e8f0]',
-  'Solicitud de entrevista':        'bg-[#f1f5f9] text-[#475569] border-[#e2e8f0]',
-  'Solicitud de diligencias':       'bg-[#f1f5f9] text-[#475569] border-[#e2e8f0]',
-  'Solicitud de información':       'bg-[#f1f5f9] text-[#475569] border-[#e2e8f0]',
-  'Solicitud de documento':         'bg-[#f1f5f9] text-[#475569] border-[#e2e8f0]',
-  'Otro':                           'bg-[#f1f5f9] text-[#475569] border-[#e2e8f0]',
-}
-const TIPO_OPTS = Object.keys(TIPO_CONFIG)
+const TIPO_BADGE_CLS = 'bg-[#f1f5f9] text-[#475569] border-[#e2e8f0]'
+const TIPO_CONFIG = new Proxy({}, { get: () => TIPO_BADGE_CLS })
+const TIPO_OPTS = [
+  'Solicitud de diligencias de investigación',
+  'Información específica sobre término de una causa',
+  'Información sobre diligencias de investigación',
+  'Solicitud de copia de la carpeta',
+  'Solicitud de audiencia o entrevista',
+  'Solicitud de cambio de fecha/hora de citación o entrevista',
+  'Solicitud de devolución de especies/dinero',
+  'Solicitud de revisión de la carpeta de investigación',
+  'Solicitud de revisión de evidencia',
+  'Aporte de antecedentes asociados a una causa',
+  'Solicitud de documentos específicos de la causa',
+  'Otras',
+]
 
 const ESTADO_CONFIG = {
   'Respondida':          { bg: 'bg-[#1a2e4a]',             text: 'text-white',      dot: 'bg-white',         border: 'border-transparent'          },
@@ -259,18 +266,11 @@ function FormNuevaSolicitud({ causa, causasInfo, globalMode, onSave, onClose }) 
 
           <div>
             <L c="Tipo de solicitud" />
-            <div className="flex flex-wrap gap-1.5">
-              {TIPO_OPTS.map(t => (
-                <button key={t} onClick={() => f('tipo_solicitud', t)}
-                  className={`text-[10px] font-semibold px-2.5 py-1 rounded-full border transition-all ${
-                    form.tipo_solicitud === t
-                      ? (TIPO_CONFIG[t] || TIPO_CONFIG['Otro']) + ' border-current'
-                      : 'bg-gray-50 text-gray-400 border-gray-200 hover:border-gray-300'
-                  }`}>
-                  {t}
-                </button>
-              ))}
-            </div>
+            <select value={form.tipo_solicitud} onChange={e => f('tipo_solicitud', e.target.value)}
+              className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 focus:outline-none focus:border-blue-300">
+              <option value="">— Seleccionar —</option>
+              {TIPO_OPTS.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
           </div>
 
           <div>
@@ -617,6 +617,14 @@ export function SolicitudesTable({ grupo, registrosAll, onUpdate, onAdd, onDelet
                             className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 w-full focus:outline-none focus:border-blue-300 bg-white"/>
                         </div>
                       </div>
+                      <div>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Tipo de solicitud</p>
+                        <select value={editDraft.tipo_solicitud||''} onChange={e=>ed('tipo_solicitud',e.target.value)}
+                          className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 w-full focus:outline-none focus:border-blue-300 bg-white">
+                          <option value="">— Seleccionar —</option>
+                          {TIPO_OPTS.map(t => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                      </div>
                       <div className="grid grid-cols-2 gap-4">
                         <div>
                           <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Solicitud completa</p>
@@ -762,7 +770,12 @@ export function SolicitudesTable({ grupo, registrosAll, onUpdate, onAdd, onDelet
                               className="text-xs font-mono border border-gray-200 rounded-lg px-2 py-1.5 w-24 focus:outline-none focus:border-blue-300 bg-white"/>
                           </td>
                           <td className="px-3 py-2">
-                            <span className="text-[11px] text-gray-400">—</span>
+                            <select value={editDraft.tipo_solicitud||''} onChange={e=>ed('tipo_solicitud',e.target.value)}
+                              onClick={e=>e.stopPropagation()}
+                              className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:border-blue-300 bg-white max-w-[180px]">
+                              <option value="">— Tipo —</option>
+                              {TIPO_OPTS.map(t => <option key={t} value={t}>{t}</option>)}
+                            </select>
                           </td>
                           <td className="px-3 py-2">
                             <textarea ref={solicitudEditRef} defaultValue={editDraft.solicitud||''}
