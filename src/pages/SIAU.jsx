@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   ChevronRight, ChevronDown, ChevronLeft, Search, Plus, ArrowLeft,
   FileText, Clock, AlertCircle, CheckCircle2, X, Check, Edit2, Loader2, Scale, Table2, Trash2,
+  ClipboardCopy,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import CargaMasivaModal from '../components/CargaMasivaModal'
@@ -545,7 +546,7 @@ export function SolicitudesTable({ grupo, registrosAll, onUpdate, onAdd, onDelet
         </div>
       )}
 
-      {/* Table */}
+      {/* Table / Cards */}
       <div className="flex-1 overflow-auto">
         {registros.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full py-20 text-center">
@@ -554,6 +555,154 @@ export function SolicitudesTable({ grupo, registrosAll, onUpdate, onAdd, onDelet
             <button onClick={() => setShowForm(true)} className="mt-3 text-xs text-[#2570ba] hover:underline font-medium">
               + Agregar primera solicitud
             </button>
+          </div>
+        ) : embedded ? (
+          /* ── Card list for embedded mode (dentro de CausaView) ── */
+          <div className="divide-y divide-gray-50">
+            {registros.map(r => {
+              const isEditing = editingId === r.id
+              const dias = r.fecha ? Math.floor((Date.now() - new Date(r.fecha+'T00:00:00').getTime()) / 86400000) : null
+
+              function copiar() {
+                const fechaFmt = r.fecha ? r.fecha.split('-').reverse().join('-') : '—'
+                const respFmt  = r.respuesta
+                  ? r.respuesta
+                  : `Sin respuesta — ${dias !== null ? dias + ' días' : '—'}`
+                navigator.clipboard.writeText(
+                  `Fecha: ${fechaFmt}\nFolio: ${r.folio || '—'}\nSolicitud: ${r.solicitud || '—'}\nRespuesta: ${respFmt}`
+                )
+              }
+
+              return (
+                <div key={r.id} className={`px-6 py-5 ${isEditing ? 'bg-blue-50/20 border-l-2 border-l-blue-300' : ''}`}>
+                  {/* Card header */}
+                  <div className="flex items-center gap-2 mb-4 group">
+                    <span className="text-[11px] text-gray-500 font-medium">{fmtFecha(r.fecha)}</span>
+                    <span className="text-[11px] font-mono font-semibold text-gray-700 bg-gray-100 px-1.5 py-0.5 rounded">{r.folio || '—'}</span>
+                    <TipoBadge tipo={r.tipo_solicitud}/>
+                    <EstadoBadge estado={r.estado || 'Pendiente'}/>
+                    <div className="ml-auto flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                      {!isEditing && (
+                        <>
+                          <button onDoubleClick={e => e.stopPropagation()} onClick={e => startEdit(r, e)}
+                            className="p-1.5 rounded-lg text-gray-300 hover:text-blue-500 hover:bg-blue-50 transition-colors">
+                            <Edit2 size={11}/>
+                          </button>
+                          <button onClick={() => setDeleteTarget({ id: r.id, name: `la solicitud del ${fmtFecha(r.fecha)}` })}
+                            className="p-1.5 rounded-lg text-gray-300 hover:text-red-400 hover:bg-red-50 transition-colors">
+                            <Trash2 size={11}/>
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Card body */}
+                  {isEditing ? (
+                    <div className="rounded-2xl border border-blue-200 bg-blue-50/30 p-5 space-y-4">
+                      <div className="grid grid-cols-3 gap-3">
+                        <div>
+                          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Fecha</p>
+                          <input type="date" value={editDraft.fecha||''} onChange={e=>ed('fecha',e.target.value)}
+                            className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 w-full focus:outline-none focus:border-blue-300 bg-white"/>
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Folio</p>
+                          <input type="text" value={editDraft.folio||''} onChange={e=>ed('folio',e.target.value)} placeholder="folio"
+                            className="text-xs font-mono border border-gray-200 rounded-lg px-2 py-1.5 w-full focus:outline-none focus:border-blue-300 bg-white"/>
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Estado</p>
+                          <input type="text" value={editDraft.estado||''} onChange={e=>ed('estado',e.target.value)}
+                            className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 w-full focus:outline-none focus:border-blue-300 bg-white"/>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Solicitud completa</p>
+                          <textarea ref={solicitudEditRef} defaultValue={editDraft.solicitud||''} rows={4}
+                            className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 w-full resize-none focus:outline-none focus:border-blue-300 bg-white"/>
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Respuesta</p>
+                          <textarea ref={respuestaEditRef} defaultValue={editDraft.respuesta||''} rows={4}
+                            className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 w-full resize-none focus:outline-none focus:border-blue-300 bg-white"/>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Fecha respuesta</p>
+                          <input type="date" value={editDraft.fecha_respuesta||''} onChange={e=>ed('fecha_respuesta',e.target.value)}
+                            className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 w-full focus:outline-none focus:border-blue-300 bg-white"/>
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Documento</p>
+                          <input type="text" value={editDraft.documento_nombre||''} onChange={e=>ed('documento_nombre',e.target.value)}
+                            className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 w-full focus:outline-none focus:border-blue-300 bg-white"/>
+                        </div>
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Notas internas</p>
+                        <input type="text" value={editDraft.notas||''} onChange={e=>ed('notas',e.target.value)}
+                          className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 w-full focus:outline-none focus:border-blue-300 bg-white"/>
+                      </div>
+                      <div className="flex items-center gap-2 pt-1">
+                        <button onClick={saveEdit} className="flex items-center gap-1 text-xs bg-emerald-600 text-white px-3 py-1.5 rounded-lg hover:bg-emerald-700 transition-colors">
+                          <Check size={11}/> Guardar
+                        </button>
+                        <button onClick={cancelEdit} className="text-xs text-gray-400 hover:text-gray-600 px-2 py-1.5">Cancelar</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="rounded-2xl border border-[#1a2e4a]/8 bg-[#1a2e4a]/[0.025] p-5 grid grid-cols-2 gap-5">
+                      {/* Left: solicitud */}
+                      <div>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Solicitud completa</p>
+                        <p className="text-[12px] text-gray-700 leading-relaxed whitespace-pre-wrap">{r.solicitud || '—'}</p>
+                        {r.fecha && (
+                          <p className="text-[10px] text-gray-400 mt-2">
+                            Enviada: {fmtFecha(r.fecha)}
+                            {!r.respuesta && (
+                              <span className={`ml-2 font-semibold ${dias > 15 ? 'text-red-500' : 'text-gray-400'}`}>
+                                · {dias} días sin respuesta
+                              </span>
+                            )}
+                            {r.respuesta && r.fecha_respuesta && (
+                              <span className="ml-2 text-emerald-600 font-semibold">
+                                · Respondida en {Math.max(0, Math.floor((new Date(r.fecha_respuesta+'T00:00:00').getTime()-new Date(r.fecha+'T00:00:00').getTime())/86400000))}d
+                              </span>
+                            )}
+                          </p>
+                        )}
+                      </div>
+                      {/* Right: respuesta + doc/drive/notas + copiar */}
+                      <div>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Respuesta</p>
+                        {r.respuesta ? (
+                          <p className="text-[12px] text-gray-600 leading-relaxed whitespace-pre-wrap">{r.respuesta}</p>
+                        ) : (
+                          <RespuestaInline registro={r} onUpdate={onUpdate}/>
+                        )}
+                        <div className="mt-3 pt-3 border-t border-[#1a2e4a]/10 space-y-2">
+                          <DocNombreInline registro={r} onUpdate={onUpdate}/>
+                          <DriveUrlInline registro={r} onUpdate={onUpdate}/>
+                        </div>
+                        {r.notas && (
+                          <div className="mt-3 pt-3 border-t border-[#1a2e4a]/10">
+                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Notas internas</p>
+                            <p className="text-[12px] text-gray-500 leading-relaxed">{r.notas}</p>
+                          </div>
+                        )}
+                        <button onClick={copiar}
+                          className="mt-3 flex items-center gap-1 text-[10px] text-gray-400 hover:text-[#2570BA] transition-colors">
+                          <ClipboardCopy size={11}/> Copiar
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
           </div>
         ) : (
           <table className="siau-table text-left border-collapse" style={{ minWidth: siauMinWidth }}>
