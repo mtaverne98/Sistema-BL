@@ -560,7 +560,8 @@ export function SolicitudesTable({ grupo, registrosAll, onUpdate, onAdd, onDelet
           /* ── Card list for embedded mode (dentro de CausaView) ── */
           <div className="divide-y divide-gray-50">
             {registros.map(r => {
-              const isEditing = editingId === r.id
+              const isEditing  = editingId === r.id
+              const isExpanded = expandedId === r.id
               const dias = r.fecha ? Math.floor((Date.now() - new Date(r.fecha+'T00:00:00').getTime()) / 86400000) : null
 
               function copiar() {
@@ -574,21 +575,29 @@ export function SolicitudesTable({ grupo, registrosAll, onUpdate, onAdd, onDelet
               }
 
               return (
-                <div key={r.id} className={`px-6 py-5 ${isEditing ? 'bg-blue-50/20 border-l-2 border-l-blue-300' : ''}`}>
-                  {/* Card header */}
-                  <div className="flex items-center gap-2 mb-4 group">
-                    <span className="text-[11px] text-gray-500 font-medium">{fmtFecha(r.fecha)}</span>
-                    <span className="text-[11px] font-mono font-semibold text-gray-700 bg-gray-100 px-1.5 py-0.5 rounded">{r.folio || '—'}</span>
+                <div key={r.id}
+                  className={`border-b border-gray-50 last:border-0 ${isEditing ? 'bg-blue-50/20 border-l-2 border-l-blue-300' : ''}`}>
+                  {/* Fila colapsada — siempre visible */}
+                  <div
+                    onClick={() => !isEditing && toggleRow(r.id)}
+                    className={`px-6 py-3 flex items-center gap-2 group ${!isEditing ? 'cursor-pointer hover:bg-gray-50/60' : ''} transition-colors`}>
+                    <ChevronRight size={12} className={`text-gray-300 flex-shrink-0 transition-transform ${isExpanded || isEditing ? 'rotate-90' : ''}`}/>
+                    <span className="text-[11px] text-gray-500 font-medium w-20 flex-shrink-0">{fmtFecha(r.fecha)}</span>
+                    <span className="text-[11px] font-mono font-semibold text-gray-700 bg-gray-100 px-1.5 py-0.5 rounded flex-shrink-0">{r.folio || '—'}</span>
                     <TipoBadge tipo={r.tipo_solicitud}/>
+                    <span className={`ml-1 text-[10px] font-semibold tabular-nums flex-shrink-0 ${dias !== null && dias > 15 && !r.respuesta ? 'text-red-500' : 'text-gray-400'}`}>
+                      {dias !== null ? `${dias}d` : ''}
+                    </span>
+                    <div className="flex-1"/>
                     <EstadoBadge estado={r.estado || 'Pendiente'}/>
-                    <div className="ml-auto flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all ml-1">
                       {!isEditing && (
                         <>
-                          <button onDoubleClick={e => e.stopPropagation()} onClick={e => startEdit(r, e)}
+                          <button onClick={e => startEdit(r, e)}
                             className="p-1.5 rounded-lg text-gray-300 hover:text-blue-500 hover:bg-blue-50 transition-colors">
                             <Edit2 size={11}/>
                           </button>
-                          <button onClick={() => setDeleteTarget({ id: r.id, name: `la solicitud del ${fmtFecha(r.fecha)}` })}
+                          <button onClick={e => { e.stopPropagation(); setDeleteTarget({ id: r.id, name: `la solicitud del ${fmtFecha(r.fecha)}` }) }}
                             className="p-1.5 rounded-lg text-gray-300 hover:text-red-400 hover:bg-red-50 transition-colors">
                             <Trash2 size={11}/>
                           </button>
@@ -597,7 +606,9 @@ export function SolicitudesTable({ grupo, registrosAll, onUpdate, onAdd, onDelet
                     </div>
                   </div>
 
-                  {/* Card body */}
+                  {/* Cuerpo expandido */}
+                  {(isExpanded || isEditing) && (
+                  <div className="px-6 pb-5">
                   {isEditing ? (
                     <div className="rounded-2xl border border-blue-200 bg-blue-50/30 p-5 space-y-4">
                       <div className="grid grid-cols-3 gap-3">
@@ -707,6 +718,8 @@ export function SolicitudesTable({ grupo, registrosAll, onUpdate, onAdd, onDelet
                         </button>
                       </div>
                     </div>
+                  )}
+                  </div>
                   )}
                 </div>
               )
