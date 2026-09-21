@@ -9,7 +9,7 @@ import {
   Loader2, AlertTriangle, RefreshCw, Trash2, Check,
   Calendar, Activity, Flame, PlusSquare,
   UserCheck, Upload, Table2, Database, Shield, ExternalLink,
-  ListTodo, Inbox, FileSearch, Link2, Download, Copy,
+  ListTodo, Inbox, FileSearch, Link2, Download, ClipboardCopy,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 
@@ -3563,7 +3563,13 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                     const isExpanded = dilExpandedId === dil.id
                     const dias = dil.fecha_solicitud ? daysSince(dil.fecha_solicitud) : null
                     const borderColor = DIL_BORDER[dil.estado] || '#9CA3AF'
-                    const titulo = dil.folio || dil.nombre || '—'
+                    const titulo = dil.folio || 'Sin número · gestión propia'
+                    const sinNumero = !dil.folio
+                    const diasCls = dias === null ? null
+                      : dias > 60 ? 'text-red-500'
+                      : dias > 30 ? 'text-orange-500'
+                      : dias > 15 ? 'text-amber-500'
+                      : 'text-gray-400'
 
                     return (
                       <div
@@ -3573,7 +3579,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                       >
                         {/* Card header — clickable to expand */}
                         <div
-                          className="flex items-start gap-3 px-4 pt-3 pb-2 cursor-pointer select-none"
+                          className="flex items-start gap-3 px-4 pt-3 pb-1.5 cursor-pointer select-none"
                           onClick={() => setDilExpandedId(isExpanded ? null : dil.id)}
                         >
                           {/* Left: title + instruccion */}
@@ -3581,7 +3587,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                             {/* Title row with copy button */}
                             <div className="flex items-center gap-1.5 mb-0.5">
                               <span
-                                className="text-[12px] font-semibold text-gray-800 leading-snug"
+                                className={`text-[12px] font-semibold leading-snug ${sinNumero ? 'text-gray-400 italic' : 'text-gray-800'}`}
                                 onClick={e => e.stopPropagation()}
                                 onDoubleClick={e => {
                                   e.stopPropagation()
@@ -3591,16 +3597,18 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                               >
                                 {titulo}
                               </span>
-                              <button
-                                onClick={e => {
-                                  e.stopPropagation()
-                                  navigator.clipboard.writeText(titulo)
-                                }}
-                                className="text-gray-300 hover:text-gray-500 transition-colors flex-shrink-0"
-                                title="Copiar"
-                              >
-                                <Copy size={11} />
-                              </button>
+                              {!sinNumero && (
+                                <button
+                                  onClick={e => {
+                                    e.stopPropagation()
+                                    navigator.clipboard.writeText(titulo)
+                                  }}
+                                  className="text-gray-300 hover:text-gray-500 transition-colors flex-shrink-0"
+                                  title="Copiar"
+                                >
+                                  <ClipboardCopy size={11} />
+                                </button>
+                              )}
                             </div>
                             {/* Instruccion */}
                             {dil.instruccion && (
@@ -3615,8 +3623,8 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                             <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full border text-[10px] font-semibold ${DIL_ESTADO_CLS[dil.estado] || 'bg-gray-50 text-gray-500 border-gray-200'}`}>
                               {dil.estado || 'Sin estado'}
                             </span>
-                            {dias !== null && dias > 0 && (
-                              <span className="flex items-center gap-0.5 text-[10px] font-medium text-red-500 tabular-nums">
+                            {diasCls && dias > 0 && (
+                              <span className={`flex items-center gap-0.5 text-[10px] font-medium tabular-nums ${diasCls}`}>
                                 <Clock size={9} />
                                 {dias}d
                               </span>
@@ -3624,24 +3632,26 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                           </div>
                         </div>
 
-                        {/* Card footer */}
+                        {/* Card footer — fecha OI · organismo · funcionario */}
                         <div
-                          className="flex items-center gap-3 px-4 pb-2.5 cursor-pointer"
+                          className="flex items-center gap-2 px-4 pb-2.5 cursor-pointer"
                           onClick={() => setDilExpandedId(isExpanded ? null : dil.id)}
                         >
-                          {dil.fecha_solicitud && (
-                            <span className="text-[10px] text-gray-400 tabular-nums">
-                              OI {fmtDilFecha(dil.fecha_solicitud)}
-                            </span>
-                          )}
-                          {dil.organismo && (
-                            <span className="text-[10px] text-gray-400 truncate max-w-[160px]">
-                              {dil.organismo}
-                            </span>
-                          )}
-                          <span className="text-[10px] text-gray-300 ml-auto">
-                            {dil.fecha_recepcion ? `Recibida ${fmtDilFecha(dil.fecha_recepcion)}` : 'Sin recepción'}
+                          <span className="text-[10px] text-gray-400 tabular-nums flex-shrink-0">
+                            {dil.fecha_solicitud ? fmtDilFecha(dil.fecha_solicitud) : '—'}
                           </span>
+                          <span className="text-[10px] text-gray-300">·</span>
+                          <span className="text-[10px] text-gray-400 truncate max-w-[140px]">
+                            {dil.organismo || '—'}
+                          </span>
+                          <span className="text-[10px] text-gray-300">·</span>
+                          {dil.funcionario ? (
+                            <span className="text-[10px] text-gray-400 truncate max-w-[140px]">
+                              {dil.funcionario}{dil.funcionario_telefono ? ` · ${dil.funcionario_telefono}` : ''}
+                            </span>
+                          ) : (
+                            <span className="text-[10px] text-red-400 font-medium">sin endosar</span>
+                          )}
                         </div>
 
                         {/* Expanded detail */}
@@ -3675,6 +3685,14 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                               <div>
                                 <span className="text-gray-400 font-medium block mb-0.5">Recepción</span>
                                 <DilInlineDate id={dil.id} field="fecha_recepcion" value={dil.fecha_recepcion} {...dilEc} />
+                              </div>
+                              <div>
+                                <span className="text-gray-400 font-medium block mb-0.5">Funcionario</span>
+                                <DilInlineText id={dil.id} field="funcionario" value={dil.funcionario} placeholder="Nombre del funcionario" {...dilEc} />
+                              </div>
+                              <div>
+                                <span className="text-gray-400 font-medium block mb-0.5">Teléfono funcionario</span>
+                                <DilInlineText id={dil.id} field="funcionario_telefono" value={dil.funcionario_telefono} placeholder="+56 9 …" {...dilEc} />
                               </div>
                             </div>
                             {/* Dotted separator */}
