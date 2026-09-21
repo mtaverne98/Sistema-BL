@@ -1233,6 +1233,25 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
   const [showTareasComp, setShowTareasComp] = useState(false)
   const [showExport,     setShowExport]     = useState(false)
 
+  const TAB_KEYS = ['resumen','analisis','siau','pjud','audiencias','tareas','pendientes','plazos','documentos','diligencias','entrevistas','seguimiento','revisiones']
+  const tabBarRef = useRef(null)
+
+  useEffect(() => {
+    if (!tabBarRef.current) return
+    const activeBtn = tabBarRef.current.querySelector('[data-active="true"]')
+    activeBtn?.scrollIntoView({ inline: 'nearest', behavior: 'smooth', block: 'nearest' })
+  }, [tab])
+
+  const goToPrevTab = useCallback(() => {
+    const idx = TAB_KEYS.indexOf(tab)
+    setTab(TAB_KEYS[idx <= 0 ? TAB_KEYS.length - 1 : idx - 1])
+  }, [tab, setTab])
+
+  const goToNextTab = useCallback(() => {
+    const idx = TAB_KEYS.indexOf(tab)
+    setTab(TAB_KEYS[idx >= TAB_KEYS.length - 1 ? 0 : idx + 1])
+  }, [tab, setTab])
+
   // ── Exponer contexto al Quick Add global ──
   const { setCtx } = useQuickAdd()
   useEffect(() => {
@@ -2191,11 +2210,13 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
             { key: 'revisiones',  Icon: BookOpen,    label: 'Revisiones',  count: revCount || null,        urgent: false },
           ]
           return (
-            <div className="flex items-center gap-1.5 pb-3 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+            <div className="flex items-center gap-1 pb-3">
+              <div ref={tabBarRef} className="flex items-center gap-1.5 overflow-x-auto flex-1 min-w-0" style={{ scrollbarWidth: 'none' }}>
               {chips.map(({ key, Icon, label, count, urgent, nuevo }) => (
                 <button
                   key={key}
                   onClick={() => setTab(key)}
+                  data-active={tab === key}
                   title={nuevo ? `Ir a ${label} (${nuevo} sin revisar del último sync automático)` : `Ir a ${label}`}
                   className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium whitespace-nowrap flex-shrink-0 transition-all ${
                     tab === key
@@ -2224,6 +2245,23 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                   )}
                 </button>
               ))}
+              </div>
+              <div className="flex items-center gap-0.5 flex-shrink-0 ml-1">
+                <button
+                  onClick={goToPrevTab}
+                  className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+                  title="Pestaña anterior"
+                >
+                  <ChevronLeft size={13} />
+                </button>
+                <button
+                  onClick={goToNextTab}
+                  className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+                  title="Pestaña siguiente"
+                >
+                  <ChevronRight size={13} />
+                </button>
+              </div>
             </div>
           )
         })()}
