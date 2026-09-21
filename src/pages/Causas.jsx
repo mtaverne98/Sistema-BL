@@ -1252,6 +1252,18 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
     setTab(TAB_KEYS[idx >= TAB_KEYS.length - 1 ? 0 : idx + 1])
   }, [tab, setTab])
 
+  // ── Teclado: ← → navegan entre pestañas ──
+  useEffect(() => {
+    const handler = (e) => {
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) return
+      if (document.activeElement?.isContentEditable) return
+      if (e.key === 'ArrowLeft')  { e.preventDefault(); goToPrevTab() }
+      if (e.key === 'ArrowRight') { e.preventDefault(); goToNextTab() }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [goToPrevTab, goToNextTab])
+
   // ── Exponer contexto al Quick Add global ──
   const { setCtx } = useQuickAdd()
   useEffect(() => {
