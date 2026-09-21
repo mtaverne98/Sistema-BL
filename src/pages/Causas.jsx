@@ -9,7 +9,7 @@ import {
   Loader2, AlertTriangle, RefreshCw, Trash2, Check,
   Calendar, Activity, Flame, PlusSquare,
   UserCheck, Upload, Table2, Database, Shield, ExternalLink,
-  ListTodo, Inbox, FileSearch, Link2, Download,
+  ListTodo, Inbox, FileSearch, Link2, Download, Copy,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 
@@ -66,11 +66,18 @@ const CERRADAS = new Set(['Cerrada', 'Suspendida'])
 const ACTIVAS  = new Set(['Abierta', 'Revisar'])
 
 // ── Diligencias inline-edit helpers (módulo, no dentro de render) ─────────────
-const DIL_ESTADOS = ['Recibida', 'Solicitada', 'No recibida']
+const DIL_ESTADOS = ['Vencida', 'Por contactar', 'En gestión', 'Cumplida']
 const DIL_ESTADO_CLS = {
-  'Recibida':    'bg-emerald-50 text-emerald-700 border-emerald-200',
-  'Solicitada':  'bg-amber-50 text-amber-700 border-amber-200',
-  'No recibida': 'bg-red-50 text-red-600 border-red-200',
+  'Vencida':      'bg-red-50 text-red-600 border-red-200',
+  'Por contactar':'bg-amber-50 text-amber-700 border-amber-200',
+  'En gestión':   'bg-amber-50 text-amber-700 border-amber-200',
+  'Cumplida':     'bg-emerald-50 text-emerald-700 border-emerald-200',
+}
+const DIL_BORDER = {
+  'Vencida':      '#C0392B',
+  'Por contactar':'#C8862B',
+  'En gestión':   '#C8862B',
+  'Cumplida':     '#1E9E6A',
 }
 function fmtDilFecha(iso) {
   if (!iso) return null
@@ -109,8 +116,8 @@ function DilInlineText({ id, field, value, placeholder = '—', multiline = fals
 
 function DilInlineSelect({ id, field, value, ec, setEc, commit }) {
   const active = ec?.id === id && ec?.field === field
-  const [draft, setDraft] = useState(value ?? 'Solicitada')
-  useEffect(() => { if (!active) setDraft(value ?? 'Solicitada') }, [value, active])
+  const [draft, setDraft] = useState(value ?? 'Por contactar')
+  useEffect(() => { if (!active) setDraft(value ?? 'Por contactar') }, [value, active])
   if (active) {
     return (
       <select
@@ -3447,21 +3454,23 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
           }
 
           const filtered = diligencias.filter(d => {
-            if (dilFilter === 'recibidas')    return d.estado === 'Recibida'
-            if (dilFilter === 'solicitadas')  return d.estado === 'Solicitada'
-            if (dilFilter === 'no_recibidas') return d.estado === 'No recibida'
+            if (dilFilter === 'vencidas')     return d.estado === 'Vencida'
+            if (dilFilter === 'por_contactar') return d.estado === 'Por contactar'
+            if (dilFilter === 'en_gestion')   return d.estado === 'En gestión'
+            if (dilFilter === 'cumplidas')    return d.estado === 'Cumplida'
             return true
           })
           const counts = {
-            todas:       diligencias.length,
-            recibidas:   diligencias.filter(d => d.estado === 'Recibida').length,
-            solicitadas: diligencias.filter(d => d.estado === 'Solicitada').length,
-            no_recibidas:diligencias.filter(d => d.estado === 'No recibida').length,
+            todas:        diligencias.length,
+            vencidas:     diligencias.filter(d => d.estado === 'Vencida').length,
+            por_contactar:diligencias.filter(d => d.estado === 'Por contactar').length,
+            en_gestion:   diligencias.filter(d => d.estado === 'En gestión').length,
+            cumplidas:    diligencias.filter(d => d.estado === 'Cumplida').length,
           }
 
-          let rows = filtered
+          let cards = filtered
           if (dilGroupByOI) {
-            rows = [...filtered].sort((a, b) => (a.organismo || '').localeCompare(b.organismo || ''))
+            cards = [...filtered].sort((a, b) => (a.organismo || '').localeCompare(b.organismo || ''))
           }
 
           async function commitDilField(id, field, value) {
@@ -3477,7 +3486,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
               causa_id: causa.id,
               nombre: 'Nueva diligencia',
               organismo: null, instruccion: null,
-              estado: 'Solicitada',
+              estado: 'Por contactar',
               fecha_solicitud: null, fecha_recepcion: null,
               folio: null, notas: null,
             }
@@ -3490,10 +3499,11 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
           }
 
           const FILTERS = [
-            { key: 'todas', label: 'Todas' },
-            { key: 'recibidas', label: 'Recibidas' },
-            { key: 'solicitadas', label: 'Solicitadas' },
-            { key: 'no_recibidas', label: 'No recibidas' },
+            { key: 'todas',         label: 'Todas',         cls: null },
+            { key: 'vencidas',      label: 'Vencidas',      cls: 'text-red-600' },
+            { key: 'por_contactar', label: 'Por contactar', cls: null },
+            { key: 'en_gestion',    label: 'En gestión',    cls: null },
+            { key: 'cumplidas',     label: 'Cumplidas',     cls: null },
           ]
 
           const dilEc = { ec: editingCell, setEc: setEditingCell, commit: commitDilField }
@@ -3510,7 +3520,9 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                       className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors ${
                         dilFilter === f.key
                           ? 'bg-[#1A2E4A] text-white'
-                          : 'text-gray-500 hover:bg-gray-200'
+                          : f.cls
+                            ? `${f.cls} hover:bg-red-50`
+                            : 'text-gray-500 hover:bg-gray-200'
                       }`}
                     >
                       {f.label} <span className="opacity-60 tabular-nums">({counts[f.key]})</span>
@@ -3525,7 +3537,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                       onChange={e => setDilGroupByOI(e.target.checked)}
                       className="w-3 h-3 accent-[#2570BA]"
                     />
-                    <span className="text-[11px] text-gray-500">Agrupar por OI</span>
+                    <span className="text-[11px] text-gray-500">Agrupar por organismo</span>
                   </label>
                   <button
                     onClick={handleAddDiligencia}
@@ -3536,9 +3548,9 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                 </div>
               </div>
 
-              {/* List */}
-              <div className="flex-1 overflow-y-auto">
-                {rows.length === 0 ? (
+              {/* Card list */}
+              <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-2">
+                {cards.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-16 px-8 text-center">
                     <Inbox size={28} className="text-gray-200 mb-3" />
                     <p className="text-[13px] text-gray-400 font-medium">Sin diligencias</p>
@@ -3547,94 +3559,141 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                     </p>
                   </div>
                 ) : (
-                  <div>
-                    {rows.map((dil, idx) => {
-                      const isExpanded = dilExpandedId === dil.id
-                      const alertDays = dil.estado === 'Solicitada' && dil.fecha_solicitud && daysSince(dil.fecha_solicitud) > 60
-                        ? daysSince(dil.fecha_solicitud) : null
+                  cards.map(dil => {
+                    const isExpanded = dilExpandedId === dil.id
+                    const dias = dil.fecha_solicitud ? daysSince(dil.fecha_solicitud) : null
+                    const borderColor = DIL_BORDER[dil.estado] || '#9CA3AF'
+                    const titulo = dil.folio || dil.nombre || '—'
 
-                      return (
-                        <div key={dil.id} className={`border-b border-gray-100 transition-colors ${isExpanded ? 'bg-gray-50/60 border-l-2 border-[#2570BA]' : 'hover:bg-gray-50 border-l-2 border-transparent'}`}>
-                          {/* Row */}
-                          <div
-                            className="flex items-center gap-3 px-5 py-3 cursor-pointer select-none"
-                            onClick={() => setDilExpandedId(isExpanded ? null : dil.id)}
-                          >
-                            <ChevronRight
-                              size={14}
-                              className={`text-gray-300 flex-shrink-0 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
-                            />
-                            <span
-                              className="flex-1 text-[12px] font-semibold text-gray-800 truncate"
-                              onClick={e => e.stopPropagation()}
-                              onDoubleClick={e => {
-                                e.stopPropagation()
-                                setDilExpandedId(dil.id)
-                                setEditingCell({ id: dil.id, field: 'nombre' })
-                              }}
-                            >
-                              {dil.nombre || '—'}
-                            </span>
-                            <span className="text-[11px] text-gray-400 truncate max-w-[120px]">{dil.organismo || '—'}</span>
-                            <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full border text-[10px] font-semibold flex-shrink-0 ${DIL_ESTADO_CLS[dil.estado] || 'bg-gray-50 text-gray-500 border-gray-200'}`}>
-                              {dil.estado || 'Sin estado'}
-                              {alertDays && (
-                                <span className="ml-0.5 text-amber-600 font-bold">{alertDays}d</span>
-                              )}
-                            </span>
-                            <span className="text-[11px] text-gray-400 flex-shrink-0 tabular-nums w-20 text-right">{fmtDilFecha(dil.fecha_solicitud) || '—'}</span>
-                            <span className="text-[11px] text-gray-400 flex-shrink-0 tabular-nums w-20 text-right">{fmtDilFecha(dil.fecha_recepcion) || '—'}</span>
+                    return (
+                      <div
+                        key={dil.id}
+                        className={`rounded-lg border border-[#E3E7EC] bg-white shadow-sm overflow-hidden transition-shadow hover:shadow-md ${isExpanded ? 'ring-1 ring-[#2570BA]/30' : ''}`}
+                        style={{ borderLeft: `3px solid ${borderColor}` }}
+                      >
+                        {/* Card header — clickable to expand */}
+                        <div
+                          className="flex items-start gap-3 px-4 pt-3 pb-2 cursor-pointer select-none"
+                          onClick={() => setDilExpandedId(isExpanded ? null : dil.id)}
+                        >
+                          {/* Left: title + instruccion */}
+                          <div className="flex-1 min-w-0">
+                            {/* Title row with copy button */}
+                            <div className="flex items-center gap-1.5 mb-0.5">
+                              <span
+                                className="text-[12px] font-semibold text-gray-800 leading-snug"
+                                onClick={e => e.stopPropagation()}
+                                onDoubleClick={e => {
+                                  e.stopPropagation()
+                                  setDilExpandedId(dil.id)
+                                  setEditingCell({ id: dil.id, field: 'folio' })
+                                }}
+                              >
+                                {titulo}
+                              </span>
+                              <button
+                                onClick={e => {
+                                  e.stopPropagation()
+                                  navigator.clipboard.writeText(titulo)
+                                }}
+                                className="text-gray-300 hover:text-gray-500 transition-colors flex-shrink-0"
+                                title="Copiar"
+                              >
+                                <Copy size={11} />
+                              </button>
+                            </div>
+                            {/* Instruccion */}
+                            {dil.instruccion && (
+                              <p className="text-[11px] text-gray-500 leading-snug mt-0.5">
+                                {dil.instruccion}
+                              </p>
+                            )}
                           </div>
 
-                          {/* Expanded detail */}
-                          {isExpanded && (
-                            <div className="ml-8 mr-5 mb-4 border-l-2 border-[#2570BA] pl-4 bg-white rounded-r-lg shadow-sm">
-                              <div className="pt-3 pb-2">
-                                {/* Title editable */}
-                                <div className="mb-3">
-                                  <DilInlineText id={dil.id} field="nombre" value={dil.nombre} placeholder="Nombre de la diligencia" {...dilEc} />
-                                </div>
-                                {/* 2-col grid */}
-                                <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-[11px]">
-                                  <div>
-                                    <span className="text-gray-400 font-medium block mb-0.5">Organismo</span>
-                                    <DilInlineText id={dil.id} field="organismo" value={dil.organismo} {...dilEc} />
-                                  </div>
-                                  <div>
-                                    <span className="text-gray-400 font-medium block mb-0.5">Instrucción</span>
-                                    <DilInlineText id={dil.id} field="instruccion" value={dil.instruccion} {...dilEc} />
-                                  </div>
-                                  <div>
-                                    <span className="text-gray-400 font-medium block mb-0.5">Solicitada</span>
-                                    <DilInlineDate id={dil.id} field="fecha_solicitud" value={dil.fecha_solicitud} {...dilEc} />
-                                  </div>
-                                  <div>
-                                    <span className="text-gray-400 font-medium block mb-0.5">Estado</span>
-                                    <DilInlineSelect id={dil.id} field="estado" value={dil.estado} {...dilEc} />
-                                  </div>
-                                  <div>
-                                    <span className="text-gray-400 font-medium block mb-0.5">Recepción</span>
-                                    <DilInlineDate id={dil.id} field="fecha_recepcion" value={dil.fecha_recepcion} {...dilEc} />
-                                  </div>
-                                  <div>
-                                    <span className="text-gray-400 font-medium block mb-0.5">Folio</span>
-                                    <DilInlineText id={dil.id} field="folio" value={dil.folio} {...dilEc} />
-                                  </div>
-                                </div>
-                                {/* Dotted separator */}
-                                <div className="border-t border-dashed border-gray-200 my-3" />
-                                {/* Notas */}
-                                <div>
-                                  <span className="text-gray-400 font-medium text-[11px] block mb-1">Notas</span>
-                                  <DilInlineText id={dil.id} field="notas" value={dil.notas} placeholder="Agregar notas…" multiline {...dilEc} />
-                                </div>
+                          {/* Right: chip + days */}
+                          <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                            <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full border text-[10px] font-semibold ${DIL_ESTADO_CLS[dil.estado] || 'bg-gray-50 text-gray-500 border-gray-200'}`}>
+                              {dil.estado || 'Sin estado'}
+                            </span>
+                            {dias !== null && dias > 0 && (
+                              <span className="flex items-center gap-0.5 text-[10px] font-medium text-red-500 tabular-nums">
+                                <Clock size={9} />
+                                {dias}d
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Card footer */}
+                        <div
+                          className="flex items-center gap-3 px-4 pb-2.5 cursor-pointer"
+                          onClick={() => setDilExpandedId(isExpanded ? null : dil.id)}
+                        >
+                          {dil.fecha_solicitud && (
+                            <span className="text-[10px] text-gray-400 tabular-nums">
+                              OI {fmtDilFecha(dil.fecha_solicitud)}
+                            </span>
+                          )}
+                          {dil.organismo && (
+                            <span className="text-[10px] text-gray-400 truncate max-w-[160px]">
+                              {dil.organismo}
+                            </span>
+                          )}
+                          <span className="text-[10px] text-gray-300 ml-auto">
+                            {dil.fecha_recepcion ? `Recibida ${fmtDilFecha(dil.fecha_recepcion)}` : 'Sin recepción'}
+                          </span>
+                        </div>
+
+                        {/* Expanded detail */}
+                        {isExpanded && (
+                          <div className="border-t border-dashed border-gray-200 mx-4 mb-1" />
+                        )}
+                        {isExpanded && (
+                          <div className="px-4 pb-4 pt-3">
+                            {/* 2-col grid */}
+                            <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-[11px]">
+                              <div>
+                                <span className="text-gray-400 font-medium block mb-0.5">Folio / Oficio</span>
+                                <DilInlineText id={dil.id} field="folio" value={dil.folio} placeholder="Ej: Oficio 2026-1502-14435" {...dilEc} />
+                              </div>
+                              <div>
+                                <span className="text-gray-400 font-medium block mb-0.5">Nombre interno</span>
+                                <DilInlineText id={dil.id} field="nombre" value={dil.nombre} placeholder="Nombre de la diligencia" {...dilEc} />
+                              </div>
+                              <div>
+                                <span className="text-gray-400 font-medium block mb-0.5">Organismo</span>
+                                <DilInlineText id={dil.id} field="organismo" value={dil.organismo} {...dilEc} />
+                              </div>
+                              <div>
+                                <span className="text-gray-400 font-medium block mb-0.5">Estado</span>
+                                <DilInlineSelect id={dil.id} field="estado" value={dil.estado} {...dilEc} />
+                              </div>
+                              <div>
+                                <span className="text-gray-400 font-medium block mb-0.5">Fecha OI</span>
+                                <DilInlineDate id={dil.id} field="fecha_solicitud" value={dil.fecha_solicitud} {...dilEc} />
+                              </div>
+                              <div>
+                                <span className="text-gray-400 font-medium block mb-0.5">Recepción</span>
+                                <DilInlineDate id={dil.id} field="fecha_recepcion" value={dil.fecha_recepcion} {...dilEc} />
                               </div>
                             </div>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
+                            {/* Dotted separator */}
+                            <div className="border-t border-dashed border-gray-200 my-3" />
+                            {/* Instruccion full */}
+                            <div className="mb-3">
+                              <span className="text-gray-400 font-medium text-[11px] block mb-1">Instrucción</span>
+                              <DilInlineText id={dil.id} field="instruccion" value={dil.instruccion} placeholder="Instrucción de la diligencia…" multiline {...dilEc} />
+                            </div>
+                            {/* Notas */}
+                            <div>
+                              <span className="text-gray-400 font-medium text-[11px] block mb-1">Notas</span>
+                              <DilInlineText id={dil.id} field="notas" value={dil.notas} placeholder="Agregar notas…" multiline {...dilEc} />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })
                 )}
               </div>
             </div>
