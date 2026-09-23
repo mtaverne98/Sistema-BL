@@ -404,7 +404,7 @@ function mapCausa(row) {
 function mapToDb(form) {
   return {
     cliente_id:       form.cliente_id                         || null,
-    cliente_nombre:   (form.cliente_nombre   || '').trim(),
+    cliente_nombre:   (form.cliente_nombre   || '').trim().toUpperCase() || null,
     area:             form.area,
     parte:            form.parte,
     rit:              (form.rit              || '').trim()    || null,

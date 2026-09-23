@@ -132,7 +132,7 @@ function mapToDb(form) {
     return s === '' || s === '–' ? null : s
   }
   return {
-    nombre:        form.nombre.trim(),
+    nombre:        form.nombre.trim().toUpperCase(),
     rut:           clean(form.rut),
     clave_unica:   clean(form.claveUnica),
     telefono:      clean(form.telefono),
@@ -856,9 +856,10 @@ export default function Clientes() {
     }
 
     const clean = v => { const s = (v ?? '').trim(); return s === '' ? null : s }
+    const finalValue = field === 'nombre' ? clean(value)?.toUpperCase() ?? null : clean(value)
 
     const { error: err } = await supabase
-      .from('clientes').update({ [dbField]: clean(value) }).eq('id', id)
+      .from('clientes').update({ [dbField]: finalValue }).eq('id', id)
 
     if (err) {
       // Traducir errores comunes de Supabase/Postgres a mensajes legibles

@@ -1011,6 +1011,7 @@ export default function Prospectos() {
     const payload = Object.fromEntries(
       Object.entries(nuevo).filter(([k]) => PROSPECTOS_DB_FIELDS.has(k))
     )
+    if (payload.nombre) payload.nombre = payload.nombre.trim().toUpperCase()
     const { data, error } = await supabase.from('prospectos').insert([payload]).select().single()
     if (error) { console.error('Error al guardar prospecto:', error.message); return }
     setProspectos(prev => [mapProspectoRow(data), ...prev])
@@ -1047,6 +1048,7 @@ export default function Prospectos() {
   }
 
   const handleUpdate = async (id, cambios) => {
+    if (cambios.nombre) cambios = { ...cambios, nombre: cambios.nombre.trim().toUpperCase() }
     setProspectos(p => p.map(x => x.id === id ? { ...x, ...cambios } : x))
     setSeleccionado(prev => prev?.id === id ? { ...prev, ...cambios } : prev)
     const dbCambios = Object.fromEntries(
