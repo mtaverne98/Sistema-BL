@@ -39,15 +39,17 @@ const TIPO_OPTS = [
 ]
 
 const ESTADO_CONFIG = {
-  'Respondida':          { bg: 'bg-[#1a2e4a]',             text: 'text-white',      dot: 'bg-white',         border: 'border-transparent'          },
-  'Archivado':           { bg: 'bg-[#1a2e4a]',             text: 'text-white',      dot: 'bg-white',         border: 'border-transparent'          },
-  'Pendiente':           { bg: 'bg-[rgba(26,46,74,0.08)]', text: 'text-[#1a2e4a]', dot: 'bg-[#1a2e4a]',    border: 'border-[rgba(26,46,74,0.2)]' },
-  'En proceso':          { bg: 'bg-[rgba(26,46,74,0.08)]', text: 'text-[#1a2e4a]', dot: 'bg-[#1a2e4a]',    border: 'border-[rgba(26,46,74,0.2)]' },
-  'Entrevista agendada': { bg: 'bg-[rgba(26,46,74,0.08)]', text: 'text-[#1a2e4a]', dot: 'bg-[#1a2e4a]',    border: 'border-[rgba(26,46,74,0.2)]' },
-  'Fiscal contactó':     { bg: 'bg-[rgba(26,46,74,0.08)]', text: 'text-[#1a2e4a]', dot: 'bg-[#1a2e4a]',    border: 'border-[rgba(26,46,74,0.2)]' },
-  'No ha lugar':         { bg: 'bg-[#f1f5f9]',             text: 'text-[#64748b]',  dot: 'bg-[#94a3b8]',    border: 'border-[#e2e8f0]'            },
-  'Sin respuesta':       { bg: 'bg-[#f1f5f9]',             text: 'text-[#64748b]',  dot: 'bg-[#94a3b8]',    border: 'border-[#e2e8f0]'            },
-  'Urgente':             { bg: 'bg-[#fee2e2]',             text: 'text-[#991b1b]',  dot: 'bg-[#991b1b]',    border: 'border-transparent'          },
+  'Respondida':          { bg: 'bg-[#e8f7f1]', text: 'text-[#1E9E6A]', dot: 'bg-[#1E9E6A]', border: 'border-[#b6e8d3]' },
+  'Listo':               { bg: 'bg-[#e8f7f1]', text: 'text-[#1E9E6A]', dot: 'bg-[#1E9E6A]', border: 'border-[#b6e8d3]' },
+  'Archivado':           { bg: 'bg-[#e8f7f1]', text: 'text-[#1E9E6A]', dot: 'bg-[#1E9E6A]', border: 'border-[#b6e8d3]' },
+  'Pendiente':           { bg: 'bg-[#fef3e2]', text: 'text-[#C8862B]', dot: 'bg-[#C8862B]', border: 'border-[#f5d9a8]' },
+  'En proceso':          { bg: 'bg-[#fef3e2]', text: 'text-[#C8862B]', dot: 'bg-[#C8862B]', border: 'border-[#f5d9a8]' },
+  'Entrevista agendada': { bg: 'bg-[#fef3e2]', text: 'text-[#C8862B]', dot: 'bg-[#C8862B]', border: 'border-[#f5d9a8]' },
+  'Fiscal contactó':     { bg: 'bg-[#fef3e2]', text: 'text-[#C8862B]', dot: 'bg-[#C8862B]', border: 'border-[#f5d9a8]' },
+  'Rechazada':           { bg: 'bg-[#fde8e8]', text: 'text-[#C0392B]', dot: 'bg-[#C0392B]', border: 'border-[#f5b8b3]' },
+  'No ha lugar':         { bg: 'bg-[#fde8e8]', text: 'text-[#C0392B]', dot: 'bg-[#C0392B]', border: 'border-[#f5b8b3]' },
+  'Urgente':             { bg: 'bg-[#fde8e8]', text: 'text-[#C0392B]', dot: 'bg-[#C0392B]', border: 'border-[#f5b8b3]' },
+  'Sin respuesta':       { bg: 'bg-[#f1f5f9]', text: 'text-[#64748b]', dot: 'bg-[#94a3b8]', border: 'border-[#e2e8f0]' },
 }
 const ESTADO_OPTS = Object.keys(ESTADO_CONFIG)
 
@@ -625,13 +627,13 @@ export function SolicitudesTable({ grupo, registrosAll, onUpdate, onAdd, onDelet
                         {r.solicitud || '—'}
                       </p>
 
-                      {/* Línea 3: respuesta o sin respuesta */}
-                      <div className="mt-0.5">
+                      {/* Línea 3: respuesta o sin respuesta — separada visualmente */}
+                      <div className="mt-1.5 pt-1.5 border-t border-gray-100">
                         {r.respuesta ? (
                           <p className="text-[11px] text-gray-400 line-clamp-2 leading-relaxed">{r.respuesta}</p>
                         ) : (
                           <p className={`text-[11px] font-medium ${urgente ? 'text-red-600 font-semibold' : 'text-red-400'}`}>
-                            {urgente ? '⚠ ' : ''}Sin respuesta · {dias !== null ? `${dias} días` : '—'}
+                            {urgente ? '⚠ ' : ''}Sin respuesta · {dias !== null ? `${dias}d` : '—'}
                           </p>
                         )}
                       </div>
