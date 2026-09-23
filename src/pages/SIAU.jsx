@@ -557,12 +557,16 @@ export function SolicitudesTable({ grupo, registrosAll, onUpdate, onAdd, onDelet
             </button>
           </div>
         ) : embedded ? (
-          /* ── Card list for embedded mode (dentro de CausaView) ── */
-          <div className="divide-y divide-gray-50">
+          /* ── Card list for embedded mode — formato medio permanente ── */
+          <div className="divide-y divide-gray-100">
             {registros.map(r => {
               const isEditing  = editingId === r.id
               const isExpanded = expandedId === r.id
               const dias = r.fecha ? Math.floor((Date.now() - new Date(r.fecha+'T00:00:00').getTime()) / 86400000) : null
+              const urgente = dias !== null && dias > 30 && !r.respuesta
+              const diasResp = (r.fecha && r.fecha_respuesta)
+                ? Math.max(0, Math.floor((new Date(r.fecha_respuesta+'T00:00:00').getTime() - new Date(r.fecha+'T00:00:00').getTime()) / 86400000))
+                : null
 
               function copiar() {
                 const fechaFmt = r.fecha ? r.fecha.split('-').reverse().join('-') : '—'
@@ -576,39 +580,67 @@ export function SolicitudesTable({ grupo, registrosAll, onUpdate, onAdd, onDelet
 
               return (
                 <div key={r.id}
-                  className={`border-b border-gray-50 last:border-0 ${isEditing ? 'bg-blue-50/20 border-l-2 border-l-blue-300' : ''}`}>
-                  {/* Fila colapsada — siempre visible */}
-                  <div
-                    onClick={() => !isEditing && toggleRow(r.id)}
-                    className={`px-6 py-3 flex items-center gap-2 group ${!isEditing ? 'cursor-pointer hover:bg-gray-50/60' : ''} transition-colors`}>
-                    <ChevronRight size={12} className={`text-gray-300 flex-shrink-0 transition-transform ${isExpanded || isEditing ? 'rotate-90' : ''}`}/>
-                    <span className="text-[11px] text-gray-500 font-medium w-20 flex-shrink-0">{fmtFecha(r.fecha)}</span>
-                    <span className="text-[11px] font-mono font-semibold text-gray-700 bg-gray-100 px-1.5 py-0.5 rounded flex-shrink-0">{r.folio || '—'}</span>
-                    <TipoBadge tipo={r.tipo_solicitud}/>
-                    <span className={`ml-1 text-[10px] font-semibold tabular-nums flex-shrink-0 ${dias !== null && dias > 15 && !r.respuesta ? 'text-red-500' : 'text-gray-400'}`}>
-                      {dias !== null ? `${dias}d` : ''}
-                    </span>
-                    <div className="flex-1"/>
-                    <EstadoBadge estado={r.estado || 'Pendiente'}/>
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all ml-1">
-                      {!isEditing && (
-                        <>
-                          <button onClick={e => startEdit(r, e)}
-                            className="p-1.5 rounded-lg text-gray-300 hover:text-blue-500 hover:bg-blue-50 transition-colors">
-                            <Edit2 size={11}/>
-                          </button>
-                          <button onClick={e => { e.stopPropagation(); setDeleteTarget({ id: r.id, name: `la solicitud del ${fmtFecha(r.fecha)}` }) }}
-                            className="p-1.5 rounded-lg text-gray-300 hover:text-red-400 hover:bg-red-50 transition-colors">
-                            <Trash2 size={11}/>
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </div>
+                  className={`last:border-0 transition-colors ${isExpanded || isEditing ? 'border-l-[3px] border-l-[#2570BA]' : 'border-l-[3px] border-l-transparent'}`}>
 
-                  {/* Cuerpo expandido */}
+                  {/* Formato medio — siempre visible, excepto cuando se edita */}
+                  {!isEditing && (
+                    <div
+                      onClick={() => toggleRow(r.id)}
+                      className="px-5 py-3.5 cursor-pointer hover:bg-gray-50/70 group transition-colors">
+
+                      {/* Línea 1: fecha · folio · tipo · estado */}
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <span className="text-[11px] text-gray-500 font-medium w-[76px] flex-shrink-0 tabular-nums">{fmtFecha(r.fecha)}</span>
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          <span className="text-[11px] font-mono font-semibold text-gray-700 bg-gray-100 px-1.5 py-0.5 rounded">{r.folio || '—'}</span>
+                          {r.folio && (
+                            <button
+                              onClick={e => { e.stopPropagation(); navigator.clipboard.writeText(r.folio) }}
+                              className="p-0.5 text-gray-300 hover:text-[#2570BA] transition-colors opacity-0 group-hover:opacity-100"
+                              title="Copiar folio">
+                              <ClipboardCopy size={9}/>
+                            </button>
+                          )}
+                        </div>
+                        {r.tipo_solicitud && (
+                          <span className="text-[9px] font-bold text-[#64748b] uppercase tracking-wider flex-1 truncate">{r.tipo_solicitud}</span>
+                        )}
+                        <div className="ml-auto flex items-center gap-1.5 flex-shrink-0">
+                          <EstadoBadge estado={r.estado || 'Pendiente'}/>
+                          <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-all">
+                            <button onClick={e => startEdit(r, e)}
+                              className="p-1 rounded text-gray-300 hover:text-blue-500 hover:bg-blue-50 transition-colors">
+                              <Edit2 size={10}/>
+                            </button>
+                            <button onClick={e => { e.stopPropagation(); setDeleteTarget({ id: r.id, name: `la solicitud del ${fmtFecha(r.fecha)}` }) }}
+                              className="p-1 rounded text-gray-300 hover:text-red-400 hover:bg-red-50 transition-colors">
+                              <Trash2 size={10}/>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Línea 2: solicitud truncada */}
+                      <p className="text-[11px] text-gray-700 line-clamp-2 leading-relaxed">
+                        {r.solicitud || '—'}
+                      </p>
+
+                      {/* Línea 3: respuesta o sin respuesta */}
+                      <div className="mt-0.5">
+                        {r.respuesta ? (
+                          <p className="text-[11px] text-gray-400 line-clamp-2 leading-relaxed">{r.respuesta}</p>
+                        ) : (
+                          <p className={`text-[11px] font-medium ${urgente ? 'text-red-600 font-semibold' : 'text-red-400'}`}>
+                            {urgente ? '⚠ ' : ''}Sin respuesta · {dias !== null ? `${dias} días` : '—'}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Detalle expandido o formulario de edición */}
                   {(isExpanded || isEditing) && (
-                  <div className="px-6 pb-5">
+                  <div className="px-5 pb-5">
                   {isEditing ? (
                     <div className="rounded-2xl border border-blue-200 bg-blue-50/30 p-5 space-y-4">
                       <div className="grid grid-cols-3 gap-3">
@@ -673,49 +705,91 @@ export function SolicitudesTable({ grupo, registrosAll, onUpdate, onAdd, onDelet
                       </div>
                     </div>
                   ) : (
-                    <div className="rounded-2xl border border-[#1a2e4a]/8 bg-[#1a2e4a]/[0.025] p-5 grid grid-cols-2 gap-5">
-                      {/* Left: solicitud */}
-                      <div>
-                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Solicitud completa</p>
-                        <p className="text-[12px] text-gray-700 leading-relaxed whitespace-pre-wrap">{r.solicitud || '—'}</p>
-                        {r.fecha && (
-                          <p className="text-[10px] text-gray-400 mt-2">
-                            Enviada: {fmtFecha(r.fecha)}
-                            {!r.respuesta && (
-                              <span className={`ml-2 font-semibold ${dias > 15 ? 'text-red-500' : 'text-gray-400'}`}>
-                                · {dias} días sin respuesta
-                              </span>
-                            )}
-                            {r.respuesta && r.fecha_respuesta && (
-                              <span className="ml-2 text-emerald-600 font-semibold">
-                                · Respondida en {Math.max(0, Math.floor((new Date(r.fecha_respuesta+'T00:00:00').getTime()-new Date(r.fecha+'T00:00:00').getTime())/86400000))}d
-                              </span>
-                            )}
-                          </p>
-                        )}
+                    <div className="rounded-2xl border border-[#1a2e4a]/8 bg-[#1a2e4a]/[0.025] p-5">
+                      {/* Dos columnas */}
+                      <div className="grid grid-cols-2 gap-5 mb-4">
+                        {/* Izquierda: solicitud completa */}
+                        <div>
+                          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Solicitud completa</p>
+                          <p className="text-[12px] text-gray-700 leading-relaxed whitespace-pre-wrap">{r.solicitud || '—'}</p>
+                          {r.fecha && (
+                            <p className="text-[10px] text-gray-400 mt-2">
+                              Enviada: {fmtFecha(r.fecha)}
+                              {!r.respuesta && (
+                                <span className={`ml-2 font-semibold ${urgente ? 'text-red-600' : dias > 15 ? 'text-red-400' : 'text-gray-400'}`}>
+                                  · {dias} días sin respuesta
+                                </span>
+                              )}
+                              {r.respuesta && diasResp !== null && (
+                                <span className="ml-2 text-emerald-600 font-semibold">
+                                  · Respondida en {diasResp}d
+                                </span>
+                              )}
+                            </p>
+                          )}
+                        </div>
+                        {/* Derecha: respuesta */}
+                        <div>
+                          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Respuesta</p>
+                          {r.respuesta ? (
+                            <div className="border-l-2 border-l-emerald-400 pl-3">
+                              <p className="text-[12px] text-gray-600 leading-relaxed whitespace-pre-wrap">{r.respuesta}</p>
+                              {r.fecha_respuesta && (
+                                <p className="text-[10px] text-gray-400 mt-1.5">
+                                  Recibida: {fmtFecha(r.fecha_respuesta)}
+                                  {diasResp !== null && <span className="ml-1.5 text-emerald-600 font-semibold">· {diasResp} días</span>}
+                                </p>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="border-2 border-dashed border-gray-200 rounded-xl p-3">
+                              <p className={`text-[11px] font-medium mb-2 ${urgente ? 'text-red-600 font-semibold' : 'text-red-400'}`}>
+                                {urgente ? '⚠ ' : ''}Sin respuesta · {dias !== null ? `${dias} días` : '—'}
+                              </p>
+                              <RespuestaInline registro={r} onUpdate={onUpdate}/>
+                            </div>
+                          )}
+                        </div>
                       </div>
-                      {/* Right: respuesta + doc/drive/notas + copiar */}
-                      <div>
-                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Respuesta</p>
-                        {r.respuesta ? (
-                          <p className="text-[12px] text-gray-600 leading-relaxed whitespace-pre-wrap">{r.respuesta}</p>
-                        ) : (
-                          <RespuestaInline registro={r} onUpdate={onUpdate}/>
-                        )}
-                        <div className="mt-3 pt-3 border-t border-[#1a2e4a]/10 space-y-2">
-                          <DocNombreInline registro={r} onUpdate={onUpdate}/>
-                          <DriveUrlInline registro={r} onUpdate={onUpdate}/>
+
+                      {/* Fila horizontal: documento · drive · notas */}
+                      <div className="flex items-start gap-5 pt-3.5 border-t border-[#1a2e4a]/8 flex-wrap">
+                        <div className="flex items-baseline gap-1.5">
+                          <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Documento</span>
+                          <span className="text-[11px] text-gray-600">{r.documento_nombre || <span className="text-gray-300 italic">—</span>}</span>
+                        </div>
+                        <div className="flex items-baseline gap-1.5">
+                          <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Drive</span>
+                          {r.drive_url
+                            ? <a href={r.drive_url} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}
+                                className="text-[11px] text-[#2570BA] hover:underline">Abrir ↗</a>
+                            : <span className="text-[11px] text-gray-300 italic">— agregar link</span>
+                          }
                         </div>
                         {r.notas && (
-                          <div className="mt-3 pt-3 border-t border-[#1a2e4a]/10">
-                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Notas internas</p>
-                            <p className="text-[12px] text-gray-500 leading-relaxed">{r.notas}</p>
+                          <div className="flex items-baseline gap-1.5 flex-1 min-w-0">
+                            <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider flex-shrink-0">Notas</span>
+                            <span className="text-[11px] text-gray-500 truncate">{r.notas}</span>
                           </div>
                         )}
+                      </div>
+
+                      {/* Copiar + editar/eliminar */}
+                      <div className="flex items-center justify-between mt-3">
                         <button onClick={copiar}
-                          className="mt-3 flex items-center gap-1 text-[10px] text-gray-400 hover:text-[#2570BA] transition-colors">
-                          <ClipboardCopy size={11}/> Copiar
+                          className="flex items-center gap-1.5 text-[10px] text-gray-400 hover:text-[#2570BA] transition-colors">
+                          <ClipboardCopy size={11}/> ⧉ Copiar solicitud completa
                         </button>
+                        <div className="flex items-center gap-1">
+                          <button onClick={e => startEdit(r, e)}
+                            className="p-1.5 rounded-lg text-gray-300 hover:text-blue-500 hover:bg-blue-50 transition-colors">
+                            <Edit2 size={11}/>
+                          </button>
+                          <button onClick={e => { e.stopPropagation(); setDeleteTarget({ id: r.id, name: `la solicitud del ${fmtFecha(r.fecha)}` }) }}
+                            className="p-1.5 rounded-lg text-gray-300 hover:text-red-400 hover:bg-red-50 transition-colors">
+                            <Trash2 size={11}/>
+                          </button>
+                        </div>
                       </div>
                     </div>
                   )}
