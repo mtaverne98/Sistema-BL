@@ -623,12 +623,13 @@ export function SolicitudesTable({ grupo, registrosAll, onUpdate, onAdd, onDelet
                       </div>
 
                       {/* Línea 2: solicitud truncada */}
-                      <p className="text-[11px] text-gray-700 line-clamp-2 leading-relaxed">
+                      <p className="text-[11px] text-[#37444F] line-clamp-2 leading-relaxed">
                         {r.solicitud || '—'}
                       </p>
 
                       {/* Línea 3: respuesta o sin respuesta — separada visualmente */}
                       <div className="mt-1.5 pt-1.5 border-t border-gray-100">
+                        <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider block mb-0.5">Respuesta</span>
                         {r.respuesta ? (
                           <p className="text-[11px] text-gray-400 line-clamp-2 leading-relaxed">{r.respuesta}</p>
                         ) : (
