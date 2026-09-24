@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { ChevronDown, ChevronRight, RefreshCw, X, Link2 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
-import Anthropic from '@anthropic-ai/sdk'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -209,128 +208,49 @@ export default function AnalisisTab({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [causa?.id])
 
-  // ── Run AI analysis on demand ─────────────────────────────────────────────
-  async function runAnalisisIA() {
-    const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY
-    if (!apiKey) {
-      setIaError('VITE_ANTHROPIC_API_KEY no está configurada.')
-      return
-    }
-    if (!analisisMeta?.estado_modelo) {
-      setIaError('Estado del modelo no disponible. Espera un momento.')
-      return
-    }
+  // ── Run AI analysis via Edge Function ────────────────────────────────────
+  const [iaLoadingMsg, setIaLoadingMsg] = useState('Analizando…')
 
+  async function runAnalisisIA() {
     setIaLoading(true)
     setIaError(null)
-
-    const prompt = `Eres un asistente jurídico especializado en litigio chileno. Analiza el estado actual de esta causa legal y entrega un análisis estratégico estructurado.
-
-DATOS DE LA CAUSA:
-${JSON.stringify(analisisMeta.estado_modelo, null, 2)}
-
-Basándote únicamente en los datos entregados, responde con un JSON válido (sin markdown, sin texto adicional) con esta estructura exacta:
-
-{
-  "resumen_ejecutivo": "Párrafo conciso (3-5 oraciones) sobre el estado actual de la causa, avances y posición estratégica.",
-  "acciones_semana": [
-    {
-      "accion": "Descripción de la acción a tomar",
-      "prioridad": "URGENTE" | "ESTA SEMANA" | "PRÓXIMA SEMANA",
-      "fundamento": "Por qué esta acción es necesaria ahora"
-    }
-  ],
-  "brechas": [
-    {
-      "descripcion": "Brecha o elemento faltante en la investigación",
-      "relevancia": "ALTA" | "MEDIA" | "BAJA",
-      "impacto": "Cómo afecta esta brecha a la estrategia"
-    }
-  ],
-  "contradicciones": [
-    {
-      "descripcion": "Descripción de la contradicción o vacío identificado",
-      "relevancia": "ALTA" | "MEDIA" | "BAJA"
-    }
-  ],
-  "proxima_accion": "La acción más importante a realizar, en una oración directa.",
-  "proxima_accion_fundamento": "Fundamento estratégico de por qué esta es la próxima acción prioritaria.",
-  "proxima_accion_prioridad": "ALTA" | "MEDIA" | "BAJA"
-}
-
-Si no hay suficientes datos para algún campo, usa un array vacío o null. Responde SOLO con el JSON.`
+    setIaLoadingMsg('Leyendo documentos de Drive…')
 
     try {
-      const client = new Anthropic({
-        apiKey,
-        dangerouslyAllowBrowser: true,
+      const { data, error } = await supabase.functions.invoke('drive-sync-causa', {
+        body: { causa_id: causa.id, drive_folder_id: analisisMeta?.drive_folder_id || null },
       })
 
-      const response = await client.messages.create({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 2048,
-        messages: [{ role: 'user', content: prompt }],
-      })
-
-      const rawText = response.content[0]?.text || ''
-      let parsed
-      try {
-        parsed = JSON.parse(rawText)
-      } catch {
-        // Try to extract JSON from the response if there's extra text
-        const match = rawText.match(/\{[\s\S]*\}/)
-        if (!match) throw new Error(`Respuesta no es JSON válido: ${rawText.slice(0, 200)}`)
-        parsed = JSON.parse(match[0])
+      if (error) throw new Error(error.message || JSON.stringify(error))
+      if (data?.error) {
+        if (data.no_folder) {
+          setIaError('No se encontró carpeta en Drive para esta causa.')
+          return
+        }
+        throw new Error(data.error)
       }
 
-      const updates = {
-        resumen_ejecutivo:        parsed.resumen_ejecutivo || null,
-        acciones_semana:          parsed.acciones_semana || [],
-        proxima_accion:           parsed.proxima_accion || null,
-        proxima_accion_fundamento:parsed.proxima_accion_fundamento || null,
-        proxima_accion_prioridad: parsed.proxima_accion_prioridad || null,
-        analisis_ia_at:           new Date().toISOString(),
-        analisis_ia_version:      (analisisMeta?.analisis_ia_version || 0) + 1,
-      }
+      // Reload updated data from DB
+      setIaLoadingMsg('Guardando resultados…')
+      const [{ data: meta }, { data: newFaltantes }, { data: newContra }, { data: newDocs }] = await Promise.all([
+        supabase.from('causa_analisis_meta').select('*').eq('causa_id', causa.id).maybeSingle(),
+        supabase.from('causa_faltantes').select('*').eq('causa_id', causa.id),
+        supabase.from('causa_contradicciones').select('*').eq('causa_id', causa.id),
+        supabase.from('documentos').select('*').eq('causa_id', causa.id),
+      ])
 
-      await supabase
-        .from('causa_analisis_meta')
-        .upsert({ causa_id: causa.id, ...updates }, { onConflict: 'causa_id' })
-
-      setAnalisisMeta(prev => ({ ...(prev || { causa_id: causa.id }), ...updates }))
-
-      // If AI returned brechas/contradicciones, save them too
-      if (parsed.brechas?.length) {
-        await supabase.from('causa_faltantes').delete().eq('causa_id', causa.id)
-        const newFaltantes = parsed.brechas.map(b => ({
-          causa_id: causa.id,
-          descripcion: b.descripcion,
-          relevancia: b.relevancia,
-          accion_sugerida: b.impacto,
-          revisado: true,
-        }))
-        const { data: insertedF } = await supabase.from('causa_faltantes').insert(newFaltantes).select()
-        if (insertedF) setFaltantes(insertedF)
-      }
-
-      if (parsed.contradicciones?.length) {
-        // Only add new ones that don't already exist
-        const { data: newC } = await supabase
-          .from('causa_contradicciones')
-          .insert(parsed.contradicciones.map(c => ({
-            causa_id: causa.id,
-            materia: 'IA',
-            descripcion: c.descripcion,
-            relevancia: c.relevancia,
-            revisado: false,
-          })))
-          .select()
-        if (newC) setContradicciones(prev => [...newC, ...prev])
+      if (meta)         setAnalisisMeta(meta)
+      if (newFaltantes) setFaltantes(newFaltantes)
+      if (newContra)    setContradicciones(newContra)
+      if (newDocs)      {
+        // propagate new docs to parent via setter if available
+        // (documentosDrive is read-only from parent, reload handled by parent on next tab switch)
       }
     } catch (err) {
       setIaError(err.message || String(err))
     } finally {
       setIaLoading(false)
+      setIaLoadingMsg('Analizando…')
     }
   }
 
@@ -521,7 +441,7 @@ Si no hay suficientes datos para algún campo, usa un array vacío o null. Respo
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-semibold bg-[#2570BA] text-white hover:bg-[#1a5a9e] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               <RefreshCw size={12} className={iaLoading ? 'animate-spin' : ''} />
-              {iaLoading ? 'Analizando…' : '⟳ Actualizar análisis'}
+              {iaLoading ? iaLoadingMsg : '⟳ Actualizar análisis'}
             </button>
           </div>
 
