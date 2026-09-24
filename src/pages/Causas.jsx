@@ -2072,13 +2072,13 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
               {causa.cliente_nombre}
             </button>
           )}
-          {/* Materia editable inline */}
+          {/* Materia / carátula editable inline — se muestra en cursiva como título descriptivo de la causa */}
           <InlineField
             value={causa.materia || ''}
             onSave={v => v?.trim() && onUpdate?.({ materia: v.trim() })}
             placeholder="Materia del caso…"
-            textClassName="text-[22px] font-bold text-gray-900 leading-snug"
-            inputClassName="text-[20px] font-bold w-full"
+            textClassName="text-[18px] italic text-gray-700 leading-snug"
+            inputClassName="text-[17px] italic w-full"
           />
         </div>
 
@@ -2338,21 +2338,23 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
           <div className="flex flex-col h-full overflow-hidden">
 
             {/* ── RECUADRO DE RESUMEN ──────────────────────────────────── */}
-            <div className="flex-shrink-0 mx-4 mt-3 mb-2 rounded-xl bg-[#F5F6F8] border border-[#E3E7EC] px-4 py-3">
-              <div className="grid grid-cols-3 gap-x-6 gap-y-3 bl-resumen-grid">
-                {/* Querellante */}
-                <div>
-                  <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-0.5">Querellante</p>
-                  <InlineField value={causa.querellante} onSave={v=>onUpdate?.({querellante:v||null})}
-                    placeholder="Agregar…" textClassName="text-[12px] font-semibold text-gray-800"/>
-                </div>
-                {/* Imputado */}
-                <div>
-                  <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-0.5">Imputado</p>
-                  <InlineField value={causa.imputado} onSave={v=>onUpdate?.({imputado:v||null})}
-                    placeholder="Agregar…" textClassName="text-[12px] font-semibold text-gray-800"/>
-                </div>
-                {/* Tribunal */}
+            {(()=>{
+              // Los campos querellante/imputado de la BD se reutilizan para todas las áreas con etiquetas distintas.
+              // Nunca crear columnas separadas por área: siempre guardar en causa.querellante y causa.imputado.
+              const PARTES_LABELS = {
+                'Penal':                   { p1: 'Querellante',  p2: 'Imputado'   },
+                'Familia':                 { p1: 'Demandante',   p2: 'Demandado'  },
+                'Civil':                   { p1: 'Demandante',   p2: 'Demandado'  },
+                'Laboral':                 { p1: 'Demandante',   p2: 'Demandado'  },
+                'JPL':                     { p1: 'Denunciante',  p2: 'Denunciado' },
+                'Consumo':                 { p1: 'Denunciante',  p2: 'Denunciado' },
+                'Administrativo':          { p1: 'Denunciante',  p2: 'Denunciado' },
+              }
+              const { p1, p2 } = PARTES_LABELS[causa.area] || { p1: 'Parte 1', p2: 'Parte 2' }
+              // Para Familia/Civil/Laboral la carátula (materia) va como 3er campo en fila 1; Tribunal baja a fila 2
+              const conCaratula = ['Familia', 'Civil', 'Laboral'].includes(causa.area)
+
+              const TribunalCell = () => (
                 <div>
                   <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-0.5">Tribunal</p>
                   <InlineField value={causa.tribunal} onSave={v=>onUpdate?.({tribunal:v?.trim()||null})}
@@ -2368,39 +2370,78 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                       placeholder="+ teléfono" textClassName="text-[10px] text-gray-400"/>
                   )}
                 </div>
-                {/* Estado */}
-                <div>
-                  <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-0.5">Estado</p>
-                  <EstadoDropdown estado={causa.estado} onCambiar={e=>onUpdate?.({estado:e})}/>
-                </div>
-                {/* Fiscalía */}
-                <div>
-                  <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-0.5">Fiscalía</p>
-                  <InlineField value={causa.fiscalia} onSave={v=>onUpdate?.({fiscalia:v?.trim()||null})}
-                    placeholder="Agregar…" textClassName="text-[12px] font-semibold text-gray-800"/>
-                </div>
-                {/* Fiscal */}
-                <div>
-                  <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-0.5">Fiscal</p>
-                  <InlineField value={causa.fiscal} onSave={v=>onUpdate?.({fiscal:v?.trim()||null})}
-                    placeholder="Agregar…" textClassName="text-[12px] font-semibold text-gray-800"/>
-                  {(causa.fiscal_telefono||causa.fiscal_email)&&(
-                    <p className="text-[10px] text-gray-400 mt-0.5 flex items-center gap-1.5 flex-wrap">
-                      {causa.fiscal_telefono&&<CopyValue value={causa.fiscal_telefono} className="font-mono text-[10px]"/>}
-                      {causa.fiscal_email&&<CopyValue value={causa.fiscal_email} className="text-[10px]"/>}
-                    </p>
-                  )}
-                  {!causa.fiscal_telefono&&!causa.fiscal_email&&(
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <InlineField value={causa.fiscal_telefono} onSave={v=>onUpdate?.({fiscal_telefono:v||null})}
-                        placeholder="+ teléfono" textClassName="text-[10px] text-gray-400"/>
-                      <InlineField value={causa.fiscal_email} onSave={v=>onUpdate?.({fiscal_email:v||null})}
-                        placeholder="+ correo" textClassName="text-[10px] text-gray-400"/>
+              )
+
+              return (
+                <div className="flex-shrink-0 mx-4 mt-3 mb-2 rounded-xl bg-[#F5F6F8] border border-[#E3E7EC] px-4 py-3">
+                  <div className="grid grid-cols-3 gap-x-6 gap-y-3 bl-resumen-grid">
+                    {/* Parte 1 */}
+                    <div>
+                      <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-0.5">{p1}</p>
+                      <InlineField value={causa.querellante} onSave={v=>onUpdate?.({querellante:v||null})}
+                        placeholder="Agregar…" textClassName="text-[12px] font-semibold text-gray-800"/>
                     </div>
-                  )}
+                    {/* Parte 2 */}
+                    <div>
+                      <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-0.5">{p2}</p>
+                      <InlineField value={causa.imputado} onSave={v=>onUpdate?.({imputado:v||null})}
+                        placeholder="Agregar…" textClassName="text-[12px] font-semibold text-gray-800"/>
+                    </div>
+                    {/* Fila 1, col 3: Carátula para Familia/Civil/Laboral; Tribunal para el resto */}
+                    {conCaratula ? (
+                      <div>
+                        <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-0.5">Carátula</p>
+                        <InlineField value={causa.materia} onSave={v=>onUpdate?.({materia:v?.trim()||null})}
+                          placeholder="Agregar…" textClassName="text-[12px] font-semibold text-gray-800 italic"/>
+                      </div>
+                    ) : (
+                      <TribunalCell/>
+                    )}
+                    {/* Estado */}
+                    <div>
+                      <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-0.5">Estado</p>
+                      <EstadoDropdown estado={causa.estado} onCambiar={e=>onUpdate?.({estado:e})}/>
+                    </div>
+                    {/* Fila 2, col 2: Tribunal para Familia/Civil/Laboral; Fiscalía para el resto */}
+                    {conCaratula ? <TribunalCell/> : (
+                      <div>
+                        <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-0.5">Fiscalía</p>
+                        <InlineField value={causa.fiscalia} onSave={v=>onUpdate?.({fiscalia:v?.trim()||null})}
+                          placeholder="Agregar…" textClassName="text-[12px] font-semibold text-gray-800"/>
+                      </div>
+                    )}
+                    {/* Fila 2, col 3: Fiscalía para Familia/Civil/Laboral; Fiscal para el resto */}
+                    {conCaratula ? (
+                      <div>
+                        <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-0.5">Fiscalía</p>
+                        <InlineField value={causa.fiscalia} onSave={v=>onUpdate?.({fiscalia:v?.trim()||null})}
+                          placeholder="Agregar…" textClassName="text-[12px] font-semibold text-gray-800"/>
+                      </div>
+                    ) : (
+                      <div>
+                        <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-0.5">Fiscal</p>
+                        <InlineField value={causa.fiscal} onSave={v=>onUpdate?.({fiscal:v?.trim()||null})}
+                          placeholder="Agregar…" textClassName="text-[12px] font-semibold text-gray-800"/>
+                        {(causa.fiscal_telefono||causa.fiscal_email)&&(
+                          <p className="text-[10px] text-gray-400 mt-0.5 flex items-center gap-1.5 flex-wrap">
+                            {causa.fiscal_telefono&&<CopyValue value={causa.fiscal_telefono} className="font-mono text-[10px]"/>}
+                            {causa.fiscal_email&&<CopyValue value={causa.fiscal_email} className="text-[10px]"/>}
+                          </p>
+                        )}
+                        {!causa.fiscal_telefono&&!causa.fiscal_email&&(
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <InlineField value={causa.fiscal_telefono} onSave={v=>onUpdate?.({fiscal_telefono:v||null})}
+                              placeholder="+ teléfono" textClassName="text-[10px] text-gray-400"/>
+                            <InlineField value={causa.fiscal_email} onSave={v=>onUpdate?.({fiscal_email:v||null})}
+                              placeholder="+ correo" textClassName="text-[10px] text-gray-400"/>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            </div>
+              )
+            })()}
 
             {/* ── FRANJA DE ATENCIÓN ───────────────────────────────────── */}
             <div className="flex-shrink-0 mx-4 mb-2 rounded-xl border border-[#E2E5EA] bg-white flex items-center gap-2 px-3.5 py-2">
