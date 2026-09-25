@@ -230,6 +230,10 @@ export default function AnalisisTab({
     setIaError(null)
     setIaLoadingMsg('Leyendo documentos de Drive…')
 
+    let invokePartes = null
+    let skipReload   = false
+
+    // ── 1. Llamar a la Edge Function ────────────────────────────────────────
     try {
       const { data, error } = await supabase.functions.invoke('drive-sync-causa', {
         body: { causa_id: causa.id, drive_folder_id: analisisMeta?.drive_folder_id || null },
@@ -239,34 +243,42 @@ export default function AnalisisTab({
       if (data?.error) {
         if (data.no_folder) {
           setIaError('No se encontró carpeta en Drive para esta causa.')
-          return
+          skipReload = true
+        } else {
+          throw new Error(data.error)
         }
-        throw new Error(data.error)
-      }
-
-      // Reload updated data from DB
-      setIaLoadingMsg('Guardando resultados…')
-      const [{ data: meta }, { data: newFaltantes }, { data: newContra }] = await Promise.all([
-        supabase.from('causa_analisis_meta').select('*').eq('causa_id', causa.id).maybeSingle(),
-        supabase.from('causa_faltantes').select('*').eq('causa_id', causa.id),
-        supabase.from('causa_contradicciones').select('*').eq('causa_id', causa.id),
-      ])
-
-      if (meta)         setAnalisisMeta(meta)
-      if (newFaltantes) setFaltantes(newFaltantes)
-      if (newContra)    setContradicciones(newContra)
-
-      // Si la IA detectó partes con nombre, proponer actualizar los campos de la causa
-      const partes = data?.partes || meta?.partes
-      if (partes && (partes.parte_1_nombre || partes.parte_2_nombre || partes.caratula)) {
-        setConfirmPartes(partes)
+      } else {
+        invokePartes = data?.partes ?? null
       }
     } catch (err) {
       setIaError(err.message || String(err))
-    } finally {
-      setIaLoading(false)
-      setIaLoadingMsg('Analizando…')
+      // No hacemos skipReload: la función puede haber guardado datos antes de fallar
     }
+
+    // ── 2. Recargar desde la DB (siempre, salvo no_folder) ─────────────────
+    if (!skipReload) {
+      setIaLoadingMsg('Cargando resultados…')
+      try {
+        const [{ data: meta }, { data: newFaltantes }, { data: newContra }] = await Promise.all([
+          supabase.from('causa_analisis_meta').select('*').eq('causa_id', causa.id).maybeSingle(),
+          supabase.from('causa_faltantes').select('*').eq('causa_id', causa.id),
+          supabase.from('causa_contradicciones').select('*').eq('causa_id', causa.id),
+        ])
+
+        if (meta)         setAnalisisMeta(meta)
+        if (newFaltantes) setFaltantes(newFaltantes)
+        if (newContra)    setContradicciones(newContra)
+
+        // Proponer partes: prioriza la respuesta directa; usa DB como fallback
+        const partes = invokePartes || meta?.partes
+        if (partes && (partes.parte_1_nombre || partes.parte_2_nombre || partes.caratula)) {
+          setConfirmPartes(partes)
+        }
+      } catch { /* si la recarga falla no tapamos el error principal */ }
+    }
+
+    setIaLoading(false)
+    setIaLoadingMsg('Analizando…')
   }
 
   // ── Inline edit helpers ───────────────────────────────────────────────────
