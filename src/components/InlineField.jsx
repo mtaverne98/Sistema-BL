@@ -39,9 +39,11 @@ export default function InlineField({
   const [errorMsg,   setErrorMsg]   = useState(null)
   const [savedAt,    setSavedAt]    = useState(null)
   const [savedAgo,   setSavedAgo]   = useState('')
+  const [justSaved,  setJustSaved]  = useState(false)  // borde verde breve
   const inputRef  = useRef(null)
   const timerRef  = useRef(null)
   const agoRef    = useRef(null)
+  const savedTimerRef = useRef(null)
 
   // Sync draft when value changes externally (e.g., after server update)
   useEffect(() => {
@@ -75,6 +77,7 @@ export default function InlineField({
   // Cleanup timers on unmount
   useEffect(() => () => {
     clearTimeout(timerRef.current)
+    clearTimeout(savedTimerRef.current)
     clearInterval(agoRef.current)
   }, [])
 
@@ -92,6 +95,9 @@ export default function InlineField({
         await onSave?.(v)
         setEditing(false)
         setSavedAt(Date.now())
+        setJustSaved(true)
+        clearTimeout(savedTimerRef.current)
+        savedTimerRef.current = setTimeout(() => setJustSaved(false), 1500)
         window.dispatchEvent(new CustomEvent('save:end', { detail: { ok: true } }))
         setSaving(false)
         return
@@ -145,8 +151,9 @@ export default function InlineField({
       <span
         onClick={() => { if (!disabled) { setDraft(value ?? ''); setEditing(true) } }}
         className={`
-          inline-block rounded px-0.5 -mx-0.5 transition-colors leading-snug
+          inline-block rounded px-0.5 -mx-0.5 transition-all leading-snug
           ${disabled ? 'cursor-default' : 'cursor-text hover:bg-black/[0.04]'}
+          ${justSaved ? 'ring-1 ring-emerald-400 bg-emerald-50/50' : ''}
           ${className}
         `}
         title={disabled ? undefined : 'Clic para editar'}
