@@ -84,6 +84,17 @@ function CollapsibleBlock({ title, count, children, defaultOpen = false, badge }
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
+// Mapeo de área → etiquetas para el diálogo de confirmación
+const PARTES_LABELS_ANALISIS = {
+  'Penal':    { p1: 'Querellante',  p2: 'Imputado'   },
+  'Familia':  { p1: 'Demandante',   p2: 'Demandado'  },
+  'Civil':    { p1: 'Demandante',   p2: 'Demandado'  },
+  'Laboral':  { p1: 'Demandante',   p2: 'Demandado'  },
+  'JPL':      { p1: 'Denunciante',  p2: 'Denunciado' },
+  'Consumo':  { p1: 'Denunciante',  p2: 'Denunciado' },
+  'Administrativo': { p1: 'Denunciante', p2: 'Denunciado' },
+}
+
 export default function AnalisisTab({
   causa,
   analisisMeta, setAnalisisMeta,
@@ -103,10 +114,13 @@ export default function AnalisisTab({
   editingCell, setEditingCell,
   cellDraft, setCellDraft,
   setTab,
+  onUpdateCausa,
 }) {
   const [iaLoading, setIaLoading] = useState(false)
   const [iaError,   setIaError]   = useState(null)
   const [buildingEstado, setBuildingEstado] = useState(false)
+  // partes propuestas por la IA, pendientes de confirmación
+  const [confirmPartes, setConfirmPartes] = useState(null)
 
   // ── Build estado modelo automatically on mount ──────────────────────────
   const buildEstadoModelo = useCallback(async () => {
@@ -232,19 +246,20 @@ export default function AnalisisTab({
 
       // Reload updated data from DB
       setIaLoadingMsg('Guardando resultados…')
-      const [{ data: meta }, { data: newFaltantes }, { data: newContra }, { data: newDocs }] = await Promise.all([
+      const [{ data: meta }, { data: newFaltantes }, { data: newContra }] = await Promise.all([
         supabase.from('causa_analisis_meta').select('*').eq('causa_id', causa.id).maybeSingle(),
         supabase.from('causa_faltantes').select('*').eq('causa_id', causa.id),
         supabase.from('causa_contradicciones').select('*').eq('causa_id', causa.id),
-        supabase.from('documentos').select('*').eq('causa_id', causa.id),
       ])
 
       if (meta)         setAnalisisMeta(meta)
       if (newFaltantes) setFaltantes(newFaltantes)
       if (newContra)    setContradicciones(newContra)
-      if (newDocs)      {
-        // propagate new docs to parent via setter if available
-        // (documentosDrive is read-only from parent, reload handled by parent on next tab switch)
+
+      // Si la IA detectó partes con nombre, proponer actualizar los campos de la causa
+      const partes = data?.partes || meta?.partes
+      if (partes && (partes.parte_1_nombre || partes.parte_2_nombre || partes.caratula)) {
+        setConfirmPartes(partes)
       }
     } catch (err) {
       setIaError(err.message || String(err))
@@ -418,9 +433,70 @@ export default function AnalisisTab({
 
   if (!causa?.id) return null
 
+  // ── Confirmar partes detectadas por IA ───────────────────────────────────
+  async function confirmarPartes() {
+    const updates = {}
+    if (confirmPartes.parte_1_nombre) updates.querellante = confirmPartes.parte_1_nombre
+    if (confirmPartes.parte_2_nombre) updates.imputado    = confirmPartes.parte_2_nombre
+    if (confirmPartes.caratula)       updates.materia     = confirmPartes.caratula
+    if (Object.keys(updates).length) {
+      await supabase.from('causas').update(updates).eq('id', causa.id)
+      onUpdateCausa?.(updates)
+    }
+    setConfirmPartes(null)
+  }
+
+  const { p1: labelP1, p2: labelP2 } = PARTES_LABELS_ANALISIS[causa.area] || { p1: 'Parte 1', p2: 'Parte 2' }
+  const hayCaratula = ['Familia', 'Civil', 'Laboral'].includes(causa.area)
+
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="flex flex-col h-full overflow-y-auto">
+
+      {/* ── DIÁLOGO DE CONFIRMACIÓN DE PARTES ─────────────────────────────── */}
+      {confirmPartes && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+          <div className="bg-white rounded-xl shadow-2xl border border-[#E3E7EC] w-[420px] max-w-[90vw] p-6">
+            <h3 className="text-[13px] font-bold text-[#1A2E4A] mb-1">La IA encontró estos datos — ¿confirmar?</h3>
+            <p className="text-[11px] text-gray-500 mb-4">Se actualizarán los campos de la causa con los valores detectados.</p>
+            <div className="space-y-3 mb-5">
+              {confirmPartes.parte_1_nombre && (
+                <div className="flex items-baseline gap-3">
+                  <span className="text-[9px] font-bold uppercase tracking-widest text-gray-400 w-28 flex-shrink-0">{labelP1}</span>
+                  <span className="text-[12px] font-semibold text-gray-800">{confirmPartes.parte_1_nombre}</span>
+                </div>
+              )}
+              {confirmPartes.parte_2_nombre && (
+                <div className="flex items-baseline gap-3">
+                  <span className="text-[9px] font-bold uppercase tracking-widest text-gray-400 w-28 flex-shrink-0">{labelP2}</span>
+                  <span className="text-[12px] font-semibold text-gray-800">{confirmPartes.parte_2_nombre}</span>
+                </div>
+              )}
+              {confirmPartes.caratula && (
+                <div className="flex items-baseline gap-3">
+                  <span className="text-[9px] font-bold uppercase tracking-widest text-gray-400 w-28 flex-shrink-0">{hayCaratula ? 'Carátula' : 'Materia'}</span>
+                  <span className="text-[12px] italic text-gray-700">{confirmPartes.caratula}</span>
+                </div>
+              )}
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setConfirmPartes(null)}
+                className="px-4 py-1.5 rounded-md text-[12px] font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmarPartes}
+                className="px-4 py-1.5 rounded-md text-[12px] font-semibold text-white bg-[#2570BA] hover:bg-[#1a5a9e] transition-colors"
+              >
+                Confirmar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="p-5 space-y-4">
 
         {/* ── ZONA 1: QUÉ HACER ESTA SEMANA ─────────────────────────────── */}

@@ -3831,6 +3831,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
             editingCell={editingCell} setEditingCell={setEditingCell}
             cellDraft={cellDraft} setCellDraft={setCellDraft}
             setTab={setTab}
+            onUpdateCausa={onUpdate}
           />
         )}
 
