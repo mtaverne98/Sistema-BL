@@ -3407,6 +3407,9 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                         {tareaCheckError === t.id && (
                           <span className="text-[10px] text-red-500 flex-shrink-0">Error al guardar</span>
                         )}
+                        {t.fuente === 'ia' && editingTareaTab !== t.id && (
+                          <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[#2570BA] text-white font-bold flex-shrink-0">IA</span>
+                        )}
                         {t.prioridad && editingTareaTab !== t.id && (
                           <span className={`text-[10px] px-1.5 py-0.5 rounded-full flex-shrink-0 ${
                             t.prioridad === 'Alta' ? 'bg-red-50 text-red-600' :

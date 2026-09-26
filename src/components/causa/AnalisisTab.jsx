@@ -122,6 +122,11 @@ export default function AnalisisTab({
   const [buildingEstado, setBuildingEstado] = useState(false)
   const [confirmPartes, setConfirmPartes] = useState(null)
 
+  // ── Modal de confirmación de tareas post-IA ───────────────────────────────────
+  const [confirmTareas, setConfirmTareas] = useState(null) // array de acciones candidatas
+  const [tareasSeleccionadas, setTareasSeleccionadas] = useState({}) // idx → bool
+  const [creandoTareas, setCreandoTareas] = useState(false)
+
   // ── Error banner ─────────────────────────────────────────────────────────────
   const [saveError, setSaveError] = useState(null)
 
@@ -285,11 +290,65 @@ export default function AnalisisTab({
         if (partes && (partes.parte_1_nombre || partes.parte_2_nombre || partes.caratula)) {
           setConfirmPartes(partes)
         }
+
+        // ── Proponer acciones como tareas ────────────────────────────────────
+        const accionesNuevas = meta?.acciones_semana || []
+        if (accionesNuevas.length > 0) {
+          // Tareas abiertas actuales de esta causa
+          const { data: tareasAbiertas } = await supabase
+            .from('tareas')
+            .select('titulo')
+            .eq('causa_id', causa.id)
+            .neq('estado', 'Completada')
+
+          const titulos = (tareasAbiertas || []).map(t => (t.titulo || '').toLowerCase())
+
+          // Filtrar acciones que no tienen una tarea similar ya abierta
+          const candidatas = accionesNuevas.filter(acc => {
+            const texto = (acc.accion || '').toLowerCase()
+            if (!texto) return false
+            return !titulos.some(titulo => {
+              // similitud: comparte más del 60% de palabras significativas
+              const palabrasAcc = texto.split(/\s+/).filter(p => p.length > 3)
+              const coinciden   = palabrasAcc.filter(p => titulo.includes(p))
+              return palabrasAcc.length > 0 && coinciden.length / palabrasAcc.length >= 0.6
+            })
+          })
+
+          if (candidatas.length > 0) {
+            setConfirmTareas(candidatas)
+            setTareasSeleccionadas({})
+          }
+        }
       } catch { /* si la recarga falla no tapamos el error principal */ }
     }
 
     setIaLoading(false)
     setIaLoadingMsg('Analizando…')
+  }
+
+  // ── Crear tareas desde acciones IA ────────────────────────────────────────────
+  const PRIORIDAD_MAP = { 'URGENTE': 'Alta', 'ESTA SEMANA': 'Media', 'PRÓXIMA SEMANA': 'Baja' }
+
+  async function crearTareasSeleccionadas() {
+    if (!confirmTareas) return
+    const seleccionadas = confirmTareas.filter((_, i) => tareasSeleccionadas[i])
+    if (seleccionadas.length === 0) { setConfirmTareas(null); return }
+    setCreandoTareas(true)
+    try {
+      const rows = seleccionadas.map(acc => ({
+        causa_id:   causa.id,
+        cliente_id: causa.cliente_id || null,
+        titulo:     acc.accion,
+        estado:     'Pendiente',
+        prioridad:  PRIORIDAD_MAP[acc.prioridad] || 'Media',
+        fuente:     'ia',
+      }))
+      await supabase.from('tareas').insert(rows)
+    } finally {
+      setCreandoTareas(false)
+      setConfirmTareas(null)
+    }
   }
 
   // ── Inline edit helpers ───────────────────────────────────────────────────────
@@ -549,6 +608,57 @@ export default function AnalisisTab({
               <button onClick={confirmarPartes}
                 className="px-4 py-1.5 rounded-md text-[12px] font-semibold text-white bg-[#2570BA] hover:bg-[#1a5a9e] transition-colors">
                 Confirmar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: convertir acciones IA en tareas */}
+      {confirmTareas && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/30 p-4">
+          <div className="bg-white rounded-xl shadow-2xl border border-[#E3E7EC] w-full max-w-[480px] flex flex-col max-h-[80vh]">
+            {/* Header */}
+            <div className="px-5 pt-5 pb-3 border-b border-[#E3E7EC]">
+              <h3 className="text-[13px] font-bold text-[#1A2E4A]">Acciones sugeridas por la IA</h3>
+              <p className="text-[11px] text-gray-500 mt-0.5">¿Cuáles convertir en tarea?</p>
+            </div>
+            {/* Lista */}
+            <div className="overflow-y-auto flex-1 px-5 py-3 space-y-2">
+              {confirmTareas.map((acc, i) => (
+                <label key={i} className={`flex items-start gap-3 p-2.5 rounded-lg border cursor-pointer transition-colors ${tareasSeleccionadas[i] ? 'border-[#2570BA] bg-blue-50' : 'border-[#E3E7EC] hover:border-gray-300'}`}>
+                  <input
+                    type="checkbox"
+                    checked={!!tareasSeleccionadas[i]}
+                    onChange={e => setTareasSeleccionadas(prev => ({ ...prev, [i]: e.target.checked }))}
+                    className="mt-0.5 accent-[#2570BA] flex-shrink-0"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[12px] text-gray-800 leading-snug">{acc.accion}</p>
+                    {acc.fundamento && <p className="text-[10.5px] text-gray-400 mt-0.5 leading-snug">{acc.fundamento}</p>}
+                  </div>
+                  <span className={`flex-shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded-full border ${
+                    acc.prioridad === 'URGENTE' ? 'bg-red-100 text-red-700 border-red-300' :
+                    acc.prioridad === 'ESTA SEMANA' ? 'bg-amber-100 text-amber-700 border-amber-300' :
+                    'bg-gray-100 text-gray-500 border-gray-300'
+                  }`}>{acc.prioridad}</span>
+                </label>
+              ))}
+            </div>
+            {/* Footer */}
+            <div className="px-5 py-4 border-t border-[#E3E7EC] flex items-center justify-between gap-3">
+              <button
+                onClick={() => setConfirmTareas(null)}
+                className="text-[12px] font-semibold text-gray-500 hover:text-gray-700 transition-colors"
+              >
+                Omitir todo
+              </button>
+              <button
+                onClick={crearTareasSeleccionadas}
+                disabled={creandoTareas || Object.values(tareasSeleccionadas).every(v => !v)}
+                className="px-4 py-1.5 rounded-md text-[12px] font-semibold text-white bg-[#2570BA] hover:bg-[#1a5a9e] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {creandoTareas ? 'Creando…' : `Crear ${Object.values(tareasSeleccionadas).filter(Boolean).length || ''} tarea${Object.values(tareasSeleccionadas).filter(Boolean).length !== 1 ? 's' : ''} seleccionada${Object.values(tareasSeleccionadas).filter(Boolean).length !== 1 ? 's' : ''}`}
               </button>
             </div>
           </div>
