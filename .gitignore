@@ -17,3 +17,7 @@ npm-debug.log*
 .DS_Store
 .vscode/
 .idea/
+
+# Credenciales de servicio (nunca commitear)
+sistema-bl-drive.json
+*.service_account.json
