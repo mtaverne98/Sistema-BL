@@ -1234,8 +1234,12 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
   // Restaurar la tab activa si es la misma causa que estaba abierta
   const [tab, setTabRaw] = useState(() => activeTab ?? 'resumen')
   const setTab = useCallback((t) => { setTabRaw(t); setActiveTab(t) }, [setActiveTab])
-  const [showTareasComp, setShowTareasComp] = useState(false)
-  const [showExport,     setShowExport]     = useState(false)
+  const [showTareasComp,  setShowTareasComp]  = useState(false)
+  const [tareaCheckError, setTareaCheckError] = useState(null) // id de la tarea con error
+  const [editingTareaTab, setEditingTareaTab] = useState(null) // id en edición inline
+  const [editDraftTab,    setEditDraftTab]    = useState('')
+  const [savedTareaTab,   setSavedTareaTab]   = useState(null) // id con borde verde
+  const [showExport,      setShowExport]      = useState(false)
 
   const TAB_KEYS = ['resumen','analisis','siau','pjud','audiencias','tareas','pendientes','plazos','documentos','diligencias','entrevistas','seguimiento','revisiones']
   const tabBarRef = useRef(null)
@@ -1487,6 +1491,43 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
     }]).select().single()
     if (data) setTareas(prev => [...prev, data])
   }, [causa?.id])
+
+  // ── Tareas tab: edición inline del título ────────────────────────────────
+  const handleCommitTareaTab = useCallback(async (id) => {
+    const v = editDraftTab.trim()
+    setEditingTareaTab(null)
+    if (!v) return
+    setTareas(prev => prev.map(t => t.id === id ? { ...t, titulo: v } : t))
+    const { error } = await supabase.from('tareas').update({ titulo: v }).eq('id', id)
+    if (!error) {
+      setSavedTareaTab(id)
+      setTimeout(() => setSavedTareaTab(null), 1500)
+    } else {
+      // revert
+      setTareas(prev => prev.map(t => t.id === id ? { ...t, titulo: t.titulo } : t))
+    }
+  }, [editDraftTab])
+
+  // ── Tareas tab: marcar completada ────────────────────────────────────────
+  const handleCheckTareaTab = useCallback(async (tarea) => {
+    // Optimistic
+    setTareas(prev => prev.map(t => t.id === tarea.id
+      ? { ...t, estado: 'Completada', fecha_completada: TODAY_C }
+      : t
+    ))
+    const { error } = await supabase.from('tareas')
+      .update({ estado: 'Completada', fecha_completada: TODAY_C })
+      .eq('id', tarea.id)
+    if (error) {
+      // Revert
+      setTareas(prev => prev.map(t => t.id === tarea.id
+        ? { ...t, estado: tarea.estado, fecha_completada: tarea.fecha_completada ?? null }
+        : t
+      ))
+      setTareaCheckError(tarea.id)
+      setTimeout(() => setTareaCheckError(null), 3000)
+    }
+  }, [])
 
   const handleAddPlazoFromPjud = useCallback(async (plazo) => {
     const { data } = await supabase.from('plazos').insert([{
@@ -3329,17 +3370,51 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                       <p className="text-[11px] text-gray-300 text-center py-2">Todas las tareas completadas</p>
                     )}
                     {tareasPend.map(t => (
-                      <div key={t.id} className="flex items-center gap-3 p-3.5 rounded-xl border border-gray-100 bg-white hover:border-gray-200 transition-colors">
-                        <div className="w-4 h-4 rounded-[4px] border border-gray-300 flex-shrink-0" />
-                        <p className="text-[12px] text-gray-700 flex-1 leading-snug">{t.titulo}</p>
-                        {t.prioridad && (
+                      <div key={t.id} className={`flex items-center gap-3 p-3.5 rounded-xl border bg-white transition-colors ${
+                        tareaCheckError === t.id ? 'border-red-300' :
+                        savedTareaTab === t.id ? 'border-emerald-400' :
+                        'border-gray-100 hover:border-gray-200'
+                      }`}>
+                        {/* Checkbox */}
+                        <button
+                          type="button"
+                          onClick={() => handleCheckTareaTab(t)}
+                          className="w-4 h-4 rounded-[4px] border border-gray-300 hover:border-[#2570BA] hover:bg-blue-50 transition-colors flex-shrink-0"
+                          title="Marcar como completada"
+                        />
+                        {/* Título — inline edit con doble clic */}
+                        {editingTareaTab === t.id ? (
+                          <input
+                            autoFocus
+                            value={editDraftTab}
+                            onChange={e => setEditDraftTab(e.target.value)}
+                            onBlur={() => handleCommitTareaTab(t.id)}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') { e.preventDefault(); handleCommitTareaTab(t.id) }
+                              if (e.key === 'Escape') setEditingTareaTab(null)
+                            }}
+                            className="flex-1 text-[12px] text-gray-700 border border-blue-300 rounded px-1.5 py-0.5 outline-none bg-white"
+                          />
+                        ) : (
+                          <p
+                            className="text-[12px] text-gray-700 flex-1 leading-snug cursor-text"
+                            onDoubleClick={() => { setEditingTareaTab(t.id); setEditDraftTab(t.titulo) }}
+                            title="Doble clic para editar"
+                          >
+                            {t.titulo}
+                          </p>
+                        )}
+                        {tareaCheckError === t.id && (
+                          <span className="text-[10px] text-red-500 flex-shrink-0">Error al guardar</span>
+                        )}
+                        {t.prioridad && editingTareaTab !== t.id && (
                           <span className={`text-[10px] px-1.5 py-0.5 rounded-full flex-shrink-0 ${
                             t.prioridad === 'Alta' ? 'bg-red-50 text-red-600' :
                             t.prioridad === 'Media' ? 'bg-amber-50 text-amber-600' :
                             'bg-gray-100 text-gray-400'
                           }`}>{t.prioridad}</span>
                         )}
-                        {t.fecha_vencimiento && (
+                        {t.fecha_vencimiento && editingTareaTab !== t.id && (
                           <span className={`text-[10px] px-2 py-0.5 rounded-full flex-shrink-0 ${
                             t.fecha_vencimiento < TODAY_C ? 'bg-red-50 text-red-500 font-medium' : 'bg-amber-50 text-amber-600'
                           }`}>
