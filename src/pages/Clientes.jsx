@@ -288,6 +288,45 @@ function ClaveUnicaCell({ value, onSave }) {
   )
 }
 
+// ── Fila de tarea en la ficha ─────────────────────────────────────────────
+function TareaFila({ t, editingTarea, editDraft, setEditDraft, onCheck, onStartEdit, onCommit, onCancelEdit }) {
+  if (editingTarea === t.id) {
+    return (
+      <div className="flex items-start gap-2 py-0.5">
+        <div className="mt-0.5 w-3.5 h-3.5 flex-shrink-0 rounded border border-gray-200" />
+        <input
+          autoFocus
+          value={editDraft}
+          onChange={e => setEditDraft(e.target.value)}
+          onBlur={() => onCommit(t.id)}
+          onKeyDown={e => {
+            if (e.key === 'Enter') { e.preventDefault(); onCommit(t.id) }
+            if (e.key === 'Escape') { onCancelEdit() }
+          }}
+          className="flex-1 text-[11px] text-gray-700 border border-blue-300 rounded px-1.5 py-0.5 outline-none bg-white"
+        />
+      </div>
+    )
+  }
+  return (
+    <div className="flex items-start gap-2 py-0.5 group">
+      <button
+        type="button"
+        onClick={() => onCheck(t)}
+        className="mt-0.5 w-3.5 h-3.5 flex-shrink-0 rounded border border-gray-300 hover:border-[#2570BA] hover:bg-blue-50 transition-colors cursor-pointer"
+        title="Marcar como completada"
+      />
+      <span
+        onDoubleClick={() => onStartEdit(t)}
+        className="flex-1 text-[11px] text-gray-700 leading-snug cursor-text hover:bg-gray-50 rounded px-0.5"
+        title="Doble clic para editar"
+      >
+        {t.titulo || '—'}
+      </span>
+    </div>
+  )
+}
+
 // ── Ficha completa de cliente ─────────────────────────────────────────────
 function FichaCliente({ cliente, onClose, onEstadoCambiar, onInlineSave, onRequestDelete }) {
   const navigate = useNavigate()
@@ -596,37 +635,10 @@ function FichaCliente({ cliente, onClose, onEstadoCambiar, onInlineSave, onReque
                   </div>
                   <div className="space-y-1">
                     {grupo.map(t => (
-                      <div key={t.id} className="flex items-start gap-2 py-0.5">
-                        <input
-                          id={`ck-${t.id}`}
-                          type="checkbox"
-                          checked={false}
-                          onChange={() => handleCheckTarea(t)}
-                          className="mt-0.5 w-3.5 h-3.5 flex-shrink-0 accent-[#2570BA] cursor-pointer"
-                        />
-                        {editingTarea === t.id ? (
-                          <input
-                            autoFocus
-                            value={editDraft}
-                            onChange={e => setEditDraft(e.target.value)}
-                            onBlur={() => commitEditTarea(t.id)}
-                            onKeyDown={e => {
-                              if (e.key === 'Enter') { e.preventDefault(); commitEditTarea(t.id) }
-                              if (e.key === 'Escape') { setEditingTarea(null) }
-                            }}
-                            className="flex-1 text-[11px] text-gray-700 border border-blue-300 rounded px-1.5 py-0.5 outline-none bg-white"
-                          />
-                        ) : (
-                          <label
-                            htmlFor={`ck-${t.id}`}
-                            onDoubleClick={e => { e.preventDefault(); startEditTarea(t) }}
-                            className="flex-1 text-[11px] text-gray-700 leading-snug cursor-pointer hover:bg-gray-50 rounded px-0.5 select-none"
-                            title="Clic para completar · doble clic para editar"
-                          >
-                            {t.titulo || '—'}
-                          </label>
-                        )}
-                      </div>
+                      <TareaFila key={t.id} t={t} editingTarea={editingTarea} editDraft={editDraft}
+                        setEditDraft={setEditDraft} onCheck={handleCheckTarea}
+                        onStartEdit={startEditTarea} onCommit={commitEditTarea}
+                        onCancelEdit={() => setEditingTarea(null)} />
                     ))}
                   </div>
                 </div>
@@ -647,37 +659,10 @@ function FichaCliente({ cliente, onClose, onEstadoCambiar, onInlineSave, onReque
                 </div>
                 <div className="space-y-1">
                   {tareasGrouped['__sin_causa__'].map(t => (
-                    <div key={t.id} className="flex items-start gap-2 py-0.5">
-                      <input
-                        id={`ck-${t.id}`}
-                        type="checkbox"
-                        checked={false}
-                        onChange={() => handleCheckTarea(t)}
-                        className="mt-0.5 w-3.5 h-3.5 flex-shrink-0 accent-[#2570BA] cursor-pointer"
-                      />
-                      {editingTarea === t.id ? (
-                        <input
-                          autoFocus
-                          value={editDraft}
-                          onChange={e => setEditDraft(e.target.value)}
-                          onBlur={() => commitEditTarea(t.id)}
-                          onKeyDown={e => {
-                            if (e.key === 'Enter') { e.preventDefault(); commitEditTarea(t.id) }
-                            if (e.key === 'Escape') { setEditingTarea(null) }
-                          }}
-                          className="flex-1 text-[11px] text-gray-700 border border-blue-300 rounded px-1.5 py-0.5 outline-none bg-white"
-                        />
-                      ) : (
-                        <label
-                          htmlFor={`ck-${t.id}`}
-                          onDoubleClick={e => { e.preventDefault(); startEditTarea(t) }}
-                          className="flex-1 text-[11px] text-gray-700 leading-snug cursor-pointer hover:bg-gray-50 rounded px-0.5 select-none"
-                          title="Clic para completar · doble clic para editar"
-                        >
-                          {t.titulo || '—'}
-                        </label>
-                      )}
-                    </div>
+                    <TareaFila key={t.id} t={t} editingTarea={editingTarea} editDraft={editDraft}
+                      setEditDraft={setEditDraft} onCheck={handleCheckTarea}
+                      onStartEdit={startEditTarea} onCommit={commitEditTarea}
+                      onCancelEdit={() => setEditingTarea(null)} />
                   ))}
                 </div>
               </div>
