@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react'
-import { ChevronDown, ChevronRight, RefreshCw, X, Link2 } from 'lucide-react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { ChevronDown, ChevronRight, RefreshCw, X, Link2, Edit2, Plus, Check } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -48,6 +48,8 @@ const RECO_ESTADO_CLS = {
   descartada:'bg-gray-100 text-gray-400 border-gray-200',
 }
 
+const PRIORIDADES_ACCION = ['URGENTE', 'ESTA SEMANA', 'PRÓXIMA SEMANA']
+
 // ── Sub-components ────────────────────────────────────────────────────────────
 
 function NivelChip({ value }) {
@@ -84,7 +86,6 @@ function CollapsibleBlock({ title, count, children, defaultOpen = false, badge }
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
-// Mapeo de área → etiquetas para el diálogo de confirmación
 const PARTES_LABELS_ANALISIS = {
   'Penal':    { p1: 'Querellante',  p2: 'Imputado'   },
   'Familia':  { p1: 'Demandante',   p2: 'Demandado'  },
@@ -119,10 +120,90 @@ export default function AnalisisTab({
   const [iaLoading, setIaLoading] = useState(false)
   const [iaError,   setIaError]   = useState(null)
   const [buildingEstado, setBuildingEstado] = useState(false)
-  // partes propuestas por la IA, pendientes de confirmación
   const [confirmPartes, setConfirmPartes] = useState(null)
 
-  // ── Build estado modelo automatically on mount ──────────────────────────
+  // ── Error banner ─────────────────────────────────────────────────────────────
+  const [saveError, setSaveError] = useState(null)
+
+  // ── 3s-undo deletes ──────────────────────────────────────────────────────────
+  const [pendingDeletes, setPendingDeletes] = useState({}) // id → { table }
+  const deleteTimers = useRef({})
+
+  function requestDelete(table, id) {
+    clearTimeout(deleteTimers.current[id])
+    setPendingDeletes(prev => ({ ...prev, [id]: { table } }))
+    deleteTimers.current[id] = setTimeout(async () => {
+      const setter = REVISADO_SETTERS[table]
+      setter(prev => prev.filter(x => x.id !== id))
+      await supabase.from(table).delete().eq('id', id)
+      setPendingDeletes(prev => { const n = { ...prev }; delete n[id]; return n })
+      delete deleteTimers.current[id]
+    }, 3000)
+  }
+
+  function undoDelete(id) {
+    clearTimeout(deleteTimers.current[id])
+    delete deleteTimers.current[id]
+    setPendingDeletes(prev => { const n = { ...prev }; delete n[id]; return n })
+  }
+
+  // ── Acciones de la semana ─────────────────────────────────────────────────────
+  const [editingAccionIdx, setEditingAccionIdx] = useState(null)
+  const [accionDraft, setAccionDraft] = useState({ accion: '', fundamento: '', prioridad: 'ESTA SEMANA' })
+  const [pendingDeleteAccionIdx, setPendingDeleteAccionIdx] = useState(null)
+  const deleteAccionTimer = useRef(null)
+
+  async function saveAccionesSemana(newArray) {
+    const old = analisisMeta?.acciones_semana || []
+    setAnalisisMeta(prev => ({ ...prev, acciones_semana: newArray }))
+    const { error } = await supabase.from('causa_analisis_meta')
+      .update({ acciones_semana: newArray })
+      .eq('causa_id', causa.id)
+    if (error) {
+      setAnalisisMeta(prev => ({ ...prev, acciones_semana: old }))
+      showSaveError(error.message)
+    }
+  }
+
+  function startEditAccion(idx) {
+    const acc = (analisisMeta?.acciones_semana || [])[idx] || {}
+    setAccionDraft({ accion: acc.accion || '', fundamento: acc.fundamento || '', prioridad: acc.prioridad || 'ESTA SEMANA' })
+    setEditingAccionIdx(idx)
+  }
+
+  function commitAccion() {
+    if (editingAccionIdx === null) return
+    const arr = [...(analisisMeta?.acciones_semana || [])]
+    arr[editingAccionIdx] = { ...accionDraft }
+    saveAccionesSemana(arr)
+    setEditingAccionIdx(null)
+  }
+
+  function addAccion() {
+    const arr = [...(analisisMeta?.acciones_semana || []), { accion: '', fundamento: '', prioridad: 'ESTA SEMANA' }]
+    const newIdx = arr.length - 1
+    setAccionDraft({ accion: '', fundamento: '', prioridad: 'ESTA SEMANA' })
+    setEditingAccionIdx(newIdx)
+    saveAccionesSemana(arr)
+  }
+
+  function requestDeleteAccion(idx) {
+    clearTimeout(deleteAccionTimer.current)
+    setPendingDeleteAccionIdx(idx)
+    deleteAccionTimer.current = setTimeout(() => {
+      const arr = (analisisMeta?.acciones_semana || []).filter((_, i) => i !== idx)
+      saveAccionesSemana(arr)
+      setPendingDeleteAccionIdx(null)
+      if (editingAccionIdx === idx) setEditingAccionIdx(null)
+    }, 3000)
+  }
+
+  function undoDeleteAccion() {
+    clearTimeout(deleteAccionTimer.current)
+    setPendingDeleteAccionIdx(null)
+  }
+
+  // ── Build estado modelo ───────────────────────────────────────────────────────
   const buildEstadoModelo = useCallback(async () => {
     if (!causa?.id) return
     setBuildingEstado(true)
@@ -130,87 +211,24 @@ export default function AnalisisTab({
       const modelo = {
         timestamp: new Date().toISOString(),
         causa: {
-          id: causa.id,
-          ruc: causa.ruc,
-          rit: causa.rit,
-          tribunal: causa.tribunal,
-          fiscalia: causa.fiscalia,
-          delito: causa.delito,
-          etapa_procesal: causa.etapa_procesal,
-          calidad: causa.calidad,
-          estado: causa.estado,
-          area: causa.area,
+          id: causa.id, ruc: causa.ruc, rit: causa.rit,
+          tribunal: causa.tribunal, fiscalia: causa.fiscalia,
+          delito: causa.delito, etapa_procesal: causa.etapa_procesal,
+          calidad: causa.calidad, estado: causa.estado, area: causa.area,
         },
-        diligencias: diligencias.map(d => ({
-          nombre: d.nombre,
-          estado: d.estado,
-          nivel_cumplimiento: d.nivel_cumplimiento,
-          fundamento: d.fundamento,
-          fecha_limite: d.fecha_limite,
-        })),
-        siau: siauRows.map(s => ({
-          tipo: s.tipo,
-          descripcion: s.descripcion,
-          estado: s.estado,
-          fecha_solicitud: s.fecha_solicitud,
-          fecha_respuesta: s.fecha_respuesta,
-        })),
-        pjud: pjudRows.map(p => ({
-          tipo: p.tipo,
-          descripcion: p.descripcion,
-          estado: p.estado,
-          fecha: p.fecha,
-        })),
-        audiencias: audiencias.map(a => ({
-          tipo: a.tipo,
-          fecha: a.fecha,
-          resultado: a.resultado,
-          estado: a.estado,
-        })),
-        tareas: tareas.map(t => ({
-          descripcion: t.descripcion,
-          estado: t.estado,
-          prioridad: t.prioridad,
-          fecha_limite: t.fecha_limite,
-        })),
-        documentos: documentosDrive.map(d => ({
-          nombre: d.nombre,
-          tipo: d.tipo,
-          fecha_creacion: d.fecha_creacion,
-        })),
-        alertas: alertasAnalisis.filter(a => !a.resuelta).map(a => ({
-          tipo: a.tipo,
-          titulo: a.titulo,
-          detalle: a.detalle,
-        })),
-        faltantes: faltantes.map(f => ({
-          descripcion: f.descripcion,
-          relevancia: f.relevancia,
-          accion_sugerida: f.accion_sugerida,
-        })),
-        contradicciones: contradicciones.map(c => ({
-          materia: c.materia,
-          descripcion: c.descripcion,
-          relevancia: c.relevancia,
-        })),
-        recomendaciones: recomendaciones.map(r => ({
-          diligencia_propuesta: r.diligencia_propuesta,
-          prioridad: r.prioridad,
-          estado: r.estado,
-          fundamento: r.fundamento,
-          objetivo: r.objetivo,
-        })),
-        seguimiento: segRows.slice(0, 10).map(s => ({
-          tipo: s.tipo,
-          descripcion: s.descripcion,
-          fecha: s.fecha,
-        })),
+        diligencias: diligencias.map(d => ({ nombre: d.nombre, estado: d.estado, nivel_cumplimiento: d.nivel_cumplimiento, fundamento: d.fundamento, fecha_limite: d.fecha_limite })),
+        siau: siauRows.map(s => ({ tipo: s.tipo, descripcion: s.descripcion, estado: s.estado, fecha_solicitud: s.fecha_solicitud, fecha_respuesta: s.fecha_respuesta })),
+        pjud: pjudRows.map(p => ({ tipo: p.tipo, descripcion: p.descripcion, estado: p.estado, fecha: p.fecha })),
+        audiencias: audiencias.map(a => ({ tipo: a.tipo, fecha: a.fecha, resultado: a.resultado, estado: a.estado })),
+        tareas: tareas.map(t => ({ descripcion: t.descripcion, estado: t.estado, prioridad: t.prioridad, fecha_limite: t.fecha_limite })),
+        documentos: documentosDrive.map(d => ({ nombre: d.nombre, tipo: d.tipo, fecha_creacion: d.fecha_creacion })),
+        alertas: alertasAnalisis.filter(a => !a.resuelta).map(a => ({ tipo: a.tipo, titulo: a.titulo, detalle: a.detalle })),
+        faltantes: faltantes.map(f => ({ descripcion: f.descripcion, relevancia: f.relevancia, accion_sugerida: f.accion_sugerida })),
+        contradicciones: contradicciones.map(c => ({ materia: c.materia, descripcion: c.descripcion, relevancia: c.relevancia })),
+        recomendaciones: recomendaciones.map(r => ({ diligencia_propuesta: r.diligencia_propuesta, prioridad: r.prioridad, estado: r.estado, fundamento: r.fundamento, objetivo: r.objetivo })),
+        seguimiento: segRows.slice(0, 10).map(s => ({ tipo: s.tipo, descripcion: s.descripcion, fecha: s.fecha })),
       }
-
-      await supabase
-        .from('causa_analisis_meta')
-        .upsert({ causa_id: causa.id, estado_modelo: modelo }, { onConflict: 'causa_id' })
-
+      await supabase.from('causa_analisis_meta').upsert({ causa_id: causa.id, estado_modelo: modelo }, { onConflict: 'causa_id' })
       setAnalisisMeta(prev => prev ? { ...prev, estado_modelo: modelo } : { causa_id: causa.id, estado_modelo: modelo })
     } finally {
       setBuildingEstado(false)
@@ -222,7 +240,7 @@ export default function AnalisisTab({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [causa?.id])
 
-  // ── Run AI analysis via Edge Function ────────────────────────────────────
+  // ── Run AI analysis ───────────────────────────────────────────────────────────
   const [iaLoadingMsg, setIaLoadingMsg] = useState('Analizando…')
 
   async function runAnalisisIA() {
@@ -233,12 +251,10 @@ export default function AnalisisTab({
     let invokePartes = null
     let skipReload   = false
 
-    // ── 1. Llamar a la Edge Function ────────────────────────────────────────
     try {
       const { data, error } = await supabase.functions.invoke('drive-sync-causa', {
         body: { causa_id: causa.id, drive_folder_id: analisisMeta?.drive_folder_id || null },
       })
-
       if (error) throw new Error(error.message || JSON.stringify(error))
       if (data?.error) {
         if (data.no_folder) {
@@ -252,10 +268,8 @@ export default function AnalisisTab({
       }
     } catch (err) {
       setIaError(err.message || String(err))
-      // No hacemos skipReload: la función puede haber guardado datos antes de fallar
     }
 
-    // ── 2. Recargar desde la DB (siempre, salvo no_folder) ─────────────────
     if (!skipReload) {
       setIaLoadingMsg('Cargando resultados…')
       try {
@@ -264,12 +278,9 @@ export default function AnalisisTab({
           supabase.from('causa_faltantes').select('*').eq('causa_id', causa.id),
           supabase.from('causa_contradicciones').select('*').eq('causa_id', causa.id),
         ])
-
         if (meta)         setAnalisisMeta(meta)
         if (newFaltantes) setFaltantes(newFaltantes)
         if (newContra)    setContradicciones(newContra)
-
-        // Proponer partes: prioriza la respuesta directa; usa DB como fallback
         const partes = invokePartes || meta?.partes
         if (partes && (partes.parte_1_nombre || partes.parte_2_nombre || partes.caratula)) {
           setConfirmPartes(partes)
@@ -281,7 +292,7 @@ export default function AnalisisTab({
     setIaLoadingMsg('Analizando…')
   }
 
-  // ── Inline edit helpers ───────────────────────────────────────────────────
+  // ── Inline edit helpers ───────────────────────────────────────────────────────
   const REVISADO_SETTERS = {
     causa_alertas:         setAlertasAnalisis,
     causa_faltantes:       setFaltantes,
@@ -289,24 +300,29 @@ export default function AnalisisTab({
     causa_recomendaciones: setRecomendaciones,
   }
 
+  function showSaveError(msg) {
+    setSaveError(msg)
+    setTimeout(() => setSaveError(null), 4000)
+  }
+
   async function commitAnalisisField(table, id, field, rawValue) {
     setEditingCell(null)
     const value = typeof rawValue === 'string' ? (rawValue.trim() || null) : rawValue
+
     if (table === 'causa_analisis_meta') {
+      const oldMeta = analisisMeta
       setAnalisisMeta(prev => prev ? { ...prev, [field]: value } : prev)
-      await supabase.from('causa_analisis_meta').update({ [field]: value }).eq('causa_id', causa.id)
+      const { error } = await supabase.from('causa_analisis_meta').update({ [field]: value }).eq('causa_id', causa.id)
+      if (error) { setAnalisisMeta(oldMeta); showSaveError(error.message) }
       return
     }
-    const setter = REVISADO_SETTERS[table]
-    setter(prev => prev.map(x => x.id === id ? { ...x, [field]: value, revisado: true } : x))
-    await supabase.from(table).update({ [field]: value, revisado: true }).eq('id', id)
-  }
 
-  async function deleteAnalisisRow(table, id) {
-    if (!window.confirm('¿Eliminar este elemento? Esta acción no se puede deshacer.')) return
     const setter = REVISADO_SETTERS[table]
-    setter(prev => prev.filter(x => x.id !== id))
-    await supabase.from(table).delete().eq('id', id)
+    const READERS = { causa_alertas: alertasAnalisis, causa_faltantes: faltantes, causa_contradicciones: contradicciones, causa_recomendaciones: recomendaciones }
+    const prevRows = READERS[table]
+    setter(prev => prev.map(x => x.id === id ? { ...x, [field]: value, revisado: true } : x))
+    const { error } = await supabase.from(table).update({ [field]: value, revisado: true }).eq('id', id)
+    if (error) { setter(prevRows); showSaveError(error.message) }
   }
 
   async function addAnalisisRow(table, defaults, focusField) {
@@ -325,6 +341,26 @@ export default function AnalisisTab({
     await supabase.from('causa_alertas').update({ resuelta: nuevo }).eq('id', a.id)
   }
 
+  async function toggleFaltanteResuelta(f) {
+    const nuevo = f.estado === 'resuelta' ? 'pendiente' : 'resuelta'
+    setFaltantes(prev => prev.map(x => x.id === f.id ? { ...x, estado: nuevo } : x))
+    const { error } = await supabase.from('causa_faltantes').update({ estado: nuevo }).eq('id', f.id)
+    if (error) {
+      setFaltantes(prev => prev.map(x => x.id === f.id ? { ...x, estado: f.estado } : x))
+      showSaveError(error.message)
+    }
+  }
+
+  async function toggleContradiccionRevisada(c) {
+    const nuevo = !c.revisado
+    setContradicciones(prev => prev.map(x => x.id === c.id ? { ...x, revisado: nuevo } : x))
+    const { error } = await supabase.from('causa_contradicciones').update({ revisado: nuevo }).eq('id', c.id)
+    if (error) {
+      setContradicciones(prev => prev.map(x => x.id === c.id ? { ...x, revisado: c.revisado } : x))
+      showSaveError(error.message)
+    }
+  }
+
   async function marcarRevisado(table, id) {
     REVISADO_SETTERS[table](prev => prev.map(x => x.id === id ? { ...x, revisado: true } : x))
     await supabase.from(table).update({ revisado: true }).eq('id', id)
@@ -336,7 +372,7 @@ export default function AnalisisTab({
     await supabase.from('causa_recomendaciones').update({ estado: value }).eq('id', id)
   }
 
-  // ── Inline edit sub-components ────────────────────────────────────────────
+  // ── Inline edit sub-components ────────────────────────────────────────────────
   function NuevoTag({ table, id }) {
     return (
       <button
@@ -350,9 +386,18 @@ export default function AnalisisTab({
   }
 
   function DeleteRowBtn({ table, id }) {
+    const isPending = !!pendingDeletes[id]
+    if (isPending) {
+      return (
+        <button onClick={e => { e.stopPropagation(); undoDelete(id) }}
+          className="flex-shrink-0 text-[10px] font-semibold text-amber-600 hover:text-amber-700 transition-colors whitespace-nowrap">
+          Deshacer
+        </button>
+      )
+    }
     return (
       <button
-        onClick={e => { e.stopPropagation(); deleteAnalisisRow(table, id) }}
+        onClick={e => { e.stopPropagation(); requestDelete(table, id) }}
         title="Eliminar"
         className="flex-shrink-0 text-gray-300 hover:text-red-500 transition-colors"
       >
@@ -371,6 +416,7 @@ export default function AnalisisTab({
         onBlur: () => commitAnalisisField(table, id, field, cellDraft),
         onKeyDown: e => {
           if (!multiline && e.key === 'Enter') { e.preventDefault(); commitAnalisisField(table, id, field, cellDraft) }
+          if (multiline && e.key === 'Enter' && e.ctrlKey) { e.preventDefault(); commitAnalisisField(table, id, field, cellDraft) }
           if (e.key === 'Escape') setEditingCell(null)
         },
         onClick: e => e.stopPropagation(),
@@ -408,7 +454,7 @@ export default function AnalisisTab({
     )
   }
 
-  // ── Computed ──────────────────────────────────────────────────────────────
+  // ── Computed ──────────────────────────────────────────────────────────────────
   const docsById = {}
   for (const d of documentosDrive) docsById[d.id] = d
 
@@ -443,9 +489,13 @@ export default function AnalisisTab({
   const alertasActivas = alertasAnalisis.filter(a => !a.resuelta)
   const sinRevisar = [...alertasAnalisis, ...faltantes, ...contradicciones, ...recomendaciones].filter(x => x.revisado === false)
 
+  // split faltantes: activos al tope, resueltos al pie
+  const faltantesActivos   = faltantes.filter(f => f.estado !== 'resuelta')
+  const faltantesResueltos = faltantes.filter(f => f.estado === 'resuelta')
+
   if (!causa?.id) return null
 
-  // ── Confirmar partes detectadas por IA ───────────────────────────────────
+  // ── Confirmar partes ──────────────────────────────────────────────────────────
   async function confirmarPartes() {
     const updates = {}
     if (confirmPartes.parte_1_nombre) updates.querellante = confirmPartes.parte_1_nombre
@@ -461,11 +511,11 @@ export default function AnalisisTab({
   const { p1: labelP1, p2: labelP2 } = PARTES_LABELS_ANALISIS[causa.area] || { p1: 'Parte 1', p2: 'Parte 2' }
   const hayCaratula = ['Familia', 'Civil', 'Laboral'].includes(causa.area)
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  // ── Render ────────────────────────────────────────────────────────────────────
   return (
     <div className="flex flex-col h-full overflow-y-auto">
 
-      {/* ── DIÁLOGO DE CONFIRMACIÓN DE PARTES ─────────────────────────────── */}
+      {/* Confirmar partes IA */}
       {confirmPartes && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
           <div className="bg-white rounded-xl shadow-2xl border border-[#E3E7EC] w-[420px] max-w-[90vw] p-6">
@@ -492,16 +542,12 @@ export default function AnalisisTab({
               )}
             </div>
             <div className="flex justify-end gap-2">
-              <button
-                onClick={() => setConfirmPartes(null)}
-                className="px-4 py-1.5 rounded-md text-[12px] font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 transition-colors"
-              >
+              <button onClick={() => setConfirmPartes(null)}
+                className="px-4 py-1.5 rounded-md text-[12px] font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 transition-colors">
                 Cancelar
               </button>
-              <button
-                onClick={confirmarPartes}
-                className="px-4 py-1.5 rounded-md text-[12px] font-semibold text-white bg-[#2570BA] hover:bg-[#1a5a9e] transition-colors"
-              >
+              <button onClick={confirmarPartes}
+                className="px-4 py-1.5 rounded-md text-[12px] font-semibold text-white bg-[#2570BA] hover:bg-[#1a5a9e] transition-colors">
                 Confirmar
               </button>
             </div>
@@ -511,7 +557,15 @@ export default function AnalisisTab({
 
       <div className="p-5 space-y-4">
 
-        {/* ── ZONA 1: QUÉ HACER ESTA SEMANA ─────────────────────────────── */}
+        {/* Error banner */}
+        {saveError && (
+          <div className="bg-red-50 border border-red-200 rounded-md px-3 py-2 flex items-center justify-between gap-2">
+            <p className="text-[11px] text-red-700">Error al guardar: {saveError}</p>
+            <button onClick={() => setSaveError(null)} className="text-red-400 hover:text-red-600"><X size={12}/></button>
+          </div>
+        )}
+
+        {/* ── ZONA 1: QUÉ HACER ESTA SEMANA ──────────────────────────────────── */}
         <div className="border-l-4 border-[#2570BA] bg-[#EBF2FA] rounded-r-lg px-4 pt-4 pb-3">
           <div className="flex items-center justify-between mb-3">
             <div>
@@ -540,7 +594,7 @@ export default function AnalisisTab({
             </div>
           )}
 
-          {accionesSemana.length === 0 ? (
+          {accionesSemana.length === 0 && editingAccionIdx === null ? (
             <p className="text-[11.5px] text-[#2570BA]/50 italic py-2">
               {analisisMeta?.analisis_ia_at
                 ? 'Sin acciones para esta semana según el último análisis.'
@@ -548,20 +602,91 @@ export default function AnalisisTab({
             </p>
           ) : (
             <div className="space-y-2">
-              {accionesSemana.map((acc, i) => (
-                <div key={i} className="flex items-start gap-2.5 bg-white/70 rounded-md px-3 py-2">
-                  <PrioridadChip value={acc.prioridad} />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[11.5px] font-semibold text-gray-800">{acc.accion}</p>
-                    {acc.fundamento && <p className="text-[10.5px] text-gray-500 mt-0.5">{acc.fundamento}</p>}
+              {accionesSemana.map((acc, i) => {
+                const isPendingDel = pendingDeleteAccionIdx === i
+                if (editingAccionIdx === i) {
+                  return (
+                    <div key={i} className="bg-white rounded-md px-3 py-2.5 space-y-2 border border-blue-300">
+                      <textarea
+                        autoFocus
+                        rows={2}
+                        value={accionDraft.accion}
+                        onChange={e => setAccionDraft(d => ({ ...d, accion: e.target.value }))}
+                        onKeyDown={e => { if (e.key === 'Escape') setEditingAccionIdx(null) }}
+                        placeholder="Descripción de la acción…"
+                        className="w-full text-[11.5px] font-semibold text-gray-800 border border-blue-200 rounded px-2 py-1 outline-none resize-none"
+                      />
+                      <input
+                        type="text"
+                        value={accionDraft.fundamento}
+                        onChange={e => setAccionDraft(d => ({ ...d, fundamento: e.target.value }))}
+                        placeholder="Fundamento (opcional)…"
+                        className="w-full text-[10.5px] text-gray-500 border border-blue-200 rounded px-2 py-1 outline-none"
+                      />
+                      <div className="flex items-center justify-between gap-2">
+                        <select
+                          value={accionDraft.prioridad}
+                          onChange={e => setAccionDraft(d => ({ ...d, prioridad: e.target.value }))}
+                          className="text-[10px] border border-blue-200 rounded px-1.5 py-1 outline-none bg-white"
+                        >
+                          {PRIORIDADES_ACCION.map(p => <option key={p} value={p}>{p}</option>)}
+                        </select>
+                        <div className="flex gap-1.5">
+                          <button onClick={() => setEditingAccionIdx(null)}
+                            className="px-2.5 py-1 rounded text-[10px] font-semibold text-gray-500 bg-gray-100 hover:bg-gray-200 transition-colors">
+                            Cancelar
+                          </button>
+                          <button onClick={commitAccion}
+                            className="px-2.5 py-1 rounded text-[10px] font-semibold text-white bg-[#2570BA] hover:bg-[#1a5a9e] transition-colors">
+                            Guardar
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                }
+                return (
+                  <div key={i} className={`flex items-start gap-2.5 bg-white/70 rounded-md px-3 py-2 group ${isPendingDel ? 'opacity-50' : ''}`}>
+                    <PrioridadChip value={acc.prioridad} />
+                    <div className="min-w-0 flex-1">
+                      <p className={`text-[11.5px] font-semibold text-gray-800 ${isPendingDel ? 'line-through' : ''}`}>{acc.accion}</p>
+                      {acc.fundamento && <p className={`text-[10.5px] text-gray-500 mt-0.5 ${isPendingDel ? 'line-through' : ''}`}>{acc.fundamento}</p>}
+                    </div>
+                    <div className="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                      {isPendingDel ? (
+                        <button onClick={undoDeleteAccion}
+                          className="text-[10px] font-semibold text-amber-600 hover:text-amber-700 whitespace-nowrap">
+                          Deshacer
+                        </button>
+                      ) : (
+                        <>
+                          <button onClick={() => startEditAccion(i)}
+                            className="p-1 rounded text-gray-300 hover:text-[#2570BA] hover:bg-blue-50 transition-colors" title="Editar">
+                            <Edit2 size={11} />
+                          </button>
+                          <button onClick={() => requestDeleteAccion(i)}
+                            className="p-1 rounded text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors" title="Eliminar">
+                            <X size={11} />
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
+
+          {/* Nueva acción */}
+          <button
+            onClick={addAccion}
+            className="mt-2.5 flex items-center gap-1.5 text-[10.5px] font-semibold text-[#2570BA]/70 hover:text-[#2570BA] transition-colors"
+          >
+            <Plus size={12} /> Agregar acción
+          </button>
         </div>
 
-        {/* ── RESUMEN EJECUTIVO ──────────────────────────────────────────── */}
+        {/* ── RESUMEN EJECUTIVO ──────────────────────────────────────────────── */}
         <div className="bg-white border border-[#E3E7EC] rounded-lg p-4">
           <h3 className="text-[10.5px] font-bold text-[#1A2E4A] uppercase tracking-wide mb-2">Resumen ejecutivo</h3>
           {analisisMeta ? (
@@ -584,7 +709,7 @@ export default function AnalisisTab({
           )}
         </div>
 
-        {/* ── ZONA 2: BLOQUES COLAPSABLES ───────────────────────────────── */}
+        {/* ── ZONA 2: BLOQUES COLAPSABLES ───────────────────────────────────── */}
 
         {/* Próxima acción */}
         <CollapsibleBlock
@@ -617,7 +742,7 @@ export default function AnalisisTab({
         {/* Brechas / Faltantes */}
         <CollapsibleBlock
           title="Brechas / Faltantes"
-          count={faltantes.length}
+          count={faltantesActivos.length}
           defaultOpen={faltantes.length > 0}
         >
           <div className="flex justify-end mb-1">
@@ -626,22 +751,41 @@ export default function AnalisisTab({
           </div>
           {faltantes.length === 0
             ? <p className="text-[11px] text-gray-300 italic">Sin brechas o faltantes identificados.</p>
-            : faltantes.map(f => (
-            <div key={f.id} className="bg-blue-50 border border-blue-200 rounded-md px-2.5 py-1.5">
-              <div className="flex items-start justify-between gap-2">
-                <AnalisisText table="causa_faltantes" id={f.id} field="descripcion" multiline rows={2}
-                  value={f.descripcion} className="text-[11px] text-blue-800 flex-1 block" />
-                <div className="flex items-center gap-1.5 flex-shrink-0">
-                  {f.revisado === false && <NuevoTag table="causa_faltantes" id={f.id} />}
-                  <DeleteRowBtn table="causa_faltantes" id={f.id} />
-                </div>
-              </div>
-              <p className="text-[10px] text-blue-500 mt-0.5 flex items-center gap-1 flex-wrap">
-                Relevancia: <AnalisisSelect table="causa_faltantes" id={f.id} field="relevancia" value={f.relevancia} options={['ALTA', 'MEDIA', 'BAJA']} /> ·
-                <AnalisisText table="causa_faltantes" id={f.id} field="accion_sugerida" value={f.accion_sugerida} placeholder="Sin acción sugerida." className="flex-1" />
-              </p>
-            </div>
-          ))}
+            : <>
+                {[...faltantesActivos, ...faltantesResueltos].map(f => {
+                  const resuelta = f.estado === 'resuelta'
+                  const isPendingDel = !!pendingDeletes[f.id]
+                  return (
+                    <div key={f.id} className={`bg-blue-50 border border-blue-200 rounded-md px-2.5 py-1.5 ${resuelta ? 'opacity-50' : ''} ${isPendingDel ? 'opacity-40' : ''}`}>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-start gap-2 flex-1 min-w-0">
+                          <button
+                            type="button"
+                            onClick={() => toggleFaltanteResuelta(f)}
+                            title={resuelta ? 'Marcar como pendiente' : 'Marcar como resuelta'}
+                            className={`mt-0.5 flex-shrink-0 w-3.5 h-3.5 rounded border transition-colors flex items-center justify-center ${resuelta ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-blue-300 hover:border-emerald-400'}`}
+                          >
+                            {resuelta && <Check size={9} strokeWidth={3} />}
+                          </button>
+                          <AnalisisText table="causa_faltantes" id={f.id} field="descripcion" multiline rows={2}
+                            value={f.descripcion} className={`text-[11px] text-blue-800 flex-1 block ${resuelta ? 'line-through' : ''}`} />
+                        </div>
+                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                          {f.revisado === false && !resuelta && <NuevoTag table="causa_faltantes" id={f.id} />}
+                          <DeleteRowBtn table="causa_faltantes" id={f.id} />
+                        </div>
+                      </div>
+                      {!resuelta && (
+                        <p className="text-[10px] text-blue-500 mt-0.5 flex items-center gap-1 flex-wrap">
+                          Relevancia: <AnalisisSelect table="causa_faltantes" id={f.id} field="relevancia" value={f.relevancia} options={['ALTA', 'MEDIA', 'BAJA']} /> ·
+                          <AnalisisText table="causa_faltantes" id={f.id} field="accion_sugerida" value={f.accion_sugerida} placeholder="Sin acción sugerida." className="flex-1" />
+                        </p>
+                      )}
+                    </div>
+                  )
+                })}
+              </>
+          }
         </CollapsibleBlock>
 
         {/* Contradicciones / Vacíos */}
@@ -656,37 +800,54 @@ export default function AnalisisTab({
           </div>
           {contradicciones.length === 0
             ? <p className="text-[11px] text-gray-300 italic">Sin contradicciones o vacíos registrados.</p>
-            : contradicciones.map(c => (
-            <div key={c.id} className={`border rounded-md px-3 py-2 ${c.materia === 'Vacío investigativo' ? 'bg-orange-50 border-orange-200' : 'bg-red-50 border-red-200'}`}>
-              <div className="flex items-start justify-between gap-2 mb-1">
-                <AnalisisText table="causa_contradicciones" id={c.id} field="materia" value={c.materia}
-                  className="text-[10px] font-semibold uppercase tracking-wide text-gray-500" />
-                <div className="flex items-center gap-1.5 flex-shrink-0">
-                  {c.revisado === false && <NuevoTag table="causa_contradicciones" id={c.id} />}
-                  <DeleteRowBtn table="causa_contradicciones" id={c.id} />
+            : contradicciones.map(c => {
+              const isPendingDel = !!pendingDeletes[c.id]
+              return (
+                <div key={c.id} className={`border rounded-md px-3 py-2 ${c.materia === 'Vacío investigativo' ? 'bg-orange-50 border-orange-200' : 'bg-red-50 border-red-200'} ${c.revisado ? 'opacity-60' : ''} ${isPendingDel ? 'opacity-40' : ''}`}>
+                  <div className="flex items-start justify-between gap-2 mb-1">
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      <button
+                        type="button"
+                        onClick={() => toggleContradiccionRevisada(c)}
+                        title={c.revisado ? 'Marcar como no revisada' : 'Marcar como revisada'}
+                        className={`flex-shrink-0 w-3.5 h-3.5 rounded border transition-colors flex items-center justify-center ${c.revisado ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-gray-300 hover:border-emerald-400'}`}
+                      >
+                        {c.revisado && <Check size={9} strokeWidth={3} />}
+                      </button>
+                      <AnalisisText table="causa_contradicciones" id={c.id} field="materia" value={c.materia}
+                        className={`text-[10px] font-semibold uppercase tracking-wide text-gray-500 ${c.revisado ? 'line-through' : ''}`} />
+                    </div>
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      {c.revisado === false && <NuevoTag table="causa_contradicciones" id={c.id} />}
+                      <DeleteRowBtn table="causa_contradicciones" id={c.id} />
+                    </div>
+                  </div>
+                  {(c.fuente_1_version || c.fuente_2_version) ? (
+                    <>
+                      <p className="text-[11px] text-gray-700 flex gap-1">
+                        <DocLink id={c.fuente_1_documento_id} fallback="Fuente 1" />:
+                        <AnalisisText table="causa_contradicciones" id={c.id} field="fuente_1_version" multiline rows={2}
+                          value={c.fuente_1_version} placeholder="Sin versión de la fuente 1." className="flex-1" />
+                      </p>
+                      <p className="text-[11px] text-gray-700 mt-0.5 flex gap-1">
+                        <DocLink id={c.fuente_2_documento_id} fallback="Fuente 2" />:
+                        <AnalisisText table="causa_contradicciones" id={c.id} field="fuente_2_version" multiline rows={2}
+                          value={c.fuente_2_version} placeholder="Sin versión de la fuente 2." className="flex-1" />
+                      </p>
+                    </>
+                  ) : (
+                    <AnalisisText table="causa_contradicciones" id={c.id} field="descripcion" multiline rows={2}
+                      value={c.descripcion} className="text-[11px] text-gray-700 block" />
+                  )}
+                  <p className="text-[10px] text-gray-400 mt-1 flex items-center gap-1">
+                    Relevancia:{' '}
+                    <AnalisisSelect table="causa_contradicciones" id={c.id} field="relevancia"
+                      value={c.relevancia} options={['ALTA', 'MEDIA', 'BAJA']} />
+                  </p>
                 </div>
-              </div>
-              {(c.fuente_1_version || c.fuente_2_version) ? (
-                <>
-                  <p className="text-[11px] text-gray-700 flex gap-1">
-                    <DocLink id={c.fuente_1_documento_id} fallback="Fuente 1" />:
-                    <AnalisisText table="causa_contradicciones" id={c.id} field="fuente_1_version" multiline rows={2}
-                      value={c.fuente_1_version} placeholder="Sin versión de la fuente 1." className="flex-1" />
-                  </p>
-                  <p className="text-[11px] text-gray-700 mt-0.5 flex gap-1">
-                    <DocLink id={c.fuente_2_documento_id} fallback="Fuente 2" />:
-                    <AnalisisText table="causa_contradicciones" id={c.id} field="fuente_2_version" multiline rows={2}
-                      value={c.fuente_2_version} placeholder="Sin versión de la fuente 2." className="flex-1" />
-                  </p>
-                </>
-              ) : (
-                <AnalisisText table="causa_contradicciones" id={c.id} field="descripcion" multiline rows={2}
-                  value={c.descripcion} className="text-[11px] text-gray-700 block" />
-              )}
-              <p className="text-[10px] text-gray-400 mt-1">Relevancia:{' '}
-                <AnalisisText table="causa_contradicciones" id={c.id} field="relevancia" value={c.relevancia} placeholder="—" /></p>
-            </div>
-          ))}
+              )
+            })
+          }
         </CollapsibleBlock>
 
         {/* Alertas */}
@@ -727,7 +888,7 @@ export default function AnalisisTab({
           })}
         </CollapsibleBlock>
 
-        {/* Recomendaciones / Acciones */}
+        {/* Recomendaciones */}
         <CollapsibleBlock
           title="Diligencias recomendadas"
           count={recomendaciones.filter(r => r.estado === 'evaluando').length || null}
