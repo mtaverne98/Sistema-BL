@@ -375,8 +375,9 @@ function RespuestaInline({ registro, onUpdate }) {
 
 // ── Edición inline de documento_nombre ───────────────────────────────────────
 function DocNombreInline({ registro, onUpdate }) {
-  const [editing, setEditing] = useState(false)
-  const [draft,   setDraft]   = useState(registro.documento_nombre || '')
+  const [editing,   setEditing]   = useState(false)
+  const [draft,     setDraft]     = useState(registro.documento_nombre || '')
+  const [justSaved, setJustSaved] = useState(false)
   useEffect(() => { if (!editing) setDraft(registro.documento_nombre || '') }, [registro.documento_nombre, editing])
 
   async function commit() {
@@ -384,32 +385,35 @@ function DocNombreInline({ registro, onUpdate }) {
     const v = draft.trim() || null
     if ((v || '') === (registro.documento_nombre || '')) return
     await onUpdate(registro.id, { documento_nombre: v, tiene_documento: !!v })
+    setJustSaved(true)
+    setTimeout(() => setJustSaved(false), 1500)
   }
 
   if (editing) {
     return (
       <div className="flex items-center gap-2">
         <input autoFocus type="text" value={draft} onChange={e => setDraft(e.target.value)}
-          onBlur={commit} onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') { setEditing(false); setDraft(registro.documento_nombre || '') } }}
+          onBlur={commit} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); commit() } if (e.key === 'Escape') { setEditing(false); setDraft(registro.documento_nombre || '') } }}
           className="flex-1 text-[12px] border border-blue-300 rounded px-2 py-1 focus:outline-none bg-white"/>
       </div>
     )
   }
   return (
-    <div className="flex items-center gap-1.5 cursor-pointer group" onClick={() => setEditing(true)}>
-      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Documento</p>
-      <span className="text-[12px] text-gray-700 group-hover:text-[#2570BA] transition-colors">
+    <div className={`flex items-center gap-1.5 cursor-pointer group rounded px-1 -mx-1 transition-all ${justSaved ? 'ring-1 ring-emerald-400 bg-emerald-50/50' : ''}`}
+      onClick={() => setEditing(true)}>
+      <span className="text-[11px] text-gray-700 group-hover:text-[#2570BA] transition-colors">
         {registro.documento_nombre || <span className="text-gray-300 italic">— agregar nombre</span>}
       </span>
-      <Edit2 size={10} className="text-gray-200 group-hover:text-[#2570BA] transition-colors"/>
+      <Edit2 size={10} className="text-gray-200 group-hover:text-[#2570BA] transition-colors flex-shrink-0"/>
     </div>
   )
 }
 
 // ── Edición inline de drive_url ───────────────────────────────────────────────
 function DriveUrlInline({ registro, onUpdate }) {
-  const [editing, setEditing] = useState(false)
-  const [draft,   setDraft]   = useState(registro.drive_url || '')
+  const [editing,   setEditing]   = useState(false)
+  const [draft,     setDraft]     = useState(registro.drive_url || '')
+  const [justSaved, setJustSaved] = useState(false)
   useEffect(() => { if (!editing) setDraft(registro.drive_url || '') }, [registro.drive_url, editing])
 
   async function commit() {
@@ -417,27 +421,31 @@ function DriveUrlInline({ registro, onUpdate }) {
     const v = draft.trim() || null
     if ((v || '') === (registro.drive_url || '')) return
     await onUpdate(registro.id, { drive_url: v })
+    setJustSaved(true)
+    setTimeout(() => setJustSaved(false), 1500)
   }
 
   if (editing) {
     return (
       <div className="flex items-center gap-2">
         <input autoFocus type="url" value={draft} onChange={e => setDraft(e.target.value)}
-          onBlur={commit} onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') { setEditing(false); setDraft(registro.drive_url || '') } }}
+          onBlur={commit} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); commit() } if (e.key === 'Escape') { setEditing(false); setDraft(registro.drive_url || '') } }}
           placeholder="https://drive.google.com/…"
           className="flex-1 text-[12px] border border-blue-300 rounded px-2 py-1 focus:outline-none bg-white font-mono"/>
       </div>
     )
   }
   return (
-    <div className="flex items-center gap-1.5 cursor-pointer group" onClick={() => setEditing(true)}>
-      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Drive</p>
+    <div className={`flex items-center gap-1.5 cursor-pointer group rounded px-1 -mx-1 transition-all ${justSaved ? 'ring-1 ring-emerald-400 bg-emerald-50/50' : ''}`}
+      onClick={() => setEditing(true)}>
       {registro.drive_url
-        ? <a href={registro.drive_url} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}
-            className="text-[12px] text-[#2570BA] hover:underline">Abrir ↗</a>
-        : <span className="text-[12px] text-gray-300 italic group-hover:text-[#2570BA] transition-colors">— agregar link de Drive</span>
+        ? <>
+            <a href={registro.drive_url} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}
+              className="text-[11px] text-[#2570BA] hover:underline">Abrir ↗</a>
+            <Edit2 size={10} className="text-gray-200 group-hover:text-[#2570BA] transition-colors flex-shrink-0"/>
+          </>
+        : <span className="text-[11px] text-gray-300 italic group-hover:text-[#2570BA] transition-colors">— agregar link</span>
       }
-      <Edit2 size={10} className="text-gray-200 group-hover:text-[#2570BA] transition-colors"/>
     </div>
   )
 }
@@ -757,17 +765,13 @@ export function SolicitudesTable({ grupo, registrosAll, onUpdate, onAdd, onDelet
 
                       {/* Fila horizontal: documento · drive · notas */}
                       <div className="flex items-start gap-5 pt-3.5 border-t border-[#1a2e4a]/8 flex-wrap">
-                        <div className="flex items-baseline gap-1.5">
-                          <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Documento</span>
-                          <span className="text-[11px] text-gray-600">{r.documento_nombre || <span className="text-gray-300 italic">—</span>}</span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider flex-shrink-0">Documento</span>
+                          <DocNombreInline registro={r} onUpdate={onUpdate}/>
                         </div>
-                        <div className="flex items-baseline gap-1.5">
-                          <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Drive</span>
-                          {r.drive_url
-                            ? <a href={r.drive_url} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}
-                                className="text-[11px] text-[#2570BA] hover:underline">Abrir ↗</a>
-                            : <span className="text-[11px] text-gray-300 italic">— agregar link</span>
-                          }
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider flex-shrink-0">Drive</span>
+                          <DriveUrlInline registro={r} onUpdate={onUpdate}/>
                         </div>
                         {r.notas && (
                           <div className="flex items-baseline gap-1.5 flex-1 min-w-0">
