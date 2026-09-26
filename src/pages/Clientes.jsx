@@ -596,12 +596,13 @@ function FichaCliente({ cliente, onClose, onEstadoCambiar, onInlineSave, onReque
                   </div>
                   <div className="space-y-1">
                     {grupo.map(t => (
-                      <div key={t.id} className="flex items-start gap-2 group py-0.5">
+                      <div key={t.id} className="flex items-start gap-2 py-0.5">
                         <input
+                          id={`ck-${t.id}`}
                           type="checkbox"
                           checked={false}
                           onChange={() => handleCheckTarea(t)}
-                          className="mt-0.5 w-3 h-3 flex-shrink-0 accent-[#2570BA] cursor-pointer"
+                          className="mt-0.5 w-3.5 h-3.5 flex-shrink-0 accent-[#2570BA] cursor-pointer"
                         />
                         {editingTarea === t.id ? (
                           <input
@@ -616,13 +617,14 @@ function FichaCliente({ cliente, onClose, onEstadoCambiar, onInlineSave, onReque
                             className="flex-1 text-[11px] text-gray-700 border border-blue-300 rounded px-1.5 py-0.5 outline-none bg-white"
                           />
                         ) : (
-                          <span
-                            onDoubleClick={() => startEditTarea(t)}
-                            className="flex-1 text-[11px] text-gray-700 leading-snug cursor-text hover:bg-gray-50 rounded px-0.5"
-                            title="Doble clic para editar"
+                          <label
+                            htmlFor={`ck-${t.id}`}
+                            onDoubleClick={e => { e.preventDefault(); startEditTarea(t) }}
+                            className="flex-1 text-[11px] text-gray-700 leading-snug cursor-pointer hover:bg-gray-50 rounded px-0.5 select-none"
+                            title="Clic para completar · doble clic para editar"
                           >
                             {t.titulo || '—'}
-                          </span>
+                          </label>
                         )}
                       </div>
                     ))}
@@ -645,12 +647,13 @@ function FichaCliente({ cliente, onClose, onEstadoCambiar, onInlineSave, onReque
                 </div>
                 <div className="space-y-1">
                   {tareasGrouped['__sin_causa__'].map(t => (
-                    <div key={t.id} className="flex items-start gap-2 group py-0.5">
+                    <div key={t.id} className="flex items-start gap-2 py-0.5">
                       <input
+                        id={`ck-${t.id}`}
                         type="checkbox"
                         checked={false}
                         onChange={() => handleCheckTarea(t)}
-                        className="mt-0.5 w-3 h-3 flex-shrink-0 accent-[#2570BA] cursor-pointer"
+                        className="mt-0.5 w-3.5 h-3.5 flex-shrink-0 accent-[#2570BA] cursor-pointer"
                       />
                       {editingTarea === t.id ? (
                         <input
@@ -665,13 +668,14 @@ function FichaCliente({ cliente, onClose, onEstadoCambiar, onInlineSave, onReque
                           className="flex-1 text-[11px] text-gray-700 border border-blue-300 rounded px-1.5 py-0.5 outline-none bg-white"
                         />
                       ) : (
-                        <span
-                          onDoubleClick={() => startEditTarea(t)}
-                          className="flex-1 text-[11px] text-gray-700 leading-snug cursor-text hover:bg-gray-50 rounded px-0.5"
-                          title="Doble clic para editar"
+                        <label
+                          htmlFor={`ck-${t.id}`}
+                          onDoubleClick={e => { e.preventDefault(); startEditTarea(t) }}
+                          className="flex-1 text-[11px] text-gray-700 leading-snug cursor-pointer hover:bg-gray-50 rounded px-0.5 select-none"
+                          title="Clic para completar · doble clic para editar"
                         >
                           {t.titulo || '—'}
-                        </span>
+                        </label>
                       )}
                     </div>
                   ))}
