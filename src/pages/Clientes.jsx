@@ -298,15 +298,19 @@ function FichaCliente({ cliente, onClose, onEstadoCambiar, onInlineSave, onReque
   const [pjudMap,     setPjudMap]     = useState({})
   const [lastMovMap,  setLastMovMap]  = useState({})
   const [tareasMap,   setTareasMap]   = useState({})
+  const [tareas,      setTareas]      = useState([])
   const [notasDraft,  setNotasDraft]  = useState(cliente.observaciones ?? '')
   const [notasSaving, setNotasSaving] = useState(false)
   const notasTimer = useRef(null)
   const [rutCopied,   setRutCopied]   = useState(false)
+  // Inline edit state for task titles
+  const [editingTarea, setEditingTarea] = useState(null) // id
+  const [editDraft,    setEditDraft]    = useState('')
 
   // Sync notas draft when cliente prop changes (e.g., after inline save)
   useEffect(() => { setNotasDraft(cliente.observaciones ?? '') }, [cliente.observaciones])
 
-  // Fetch causas + movimientos
+  // Fetch causas + movimientos + tareas
   useEffect(() => {
     setLoading(true)
     supabase
@@ -318,10 +322,12 @@ function FichaCliente({ cliente, onClose, onEstadoCambiar, onInlineSave, onReque
         setCausas(list)
         if (list.length === 0) { setLoading(false); return }
         const ids = list.map(c => c.id)
-        const [{ data: siauData }, { data: pjudData }, { data: tareasData }] = await Promise.all([
+        const [{ data: siauData }, { data: pjudData }, { data: tareasData }, { data: tareasDetalle }] = await Promise.all([
           supabase.from('siau').select('causa_id, fecha').in('causa_id', ids),
           supabase.from('pjud').select('causa_id, fecha').in('causa_id', ids),
           supabase.from('tareas').select('causa_id').in('causa_id', ids).neq('estado', 'Completada'),
+          supabase.from('tareas').select('id, titulo, estado, prioridad, causa_id')
+            .in('causa_id', ids).neq('estado', 'Completada').order('created_at', { ascending: true }),
         ])
         const sm = {}, pm = {}, lm = {}, tm = {}
         for (const c of list) { sm[c.id] = 0; pm[c.id] = 0; lm[c.id] = null; tm[c.id] = 0 }
@@ -329,9 +335,61 @@ function FichaCliente({ cliente, onClose, onEstadoCambiar, onInlineSave, onReque
         for (const r of (pjudData  || [])) { pm[r.causa_id]++; if (!lm[r.causa_id] || r.fecha > lm[r.causa_id]) lm[r.causa_id] = r.fecha }
         for (const r of (tareasData || [])) { tm[r.causa_id]++ }
         setSiauMap(sm); setPjudMap(pm); setLastMovMap(lm); setTareasMap(tm)
+        setTareas(tareasDetalle || [])
         setLoading(false)
       })
   }, [cliente.id])
+
+  // Tareas agrupadas por causa
+  const tareasGrouped = useMemo(() => {
+    const map = {}
+    for (const t of tareas) {
+      const key = t.causa_id || '__sin_causa__'
+      if (!map[key]) map[key] = []
+      map[key].push(t)
+    }
+    return map
+  }, [tareas])
+
+  async function handleCheckTarea(tarea) {
+    setTareas(prev => prev.filter(t => t.id !== tarea.id))
+    await supabase.from('tareas').update({ estado: 'Completada' }).eq('id', tarea.id)
+  }
+
+  function startEditTarea(t) {
+    setEditingTarea(t.id)
+    setEditDraft(t.titulo)
+  }
+
+  async function commitEditTarea(id) {
+    const v = editDraft.trim()
+    setEditingTarea(null)
+    if (!v) return
+    setTareas(prev => prev.map(t => t.id === id ? { ...t, titulo: v } : t))
+    await supabase.from('tareas').update({ titulo: v }).eq('id', id)
+  }
+
+  async function handleNuevaTarea(causa) {
+    const titulo = 'Nueva tarea'
+    const { data, error } = await supabase.from('tareas')
+      .insert({
+        titulo,
+        estado: 'Pendiente',
+        prioridad: 'Media',
+        causa_id: causa?.id || null,
+        causa_rit: causa?.rit || null,
+        cliente_id: cliente.id,
+        cliente_nombre: cliente.nombre,
+      })
+      .select('id, titulo, estado, prioridad, causa_id')
+      .single()
+    if (!error && data) {
+      setTareas(prev => [...prev, data])
+      // Auto-enter edit mode for the new task
+      setEditingTarea(data.id)
+      setEditDraft(titulo)
+    }
+  }
 
   const save = (field) => async (value) => onInlineSave?.(cliente.id, field, value)
 
@@ -494,18 +552,143 @@ function FichaCliente({ cliente, onClose, onEstadoCambiar, onInlineSave, onReque
           })}
         </div>
 
-        {/* Notas */}
-        <div className="w-80 flex-shrink-0 border-l border-gray-100 bg-white flex flex-col px-6 py-6">
-          <div className="flex items-center justify-between mb-3">
-            <p className="text-[10px] font-bold text-gray-300 uppercase tracking-widest">Notas</p>
-            {notasSaving && <span className="text-[10px] text-blue-400">Guardando…</span>}
+        {/* Notas + Tareas */}
+        <div className="w-80 flex-shrink-0 border-l border-gray-100 bg-white flex flex-col">
+
+          {/* Notas */}
+          <div className="flex flex-col px-6 pt-6 pb-4" style={{ minHeight: 160 }}>
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-[10px] font-bold text-gray-300 uppercase tracking-widest">Notas</p>
+              {notasSaving && <span className="text-[10px] text-blue-400">Guardando…</span>}
+            </div>
+            <textarea
+              value={notasDraft}
+              onChange={e => handleNotasChange(e.target.value)}
+              placeholder="Notas internas sobre este cliente…"
+              className="flex-1 text-xs text-gray-700 leading-relaxed resize-none outline-none placeholder:text-gray-300 bg-transparent"
+              rows={5}
+            />
           </div>
-          <textarea
-            value={notasDraft}
-            onChange={e => handleNotasChange(e.target.value)}
-            placeholder="Notas internas sobre este cliente…"
-            className="flex-1 text-xs text-gray-700 leading-relaxed resize-none outline-none placeholder:text-gray-300 bg-transparent"
-          />
+
+          {/* Tareas */}
+          <div className="flex-1 overflow-y-auto border-t border-gray-100 px-6 pt-4 pb-6">
+            <p className="text-[10px] font-bold text-gray-300 uppercase tracking-widest mb-3">Tareas pendientes</p>
+
+            {!loading && tareas.length === 0 && Object.keys(tareasGrouped).length === 0 && (
+              <p className="text-[11px] text-gray-300 italic">Sin tareas pendientes</p>
+            )}
+
+            {causas.map(causa => {
+              const grupo = tareasGrouped[causa.id] || []
+              if (grupo.length === 0) return null
+              return (
+                <div key={causa.id} className="mb-4">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide truncate flex-1 mr-2">
+                      {causa.materia || causa.rit || causa.ruc || 'Sin materia'}
+                    </p>
+                    <button
+                      onClick={() => handleNuevaTarea(causa)}
+                      className="flex-shrink-0 text-[10px] text-[#2570BA] hover:underline"
+                    >
+                      + Nueva
+                    </button>
+                  </div>
+                  <div className="space-y-1">
+                    {grupo.map(t => (
+                      <div key={t.id} className="flex items-start gap-2 group py-0.5">
+                        <input
+                          type="checkbox"
+                          checked={false}
+                          onChange={() => handleCheckTarea(t)}
+                          className="mt-0.5 w-3 h-3 flex-shrink-0 accent-[#2570BA] cursor-pointer"
+                        />
+                        {editingTarea === t.id ? (
+                          <input
+                            autoFocus
+                            value={editDraft}
+                            onChange={e => setEditDraft(e.target.value)}
+                            onBlur={() => commitEditTarea(t.id)}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') { e.preventDefault(); commitEditTarea(t.id) }
+                              if (e.key === 'Escape') { setEditingTarea(null) }
+                            }}
+                            className="flex-1 text-[11px] text-gray-700 border border-blue-300 rounded px-1.5 py-0.5 outline-none bg-white"
+                          />
+                        ) : (
+                          <span
+                            onDoubleClick={() => startEditTarea(t)}
+                            className="flex-1 text-[11px] text-gray-700 leading-snug cursor-text hover:bg-gray-50 rounded px-0.5"
+                            title="Doble clic para editar"
+                          >
+                            {t.titulo || '—'}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )
+            })}
+
+            {/* Tareas sin causa */}
+            {tareasGrouped['__sin_causa__']?.length > 0 && (
+              <div className="mb-4">
+                <div className="flex items-center justify-between mb-1.5">
+                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Sin causa</p>
+                  <button
+                    onClick={() => handleNuevaTarea(null)}
+                    className="flex-shrink-0 text-[10px] text-[#2570BA] hover:underline"
+                  >
+                    + Nueva
+                  </button>
+                </div>
+                <div className="space-y-1">
+                  {tareasGrouped['__sin_causa__'].map(t => (
+                    <div key={t.id} className="flex items-start gap-2 group py-0.5">
+                      <input
+                        type="checkbox"
+                        checked={false}
+                        onChange={() => handleCheckTarea(t)}
+                        className="mt-0.5 w-3 h-3 flex-shrink-0 accent-[#2570BA] cursor-pointer"
+                      />
+                      {editingTarea === t.id ? (
+                        <input
+                          autoFocus
+                          value={editDraft}
+                          onChange={e => setEditDraft(e.target.value)}
+                          onBlur={() => commitEditTarea(t.id)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') { e.preventDefault(); commitEditTarea(t.id) }
+                            if (e.key === 'Escape') { setEditingTarea(null) }
+                          }}
+                          className="flex-1 text-[11px] text-gray-700 border border-blue-300 rounded px-1.5 py-0.5 outline-none bg-white"
+                        />
+                      ) : (
+                        <span
+                          onDoubleClick={() => startEditTarea(t)}
+                          className="flex-1 text-[11px] text-gray-700 leading-snug cursor-text hover:bg-gray-50 rounded px-0.5"
+                          title="Doble clic para editar"
+                        >
+                          {t.titulo || '—'}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Botón nueva tarea sin causa cuando no hay causas */}
+            {causas.length === 0 && !loading && (
+              <button
+                onClick={() => handleNuevaTarea(null)}
+                className="text-[11px] text-[#2570BA] hover:underline mt-1"
+              >
+                + Nueva tarea
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>
