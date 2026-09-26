@@ -2116,13 +2116,13 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
               {causa.cliente_nombre}
             </button>
           )}
-          {/* Materia / carátula editable inline — se muestra en cursiva como título descriptivo de la causa */}
+          {/* Materia / carátula editable inline */}
           <InlineField
             value={causa.materia || ''}
             onSave={v => v?.trim() && onUpdate?.({ materia: v.trim() })}
             placeholder="Materia del caso…"
-            textClassName="text-[18px] italic text-gray-700 leading-snug"
-            inputClassName="text-[17px] italic w-full"
+            textClassName="text-[18px] font-bold text-gray-700 leading-snug"
+            inputClassName="text-[17px] font-bold w-full"
           />
         </div>
 
@@ -2440,7 +2440,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                       <div>
                         <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-0.5">Carátula</p>
                         <InlineField value={causa.materia} onSave={v=>onUpdate?.({materia:v?.trim()||null})}
-                          placeholder="Agregar…" textClassName="text-[12px] font-semibold text-gray-800 italic"/>
+                          placeholder="Agregar…" textClassName="text-[12px] font-semibold text-gray-800"/>
                       </div>
                     ) : tribunalJSX}
                     {/* Estado */}
