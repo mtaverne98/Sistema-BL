@@ -127,6 +127,11 @@ export default function AnalisisTab({
   const [tareasSeleccionadas, setTareasSeleccionadas] = useState({}) // idx → bool
   const [creandoTareas, setCreandoTareas] = useState(false)
 
+  // ── Modal de confirmación de diligencias (OIs/IPs) post-IA ───────────────────
+  const [confirmOisIps, setConfirmOisIps] = useState(null) // array de OIs/IPs candidatas
+  const [oisIpsSeleccionados, setOisIpsSeleccionados] = useState({}) // idx → bool
+  const [creandoDiligencias, setCreandoDiligencias] = useState(false)
+
   // ── Error banner ─────────────────────────────────────────────────────────────
   const [saveError, setSaveError] = useState(null)
 
@@ -320,6 +325,26 @@ export default function AnalisisTab({
             setTareasSeleccionadas({})
           }
         }
+
+        // ── Proponer OIs/IPs como diligencias ──────────────────────────────
+        const oisIpsNuevos = meta?.ois_ips || []
+        if (oisIpsNuevos.length > 0) {
+          const { data: diligenciasExistentes } = await supabase
+            .from('diligencias')
+            .select('oficio')
+            .eq('causa_id', causa.id)
+          const oficiosExistentes = new Set(
+            (diligenciasExistentes || []).map(d => (d.oficio || '').toLowerCase().trim())
+          )
+          const candidatasOI = oisIpsNuevos.filter(oi => {
+            const num = (oi.numero_oficio || '').toLowerCase().trim()
+            return num && !oficiosExistentes.has(num)
+          })
+          if (candidatasOI.length > 0) {
+            setConfirmOisIps(candidatasOI)
+            setOisIpsSeleccionados({})
+          }
+        }
       } catch { /* si la recarga falla no tapamos el error principal */ }
     }
 
@@ -348,6 +373,31 @@ export default function AnalisisTab({
     } finally {
       setCreandoTareas(false)
       setConfirmTareas(null)
+    }
+  }
+
+  // ── Crear diligencias desde OIs/IPs detectadas ───────────────────────────────
+  async function crearDiligenciasSeleccionadas() {
+    if (!confirmOisIps) return
+    const seleccionadas = confirmOisIps.filter((_, i) => oisIpsSeleccionados[i])
+    if (seleccionadas.length === 0) { setConfirmOisIps(null); return }
+    setCreandoDiligencias(true)
+    try {
+      const rows = seleccionadas.map(oi => ({
+        causa_id:            causa.id,
+        oficio:              oi.numero_oficio || null,
+        nombre:              oi.numero_oficio || 'Diligencia IA',
+        descripcion:         oi.descripcion || null,
+        fecha_oi:            oi.fecha || null,
+        organismo:           oi.organismo || null,
+        organismo_direccion: oi.organismo || null,
+        tipo_diligencia:     oi.tipo || null,
+        estado:              'Por contactar',
+      }))
+      await supabase.from('diligencias').insert(rows)
+    } finally {
+      setCreandoDiligencias(false)
+      setConfirmOisIps(null)
     }
   }
 
@@ -659,6 +709,72 @@ export default function AnalisisTab({
                 className="px-4 py-1.5 rounded-md text-[12px] font-semibold text-white bg-[#2570BA] hover:bg-[#1a5a9e] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 {creandoTareas ? 'Creando…' : `Crear ${Object.values(tareasSeleccionadas).filter(Boolean).length || ''} tarea${Object.values(tareasSeleccionadas).filter(Boolean).length !== 1 ? 's' : ''} seleccionada${Object.values(tareasSeleccionadas).filter(Boolean).length !== 1 ? 's' : ''}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: diligencias detectadas en Drive (OIs/IPs) — aparece tras el de tareas */}
+      {!confirmTareas && confirmOisIps && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/30 p-4">
+          <div className="bg-white rounded-xl shadow-2xl border border-[#E3E7EC] w-full max-w-[520px] flex flex-col max-h-[80vh]">
+            {/* Header */}
+            <div className="px-5 pt-5 pb-3 border-b border-[#E3E7EC]">
+              <h3 className="text-[13px] font-bold text-[#1A2E4A]">Diligencias detectadas en Drive</h3>
+              <p className="text-[11px] text-gray-500 mt-0.5">OIs e IPs identificadas en los documentos — ¿cuáles registrar?</p>
+            </div>
+            {/* Lista */}
+            <div className="overflow-y-auto flex-1 px-5 py-3 space-y-2">
+              {confirmOisIps.map((oi, i) => (
+                <label key={i} className={`flex items-start gap-3 p-2.5 rounded-lg border cursor-pointer transition-colors ${oisIpsSeleccionados[i] ? 'border-[#2570BA] bg-blue-50' : 'border-[#E3E7EC] hover:border-gray-300'}`}>
+                  <input
+                    type="checkbox"
+                    checked={!!oisIpsSeleccionados[i]}
+                    onChange={e => setOisIpsSeleccionados(prev => ({ ...prev, [i]: e.target.checked }))}
+                    className="mt-0.5 accent-[#2570BA] flex-shrink-0"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border flex-shrink-0 ${
+                        oi.tipo === 'OI'
+                          ? 'bg-purple-100 text-purple-700 border-purple-300'
+                          : 'bg-cyan-100 text-cyan-700 border-cyan-300'
+                      }`}>{oi.tipo}</span>
+                      <span className="text-[12px] font-semibold text-gray-800">{oi.numero_oficio}</span>
+                      {oi.fecha && <span className="text-[10px] text-gray-400 flex-shrink-0">{oi.fecha}</span>}
+                    </div>
+                    {oi.descripcion && (
+                      <p className="text-[11px] text-gray-600 leading-snug line-clamp-3 mt-0.5">{oi.descripcion}</p>
+                    )}
+                    {oi.organismo && (
+                      <p className="text-[10px] text-gray-400 mt-0.5 font-medium">{oi.organismo}</p>
+                    )}
+                  </div>
+                  <span className="flex-shrink-0 text-[9px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500 border border-gray-200 whitespace-nowrap">Por contactar</span>
+                </label>
+              ))}
+            </div>
+            {/* Footer */}
+            <div className="px-5 py-4 border-t border-[#E3E7EC] flex items-center justify-between gap-3">
+              <button
+                onClick={() => setConfirmOisIps(null)}
+                className="text-[12px] font-semibold text-gray-500 hover:text-gray-700 transition-colors"
+              >
+                Omitir todo
+              </button>
+              <button
+                onClick={crearDiligenciasSeleccionadas}
+                disabled={creandoDiligencias || Object.values(oisIpsSeleccionados).every(v => !v)}
+                className="px-4 py-1.5 rounded-md text-[12px] font-semibold text-white bg-[#2570BA] hover:bg-[#1a5a9e] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {creandoDiligencias
+                  ? 'Registrando…'
+                  : (() => {
+                      const n = Object.values(oisIpsSeleccionados).filter(Boolean).length
+                      return `Registrar ${n || ''} diligencia${n !== 1 ? 's' : ''} seleccionada${n !== 1 ? 's' : ''}`
+                    })()
+                }
               </button>
             </div>
           </div>

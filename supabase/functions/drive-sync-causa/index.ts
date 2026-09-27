@@ -264,8 +264,19 @@ Responde SOLO con un JSON válido (sin markdown ni texto adicional) con esta est
   ],
   "proxima_accion": "La acción más importante en una oración directa",
   "proxima_accion_fundamento": "Por qué es la prioritaria",
-  "proxima_accion_prioridad": "ALTA|MEDIA|BAJA"
-}`
+  "proxima_accion_prioridad": "ALTA|MEDIA|BAJA",
+  "ois_ips": [
+    {
+      "tipo": "OI|IP",
+      "numero_oficio": "Número exacto del oficio tal como aparece en el documento (ej: OI 11471-2025, IP 302-2025)",
+      "descripcion": "Texto completo de la instrucción o instrucciones. Si la OI/IP tiene varias instrucciones, listarlas separadas con punto y coma",
+      "fecha": "Fecha en formato YYYY-MM-DD si se menciona, o null",
+      "organismo": "Organismo destinatario (PDI, OS-10, Carabineros, SML, etc.)"
+    }
+  ]
+}
+
+INSTRUCCIÓN ESPECIAL PARA ois_ips: Revisa todos los documentos en busca de Órdenes de Investigar (OI) e Instrucciones Particulares (IP) emitidas por el fiscal. Para cada una identifica: número de oficio exacto, fecha de emisión, organismo al que va dirigida, y el texto de cada instrucción (si una OI tiene varias instrucciones separadas, inclúyelas todas en el campo descripcion separadas con " · "). Si no hay OIs ni IPs en los documentos, devuelve un arreglo vacío.`
 
     const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -313,6 +324,7 @@ Responde SOLO con un JSON válido (sin markdown ni texto adicional) con esta est
       proxima_accion_fundamento: parsed.proxima_accion_fundamento || null,
       proxima_accion_prioridad:  parsed.proxima_accion_prioridad || null,
       partes:                    parsed.partes || null,
+      ois_ips:                   parsed.ois_ips || [],
       analisis_ia_at:            new Date().toISOString(),
       analisis_ia_version:       (existing?.analisis_ia_version || 0) + 1,
       drive_folder_id:           folderId,
