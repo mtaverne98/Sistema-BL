@@ -100,68 +100,63 @@ async function extractText(token: string, fileId: string, mimeType: string): Pro
   return ''
 }
 
-// Extracts text from PDF by decompressing zlib content streams (FlateDecode)
-// and falling back to raw ASCII scan for uncompressed content.
+// Extracts text from PDF: tries decompressing up to 8 FlateDecode streams,
+// then falls back to raw ASCII scan. Keeps total work under ~10s.
 async function extractPdfText(bytes: Uint8Array): Promise<string> {
   const dec = new TextDecoder('latin1')
   const parts: string[] = []
 
-  // Locate 'stream' keyword to find content stream boundaries
+  // Find 'stream\r?\n' boundaries (PDF spec requires newline after 'stream')
   const STREAM = [115,116,114,101,97,109] // 'stream'
-  const positions: number[] = []
-  for (let i = 0; i < bytes.length - STREAM.length; i++) {
-    if (STREAM.every((b, j) => bytes[i + j] === b)) {
-      let start = i + STREAM.length
-      if (bytes[start] === 13) start++ // \r
-      if (bytes[start] === 10) start++ // \n
-      positions.push(start)
-      i += STREAM.length
-    }
-  }
+  let found = 0
+  for (let i = 0; i < bytes.length - STREAM.length && found < 8; i++) {
+    if (!STREAM.every((b, j) => bytes[i + j] === b)) continue
+    let pos = i + STREAM.length
+    if (bytes[pos] === 13) pos++ // \r
+    if (bytes[pos] !== 10) { i += STREAM.length; continue } // must end with \n
+    pos++ // skip \n
+    i += STREAM.length
+    found++
 
-  // Process up to 30 streams
-  for (const pos of positions.slice(0, 30)) {
-    if (pos >= bytes.length) continue
     const b0 = bytes[pos], b1 = bytes[pos + 1]
     const isZlib = b0 === 0x78 && (b1 === 0x01 || b1 === 0x5E || b1 === 0x9C || b1 === 0xDA)
 
     if (!isZlib) {
-      // Uncompressed stream — read directly
-      const raw = dec.decode(bytes.slice(pos, Math.min(pos + 8_000, bytes.length)))
+      // Uncompressed — read small chunk directly
+      const raw = dec.decode(bytes.slice(pos, Math.min(pos + 4_000, bytes.length)))
       const t = extractPdfOps(raw)
       if (t.length > 5) parts.push(t)
       continue
     }
 
-    // Decompress zlib stream with built-in DecompressionStream
+    // Decompress with hard size limit (80KB input, 150KB output max)
     try {
-      const chunk = bytes.slice(pos, Math.min(pos + 500_000, bytes.length))
+      const chunk = bytes.slice(pos, Math.min(pos + 80_000, bytes.length))
       const ds = new DecompressionStream('deflate')
       const w = ds.writable.getWriter()
       w.write(chunk)
       w.close().catch(() => {})
       const chunks: Uint8Array[] = []
       const r = ds.readable.getReader()
+      let total = 0
       try {
         for (;;) {
           const { done, value } = await r.read()
           if (done) break
-          if (value) chunks.push(value)
-          if (chunks.reduce((s, c) => s + c.length, 0) > 200_000) break
+          if (value) { chunks.push(value); total += value.length }
+          if (total > 150_000) break
         }
-      } catch { /* partial decompress is fine */ }
+      } catch { /* partial is fine */ }
       if (!chunks.length) continue
-      const total = chunks.reduce((s, c) => s + c.length, 0)
       const buf = new Uint8Array(total)
       let off = 0
       for (const c of chunks) { buf.set(c, off); off += c.length }
-      const content = dec.decode(buf)
-      const t = extractPdfOps(content)
+      const t = extractPdfOps(dec.decode(buf))
       if (t.length > 5) parts.push(t)
-    } catch { /* skip unreadable stream */ }
+    } catch { /* skip stream */ }
   }
 
-  // Fallback: ASCII run scan on raw bytes
+  // Fallback: ASCII run scan (works for uncompressed PDFs)
   if (parts.length === 0) {
     let run = '', text = ''
     for (const b of bytes) {
@@ -175,20 +170,17 @@ async function extractPdfText(bytes: Uint8Array): Promise<string> {
   return parts.join('\n').replace(/\s{3,}/g, '\n').slice(0, 30_000)
 }
 
-// Extracts text from PDF content stream operators: (text)Tj, [(text)]TJ, etc.
+// Extracts visible text from PDF content operators inside BT...ET blocks.
 function extractPdfOps(content: string): string {
   const results: string[] = []
-  // BT...ET blocks
-  for (const block of content.matchAll(/BT([\s\S]{0,3000}?)ET/g)) {
+  for (const block of content.matchAll(/BT([\s\S]{0,2000}?)ET/g)) {
     for (const m of block[1].matchAll(/\(([^)\\]*(?:\\.[^)\\]*)*)\)\s*(?:Tj|TJ|'|")/g)) {
       const t = m[1]
         .replace(/\\n/g, ' ').replace(/\\r/g, ' ').replace(/\\t/g, ' ')
-        .replace(/\\\(/g, '(').replace(/\\\)/g, ')').replace(/\\\\/g, '\\')
-        .trim()
+        .replace(/\\\(/g, '(').replace(/\\\)/g, ')').replace(/\\\\/g, '\\').trim()
       if (t.length > 1) results.push(t)
     }
   }
-  // Outside BT/ET fallback
   if (results.length === 0) {
     for (const m of content.matchAll(/\(([^)]{3,})\)\s*Tj/g)) {
       if (m[1].trim().length > 2) results.push(m[1].trim())
