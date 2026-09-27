@@ -93,18 +93,108 @@ async function extractText(token: string, fileId: string, mimeType: string): Pro
         headers: { Authorization: `Bearer ${token}` },
       })
       if (!res.ok) return ''
-      // Extract readable ASCII runs from PDF binary
       const bytes = new Uint8Array(await res.arrayBuffer())
-      let text = ''
-      let run = ''
-      for (const b of bytes) {
-        if (b >= 32 && b < 127) { run += String.fromCharCode(b) }
-        else { if (run.length > 5) text += run + ' '; run = '' }
-      }
-      return text.replace(/\s{3,}/g, '\n').slice(0, 30_000)
+      return await extractPdfText(bytes)
     }
   } catch { /* ignore extraction errors */ }
   return ''
+}
+
+// Extracts text from PDF by decompressing zlib content streams (FlateDecode)
+// and falling back to raw ASCII scan for uncompressed content.
+async function extractPdfText(bytes: Uint8Array): Promise<string> {
+  const dec = new TextDecoder('latin1')
+  const parts: string[] = []
+
+  // Locate 'stream' keyword to find content stream boundaries
+  const STREAM = [115,116,114,101,97,109] // 'stream'
+  const positions: number[] = []
+  for (let i = 0; i < bytes.length - STREAM.length; i++) {
+    if (STREAM.every((b, j) => bytes[i + j] === b)) {
+      let start = i + STREAM.length
+      if (bytes[start] === 13) start++ // \r
+      if (bytes[start] === 10) start++ // \n
+      positions.push(start)
+      i += STREAM.length
+    }
+  }
+
+  // Process up to 30 streams
+  for (const pos of positions.slice(0, 30)) {
+    if (pos >= bytes.length) continue
+    const b0 = bytes[pos], b1 = bytes[pos + 1]
+    const isZlib = b0 === 0x78 && (b1 === 0x01 || b1 === 0x5E || b1 === 0x9C || b1 === 0xDA)
+
+    if (!isZlib) {
+      // Uncompressed stream — read directly
+      const raw = dec.decode(bytes.slice(pos, Math.min(pos + 8_000, bytes.length)))
+      const t = extractPdfOps(raw)
+      if (t.length > 5) parts.push(t)
+      continue
+    }
+
+    // Decompress zlib stream with built-in DecompressionStream
+    try {
+      const chunk = bytes.slice(pos, Math.min(pos + 500_000, bytes.length))
+      const ds = new DecompressionStream('deflate')
+      const w = ds.writable.getWriter()
+      w.write(chunk)
+      w.close().catch(() => {})
+      const chunks: Uint8Array[] = []
+      const r = ds.readable.getReader()
+      try {
+        for (;;) {
+          const { done, value } = await r.read()
+          if (done) break
+          if (value) chunks.push(value)
+          if (chunks.reduce((s, c) => s + c.length, 0) > 200_000) break
+        }
+      } catch { /* partial decompress is fine */ }
+      if (!chunks.length) continue
+      const total = chunks.reduce((s, c) => s + c.length, 0)
+      const buf = new Uint8Array(total)
+      let off = 0
+      for (const c of chunks) { buf.set(c, off); off += c.length }
+      const content = dec.decode(buf)
+      const t = extractPdfOps(content)
+      if (t.length > 5) parts.push(t)
+    } catch { /* skip unreadable stream */ }
+  }
+
+  // Fallback: ASCII run scan on raw bytes
+  if (parts.length === 0) {
+    let run = '', text = ''
+    for (const b of bytes) {
+      if (b >= 32 && b < 127) run += String.fromCharCode(b)
+      else { if (run.length > 5) text += run + ' '; run = '' }
+    }
+    if (run.length > 5) text += run
+    if (text.trim().length > 10) parts.push(text)
+  }
+
+  return parts.join('\n').replace(/\s{3,}/g, '\n').slice(0, 30_000)
+}
+
+// Extracts text from PDF content stream operators: (text)Tj, [(text)]TJ, etc.
+function extractPdfOps(content: string): string {
+  const results: string[] = []
+  // BT...ET blocks
+  for (const block of content.matchAll(/BT([\s\S]{0,3000}?)ET/g)) {
+    for (const m of block[1].matchAll(/\(([^)\\]*(?:\\.[^)\\]*)*)\)\s*(?:Tj|TJ|'|")/g)) {
+      const t = m[1]
+        .replace(/\\n/g, ' ').replace(/\\r/g, ' ').replace(/\\t/g, ' ')
+        .replace(/\\\(/g, '(').replace(/\\\)/g, ')').replace(/\\\\/g, '\\')
+        .trim()
+      if (t.length > 1) results.push(t)
+    }
+  }
+  // Outside BT/ET fallback
+  if (results.length === 0) {
+    for (const m of content.matchAll(/\(([^)]{3,})\)\s*Tj/g)) {
+      if (m[1].trim().length > 2) results.push(m[1].trim())
+    }
+  }
+  return results.join(' ')
 }
 
 // ── Main handler ──────────────────────────────────────────────────────────────
