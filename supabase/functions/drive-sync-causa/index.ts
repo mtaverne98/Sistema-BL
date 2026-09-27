@@ -444,7 +444,7 @@ Incluye esto en el JSON de respuesta bajo la clave "diligencias_detectadas". Si 
       },
       body: JSON.stringify({
         model: CLAUDE_MODEL,
-        max_tokens: 4096,
+        max_tokens: 8192,
         messages: [{ role: 'user', content: prompt }],
       }),
     })
@@ -501,6 +501,7 @@ Incluye esto en el JSON de respuesta bajo la clave "diligencias_detectadas". Si 
     }
 
     if (parsed.contradicciones?.length) {
+      await supabase.from('causa_contradicciones').delete().eq('causa_id', causa_id)
       await supabase.from('causa_contradicciones').insert(
         parsed.contradicciones.map((c: any) => ({
           causa_id,

@@ -294,7 +294,7 @@ export default function AnalisisTab({
         if (newFaltantes) setFaltantes(newFaltantes)
         if (newContra)    setContradicciones(newContra)
         const partes = invokePartes || meta?.partes
-        if (partes && (partes.parte_1_nombre || partes.parte_2_nombre || partes.caratula)) {
+        if (partes && (partes.parte_1_nombre || partes.parte_2_nombre || partes.delito)) {
           setConfirmPartes(partes)
         }
 
