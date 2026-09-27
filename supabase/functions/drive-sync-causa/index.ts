@@ -257,12 +257,16 @@ serve(async (req) => {
     // ── 5. Listar archivos ───────────────────────────────────────────────────
     const files = await listFiles(driveToken, folderId)
 
-    // ── 6. Extraer texto de documentos nuevos ────────────────────────────────
+    // ── 6. Extraer texto — caché para docs existentes, descarga solo los nuevos ─
     const { data: existingDocs } = await supabase
       .from('documentos')
-      .select('drive_file_id')
+      .select('drive_file_id, texto_extraido, nombre')
       .eq('causa_id', causa_id)
     const existingIds = new Set((existingDocs || []).map((d: any) => d.drive_file_id).filter(Boolean))
+    const textoCache = new Map((existingDocs || [])
+      .filter((d: any) => d.drive_file_id && d.texto_extraido)
+      .map((d: any) => [d.drive_file_id, d.texto_extraido as string])
+    )
 
     const textParts: string[] = []
     const newDocs: any[] = []
@@ -272,7 +276,13 @@ serve(async (req) => {
       const canExtract = file.mimeType === 'application/vnd.google-apps.document' || file.mimeType === 'application/pdf'
 
       let texto = ''
-      if (canExtract) texto = await extractText(driveToken, file.id, file.mimeType)
+      if (canExtract) {
+        if (!isNew && textoCache.has(file.id)) {
+          texto = textoCache.get(file.id)!  // use cached text, no Drive download
+        } else {
+          texto = await extractText(driveToken, file.id, file.mimeType)
+        }
+      }
       if (texto) textParts.push(`=== ${file.name} ===\n${texto}`)
 
       if (isNew) {
