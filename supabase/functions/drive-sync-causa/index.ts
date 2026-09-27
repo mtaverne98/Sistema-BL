@@ -1,6 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { unzlibSync } from 'https://esm.sh/fflate@0.8.2'
+import { unzlibSync, inflateSync } from 'https://esm.sh/fflate@0.8.2'
 
 const SHARED_DRIVE_ID = '1qS_tWyJItFqccW6Ig8MpmvSs2hhQ-_1a'
 const CLAUDE_MODEL = 'claude-sonnet-4-6'
@@ -101,8 +101,31 @@ async function extractText(token: string, fileId: string, mimeType: string): Pro
   return ''
 }
 
-// Extracts text from PDF: tries decompressing up to 8 FlateDecode streams,
-// then falls back to raw ASCII scan. Keeps total work under ~10s.
+// Decodes ASCII85-encoded bytes (used as pre-filter in some PDFs before FlateDecode)
+function decodeAscii85(data: Uint8Array): Uint8Array {
+  const out: number[] = []
+  let group = 0, count = 0
+  for (let i = 0; i < data.length; i++) {
+    const c = data[i]
+    if (c === 126 && data[i + 1] === 62) break  // ~> end marker
+    if (c < 33 || c > 117) continue              // skip whitespace
+    if (c === 122 && count === 0) { out.push(0, 0, 0, 0); continue } // z = 00000000
+    group = group * 85 + (c - 33)
+    if (++count === 5) {
+      out.push((group >>> 24) & 0xFF, (group >>> 16) & 0xFF, (group >>> 8) & 0xFF, group & 0xFF)
+      group = 0; count = 0
+    }
+  }
+  if (count > 0) {
+    for (let i = count; i < 5; i++) group = group * 85 + 84
+    const b = [(group >>> 24) & 0xFF, (group >>> 16) & 0xFF, (group >>> 8) & 0xFF, group & 0xFF]
+    for (let i = 0; i < count - 1; i++) out.push(b[i])
+  }
+  return new Uint8Array(out)
+}
+
+// Extracts text from PDF: handles ASCII85+FlateDecode (pypdf), plain FlateDecode,
+// and uncompressed streams. Falls back to raw ASCII scan. Keeps work under ~10s.
 async function extractPdfText(bytes: Uint8Array): Promise<string> {
   const dec = new TextDecoder('latin1')
   const parts: string[] = []
@@ -119,24 +142,56 @@ async function extractPdfText(bytes: Uint8Array): Promise<string> {
     i += STREAM.length
     found++
 
-    const b0 = bytes[pos], b1 = bytes[pos + 1]
+    const end = Math.min(pos + 80_000, bytes.length)
+    const chunk = bytes.slice(pos, end)
+    const b0 = chunk[0], b1 = chunk[1]
+
+    // Detect ASCII85 encoding: starts with printable chars in range '!'..'u' and ends with ~>
+    const isAscii85Start = b0 >= 33 && b0 <= 117
+    if (isAscii85Start) {
+      // Look for ~> marker within the first 60KB
+      let markerAt = -1
+      const limit = Math.min(chunk.length - 1, 60_000)
+      for (let j = 0; j < limit; j++) {
+        if (chunk[j] === 126 && chunk[j + 1] === 62) { markerAt = j; break }
+      }
+      if (markerAt > 0) {
+        // ASCII85 + FlateDecode: decode then inflate
+        try {
+          const decoded = decodeAscii85(chunk.slice(0, markerAt + 2))
+          let decompressed: Uint8Array
+          try { decompressed = unzlibSync(decoded) }
+          catch { decompressed = inflateSync(decoded) }  // try raw deflate as fallback
+          const t = extractPdfOps(dec.decode(decompressed.slice(0, 150_000)))
+          if (t.length > 5) parts.push(t)
+        } catch { /* skip corrupt stream */ }
+        continue
+      }
+    }
+
     const isZlib = b0 === 0x78 && (b1 === 0x01 || b1 === 0x5E || b1 === 0x9C || b1 === 0xDA)
 
     if (!isZlib) {
       // Uncompressed — read small chunk directly
-      const raw = dec.decode(bytes.slice(pos, Math.min(pos + 4_000, bytes.length)))
+      const raw = dec.decode(chunk.slice(0, 4_000))
       const t = extractPdfOps(raw)
       if (t.length > 5) parts.push(t)
       continue
     }
 
-    // Decompress with fflate (sync, no event-loop errors on bad data)
+    // Standard zlib FlateDecode — sync, no event-loop errors on bad data
     try {
-      const chunk = bytes.slice(pos, Math.min(pos + 80_000, bytes.length))
       const decompressed = unzlibSync(chunk)
       const t = extractPdfOps(dec.decode(decompressed.slice(0, 150_000)))
       if (t.length > 5) parts.push(t)
-    } catch { /* corrupted zlib stream — skip */ }
+    } catch {
+      // Try raw deflate (no zlib wrapper) as fallback
+      try {
+        const decompressed = inflateSync(chunk)
+        const t = extractPdfOps(dec.decode(decompressed.slice(0, 150_000)))
+        if (t.length > 5) parts.push(t)
+      } catch { /* corrupted stream — skip */ }
+    }
   }
 
   // Fallback: ASCII run scan (works for uncompressed PDFs)
