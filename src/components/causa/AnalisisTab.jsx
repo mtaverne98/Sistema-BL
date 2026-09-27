@@ -338,24 +338,25 @@ export default function AnalisisTab({
           const oficiosExistentes = new Set(
             (diligenciasExistentes || []).map(d => (d.oficio || '').toLowerCase().trim())
           )
-          // Aplanar: una entrada por instrucción, deduplicar por oficio
+          // Una entrada por OI, con todas las instrucciones concatenadas en descripcion
           const candidatasFlat = []
           for (const oi of diligDetectadas) {
             const num = (oi.numero_oficio || '').toLowerCase().trim()
             if (!num || oficiosExistentes.has(num)) continue
             const instrucciones = Array.isArray(oi.instrucciones) && oi.instrucciones.length > 0
               ? oi.instrucciones
-              : ['Sin instrucción registrada']
-            for (const instruccion of instrucciones) {
-              candidatasFlat.push({
-                tipo:          oi.tipo,
-                numero_oficio: oi.numero_oficio,
-                fecha:         oi.fecha || null,
-                organismo:     oi.organismo || null,
-                plazo_dias:    oi.plazo_dias || null,
-                instruccion,
-              })
-            }
+              : []
+            const descripcion = instrucciones.length > 0
+              ? instrucciones.map((inst, idx) => `${idx + 1}. ${inst}`).join('\n')
+              : null
+            candidatasFlat.push({
+              tipo:          oi.tipo,
+              numero_oficio: oi.numero_oficio,
+              fecha:         oi.fecha || null,
+              organismo:     oi.organismo || null,
+              plazo_dias:    oi.plazo_dias || null,
+              descripcion,
+            })
           }
           if (candidatasFlat.length > 0) {
             setConfirmOisIps(candidatasFlat)
@@ -404,7 +405,7 @@ export default function AnalisisTab({
         causa_id:            causa.id,
         oficio:              item.numero_oficio || null,
         nombre:              item.numero_oficio || 'Diligencia IA',
-        descripcion:         item.instruccion || null,
+        descripcion:         item.descripcion || null,
         fecha_oi:            item.fecha || null,
         organismo:           item.organismo || null,
         organismo_direccion: item.organismo || null,
@@ -626,7 +627,7 @@ export default function AnalisisTab({
     const updates = {}
     if (confirmPartes.parte_1_nombre) updates.querellante = confirmPartes.parte_1_nombre
     if (confirmPartes.parte_2_nombre) updates.imputado    = confirmPartes.parte_2_nombre
-    if (confirmPartes.caratula)       updates.materia     = confirmPartes.caratula
+    if (confirmPartes.delito)         updates.materia     = confirmPartes.delito
     if (Object.keys(updates).length) {
       await supabase.from('causas').update(updates).eq('id', causa.id)
       onUpdateCausa?.(updates)
@@ -741,47 +742,33 @@ export default function AnalisisTab({
               <h3 className="text-[13px] font-bold text-[#1A2E4A]">Diligencias detectadas en Drive</h3>
               <p className="text-[11px] text-gray-500 mt-0.5">OIs e IPs identificadas en los documentos — selecciona las instrucciones a registrar</p>
             </div>
-            {/* Lista agrupada por oficio, una fila por instrucción */}
+            {/* Una fila por OI */}
             <div className="overflow-y-auto flex-1 px-5 py-3 space-y-3">
-              {(() => {
-                const grupos = []
-                let grupoActual = null
-                confirmOisIps.forEach((item, i) => {
-                  if (!grupoActual || grupoActual.numero_oficio !== item.numero_oficio) {
-                    grupoActual = { numero_oficio: item.numero_oficio, tipo: item.tipo, fecha: item.fecha, organismo: item.organismo, plazo_dias: item.plazo_dias, items: [] }
-                    grupos.push(grupoActual)
-                  }
-                  grupoActual.items.push({ ...item, idx: i })
-                })
-                return grupos.map((g, gi) => (
-                  <div key={gi} className="border border-[#E3E7EC] rounded-lg overflow-hidden">
-                    {/* Cabecera del oficio */}
-                    <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 border-b border-[#E3E7EC]">
-                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border flex-shrink-0 ${
-                        g.tipo === 'OI' ? 'bg-purple-100 text-purple-700 border-purple-300' : 'bg-cyan-100 text-cyan-700 border-cyan-300'
-                      }`}>{g.tipo}</span>
-                      <span className="text-[12px] font-bold text-[#1A2E4A]">{g.numero_oficio}</span>
-                      {g.fecha && <span className="text-[10px] text-gray-400">{g.fecha}</span>}
-                      {g.plazo_dias && <span className="text-[10px] text-amber-600 font-medium">{g.plazo_dias} días</span>}
-                      {g.organismo && <span className="text-[10px] text-gray-500 ml-auto truncate">{g.organismo}</span>}
-                    </div>
-                    {/* Instrucciones */}
-                    <div className="divide-y divide-[#F0F2F5]">
-                      {g.items.map(item => (
-                        <label key={item.idx} className={`flex items-start gap-3 px-3 py-2.5 cursor-pointer transition-colors ${oisIpsSeleccionados[item.idx] ? 'bg-blue-50' : 'hover:bg-gray-50'}`}>
-                          <input
-                            type="checkbox"
-                            checked={!!oisIpsSeleccionados[item.idx]}
-                            onChange={e => setOisIpsSeleccionados(prev => ({ ...prev, [item.idx]: e.target.checked }))}
-                            className="mt-0.5 accent-[#2570BA] flex-shrink-0"
-                          />
-                          <p className="text-[11.5px] text-gray-700 leading-snug flex-1">{item.instruccion}</p>
-                        </label>
-                      ))}
+              {confirmOisIps.map((item, i) => (
+                <label key={i} className={`flex items-start gap-3 border border-[#E3E7EC] rounded-lg overflow-hidden cursor-pointer transition-colors ${oisIpsSeleccionados[i] ? 'bg-blue-50 border-blue-200' : 'bg-white hover:bg-gray-50'}`}>
+                  <div className="flex items-start gap-3 px-3 py-2.5 w-full">
+                    <input
+                      type="checkbox"
+                      checked={!!oisIpsSeleccionados[i]}
+                      onChange={e => setOisIpsSeleccionados(prev => ({ ...prev, [i]: e.target.checked }))}
+                      className="mt-0.5 accent-[#2570BA] flex-shrink-0"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap mb-1">
+                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border flex-shrink-0 ${
+                          item.tipo === 'OI' ? 'bg-purple-100 text-purple-700 border-purple-300' : 'bg-cyan-100 text-cyan-700 border-cyan-300'
+                        }`}>{item.tipo}</span>
+                        <span className="text-[12px] font-bold text-[#1A2E4A]">{item.numero_oficio}</span>
+                        {item.fecha && <span className="text-[10px] text-gray-400">{item.fecha}</span>}
+                        {item.organismo && <span className="text-[10px] text-gray-500 truncate">{item.organismo}</span>}
+                      </div>
+                      {item.descripcion && (
+                        <p className="text-[11px] text-gray-600 leading-snug whitespace-pre-line">{item.descripcion}</p>
+                      )}
                     </div>
                   </div>
-                ))
-              })()}
+                </label>
+              ))}
             </div>
             {/* Footer */}
             <div className="px-5 py-4 border-t border-[#E3E7EC] flex items-center justify-between gap-3">

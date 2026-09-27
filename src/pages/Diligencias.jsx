@@ -301,8 +301,8 @@ function DiligenciaCard({ dil, expanded, onToggle, onSave }) {
   const cfg   = ESTADO_CFG[dil.estado] || { chip: 'bg-gray-50 text-gray-500 border-gray-200', border: 'border-l-gray-200' }
   const clock = clockInfo(dil)
 
-  const titulo = dil.oficio || 'Sin número · gestión propia'
   const tieneOficio = !!dil.oficio
+  const titulo = tieneOficio ? `${dil.tipo_diligencia || 'OI'} ${dil.oficio}` : 'Sin número'
 
   const [lastGestion, setLastGestion] = useState(null)
   useEffect(() => {
@@ -334,8 +334,8 @@ function DiligenciaCard({ dil, expanded, onToggle, onSave }) {
               )}
             </div>
             {/* Descripción */}
-            {dil.nombre && dil.nombre !== 'Nueva diligencia' && (
-              <p className="text-[11px] text-gray-500 mt-1 leading-snug">{dil.nombre}</p>
+            {dil.descripcion && (
+              <p className="text-[11px] text-gray-500 mt-1 leading-snug line-clamp-2">{dil.descripcion}</p>
             )}
           </div>
           <ChevronRight size={14} className={`text-gray-300 flex-shrink-0 mt-0.5 transition-transform ${expanded ? 'rotate-90' : ''}`}/>
@@ -348,8 +348,8 @@ function DiligenciaCard({ dil, expanded, onToggle, onSave }) {
               <Calendar size={9}/>{fmt(dil.fecha_oi)}
             </span>
           )}
-          {dil.organismo && (
-            <span className="text-[10px] text-gray-500 font-medium">{dil.organismo}</span>
+          {(dil.organismo_direccion || dil.organismo) && (
+            <span className="text-[10px] text-gray-500 font-medium">{dil.organismo_direccion || dil.organismo}</span>
           )}
           {dil.funcionario ? (
             <span className="flex items-center gap-1 text-[10px] text-gray-400">

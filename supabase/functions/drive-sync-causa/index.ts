@@ -398,7 +398,7 @@ Responde SOLO con un JSON válido (sin markdown ni texto adicional) con esta est
     "parte_1_nombre": "Nombre completo o null si no se identifica",
     "parte_2_label": "Imputado|Demandado|Denunciado",
     "parte_2_nombre": "Nombre completo o null si no se identifica",
-    "caratula": "Cómo se caratula la causa"
+    "delito": "El hecho punible específico tal como se describe en la causa — el tipo penal investigado (ej: 'Lesiones graves gravísimas', 'Maltrato habitual', 'Falsificación de instrumento privado'). No es el nombre de las partes ni la carátula completa. Si no se identifica, null."
   },
   "resumen_ejecutivo": "3 a 4 líneas sobre el estado actual de la causa y la posición estratégica",
   "acciones_semana": [
