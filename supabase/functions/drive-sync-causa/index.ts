@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { unzlibSync } from 'https://esm.sh/fflate@0.8.2'
 
 const SHARED_DRIVE_ID = '1qS_tWyJItFqccW6Ig8MpmvSs2hhQ-_1a'
 const CLAUDE_MODEL = 'claude-sonnet-4-6'
@@ -129,31 +130,13 @@ async function extractPdfText(bytes: Uint8Array): Promise<string> {
       continue
     }
 
-    // Decompress with hard size limit (80KB input, 150KB output max)
+    // Decompress with fflate (sync, no event-loop errors on bad data)
     try {
       const chunk = bytes.slice(pos, Math.min(pos + 80_000, bytes.length))
-      const ds = new DecompressionStream('deflate')
-      const w = ds.writable.getWriter()
-      await w.write(chunk).catch(() => {})  // must await to catch rejection
-      w.close().catch(() => {})
-      const chunks: Uint8Array[] = []
-      const r = ds.readable.getReader()
-      let total = 0
-      try {
-        for (;;) {
-          const { done, value } = await r.read()
-          if (done) break
-          if (value) { chunks.push(value); total += value.length }
-          if (total > 150_000) break
-        }
-      } catch { /* partial is fine */ }
-      if (!chunks.length) continue
-      const buf = new Uint8Array(total)
-      let off = 0
-      for (const c of chunks) { buf.set(c, off); off += c.length }
-      const t = extractPdfOps(dec.decode(buf))
+      const decompressed = unzlibSync(chunk)
+      const t = extractPdfOps(dec.decode(decompressed.slice(0, 150_000)))
       if (t.length > 5) parts.push(t)
-    } catch { /* skip stream */ }
+    } catch { /* corrupted zlib stream — skip */ }
   }
 
   // Fallback: ASCII run scan (works for uncompressed PDFs)
@@ -263,8 +246,9 @@ serve(async (req) => {
       .select('drive_file_id, texto_extraido, nombre')
       .eq('causa_id', causa_id)
     const existingIds = new Set((existingDocs || []).map((d: any) => d.drive_file_id).filter(Boolean))
+    // Cache includes docs with empty string (extraction attempted, got nothing) to avoid retries
     const textoCache = new Map((existingDocs || [])
-      .filter((d: any) => d.drive_file_id && d.texto_extraido)
+      .filter((d: any) => d.drive_file_id && d.texto_extraido !== null && d.texto_extraido !== undefined)
       .map((d: any) => [d.drive_file_id, d.texto_extraido as string])
     )
 
@@ -278,9 +262,16 @@ serve(async (req) => {
       let texto = ''
       if (canExtract) {
         if (!isNew && textoCache.has(file.id)) {
-          texto = textoCache.get(file.id)!  // use cached text, no Drive download
+          texto = textoCache.get(file.id)!  // use cached text (may be empty = already tried)
         } else {
           texto = await extractText(driveToken, file.id, file.mimeType)
+          // Update existing doc with extracted text (including empty string, to avoid future retries)
+          if (!isNew) {
+            await supabase.from('documentos')
+              .update({ texto_extraido: texto })
+              .eq('drive_file_id', file.id)
+              .eq('causa_id', causa_id)
+          }
         }
       }
       if (texto) textParts.push(`=== ${file.name} ===\n${texto}`)
@@ -297,7 +288,7 @@ serve(async (req) => {
           fuente:            'drive_auto',
           tipo:              file.mimeType === 'application/vnd.google-apps.document' ? 'Google Doc' : 'PDF',
           fecha_creacion:    file.modifiedTime?.slice(0, 10) ?? null,
-          texto_extraido:    texto || null,
+          texto_extraido:    texto,
         })
       }
     }
