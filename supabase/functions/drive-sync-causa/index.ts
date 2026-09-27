@@ -134,7 +134,7 @@ async function extractPdfText(bytes: Uint8Array): Promise<string> {
       const chunk = bytes.slice(pos, Math.min(pos + 80_000, bytes.length))
       const ds = new DecompressionStream('deflate')
       const w = ds.writable.getWriter()
-      w.write(chunk)
+      await w.write(chunk).catch(() => {})  // must await to catch rejection
       w.close().catch(() => {})
       const chunks: Uint8Array[] = []
       const r = ds.readable.getReader()
