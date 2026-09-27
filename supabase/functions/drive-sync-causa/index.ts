@@ -133,7 +133,7 @@ async function extractPdfText(bytes: Uint8Array): Promise<string> {
   // Find 'stream\r?\n' boundaries (PDF spec requires newline after 'stream')
   const STREAM = [115,116,114,101,97,109] // 'stream'
   let found = 0
-  for (let i = 0; i < bytes.length - STREAM.length && found < 8; i++) {
+  for (let i = 0; i < bytes.length - STREAM.length && found < 20; i++) {
     if (!STREAM.every((b, j) => bytes[i + j] === b)) continue
     let pos = i + STREAM.length
     if (bytes[pos] === 13) pos++ // \r
@@ -211,12 +211,22 @@ async function extractPdfText(bytes: Uint8Array): Promise<string> {
 // Extracts visible text from PDF content operators inside BT...ET blocks.
 function extractPdfOps(content: string): string {
   const results: string[] = []
-  for (const block of content.matchAll(/BT([\s\S]{0,2000}?)ET/g)) {
-    for (const m of block[1].matchAll(/\(([^)\\]*(?:\\.[^)\\]*)*)\)\s*(?:Tj|TJ|'|")/g)) {
+  for (const block of content.matchAll(/BT([\s\S]{0,3000}?)ET/g)) {
+    const inner = block[1]
+    // Match (text)Tj / (text)TJ / (text)' / (text)"
+    for (const m of inner.matchAll(/\(([^)\\]*(?:\\.[^)\\]*)*)\)\s*(?:Tj|TJ|'|")/g)) {
       const t = m[1]
         .replace(/\\n/g, ' ').replace(/\\r/g, ' ').replace(/\\t/g, ' ')
         .replace(/\\\(/g, '(').replace(/\\\)/g, ')').replace(/\\\\/g, '\\').trim()
       if (t.length > 1) results.push(t)
+    }
+    // Match [(text) kern ...]TJ (array form)
+    for (const m of inner.matchAll(/\[((?:[^[\]]*\([^)]*\)[^[\]]*)+)\]\s*TJ/g)) {
+      for (const s of m[1].matchAll(/\(([^)\\]*(?:\\.[^)\\]*)*)\)/g)) {
+        const t = s[1].replace(/\\[nrt]/g, ' ')
+          .replace(/\\\(/g, '(').replace(/\\\)/g, ')').replace(/\\\\/g, '\\').trim()
+        if (t.length > 1) results.push(t)
+      }
     }
   }
   if (results.length === 0) {
