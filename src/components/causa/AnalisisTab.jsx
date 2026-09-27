@@ -258,8 +258,9 @@ export default function AnalisisTab({
     setIaError(null)
     setIaLoadingMsg('Leyendo documentos de Drive…')
 
-    let invokePartes = null
-    let skipReload   = false
+    let invokePartes        = null
+    let invokeDiligencias   = null
+    let skipReload          = false
 
     try {
       const { data, error } = await supabase.functions.invoke('drive-sync-causa', {
@@ -274,7 +275,8 @@ export default function AnalisisTab({
           throw new Error(data.error)
         }
       } else {
-        invokePartes = data?.partes ?? null
+        invokePartes      = data?.partes ?? null
+        invokeDiligencias = data?.diligencias_detectadas ?? null
       }
     } catch (err) {
       setIaError(err.message || String(err))
@@ -326,9 +328,9 @@ export default function AnalisisTab({
           }
         }
 
-        // ── Proponer OIs/IPs como diligencias ──────────────────────────────
-        const oisIpsNuevos = meta?.ois_ips || []
-        if (oisIpsNuevos.length > 0) {
+        // ── Proponer OIs/IPs como diligencias (una fila por instrucción) ──
+        const diligDetectadas = invokeDiligencias || meta?.diligencias_detectadas || []
+        if (diligDetectadas.length > 0) {
           const { data: diligenciasExistentes } = await supabase
             .from('diligencias')
             .select('oficio')
@@ -336,12 +338,27 @@ export default function AnalisisTab({
           const oficiosExistentes = new Set(
             (diligenciasExistentes || []).map(d => (d.oficio || '').toLowerCase().trim())
           )
-          const candidatasOI = oisIpsNuevos.filter(oi => {
+          // Aplanar: una entrada por instrucción, deduplicar por oficio
+          const candidatasFlat = []
+          for (const oi of diligDetectadas) {
             const num = (oi.numero_oficio || '').toLowerCase().trim()
-            return num && !oficiosExistentes.has(num)
-          })
-          if (candidatasOI.length > 0) {
-            setConfirmOisIps(candidatasOI)
+            if (!num || oficiosExistentes.has(num)) continue
+            const instrucciones = Array.isArray(oi.instrucciones) && oi.instrucciones.length > 0
+              ? oi.instrucciones
+              : ['Sin instrucción registrada']
+            for (const instruccion of instrucciones) {
+              candidatasFlat.push({
+                tipo:          oi.tipo,
+                numero_oficio: oi.numero_oficio,
+                fecha:         oi.fecha || null,
+                organismo:     oi.organismo || null,
+                plazo_dias:    oi.plazo_dias || null,
+                instruccion,
+              })
+            }
+          }
+          if (candidatasFlat.length > 0) {
+            setConfirmOisIps(candidatasFlat)
             setOisIpsSeleccionados({})
           }
         }
@@ -383,15 +400,15 @@ export default function AnalisisTab({
     if (seleccionadas.length === 0) { setConfirmOisIps(null); return }
     setCreandoDiligencias(true)
     try {
-      const rows = seleccionadas.map(oi => ({
+      const rows = seleccionadas.map(item => ({
         causa_id:            causa.id,
-        oficio:              oi.numero_oficio || null,
-        nombre:              oi.numero_oficio || 'Diligencia IA',
-        descripcion:         oi.descripcion || null,
-        fecha_oi:            oi.fecha || null,
-        organismo:           oi.organismo || null,
-        organismo_direccion: oi.organismo || null,
-        tipo_diligencia:     oi.tipo || null,
+        oficio:              item.numero_oficio || null,
+        nombre:              item.numero_oficio || 'Diligencia IA',
+        descripcion:         item.instruccion || null,
+        fecha_oi:            item.fecha || null,
+        organismo:           item.organismo || null,
+        organismo_direccion: item.organismo || null,
+        tipo_diligencia:     item.tipo || null,
         estado:              'Por contactar',
       }))
       await supabase.from('diligencias').insert(rows)
@@ -718,42 +735,53 @@ export default function AnalisisTab({
       {/* Modal: diligencias detectadas en Drive (OIs/IPs) — aparece tras el de tareas */}
       {!confirmTareas && confirmOisIps && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/30 p-4">
-          <div className="bg-white rounded-xl shadow-2xl border border-[#E3E7EC] w-full max-w-[520px] flex flex-col max-h-[80vh]">
+          <div className="bg-white rounded-xl shadow-2xl border border-[#E3E7EC] w-full max-w-[560px] flex flex-col max-h-[80vh]">
             {/* Header */}
             <div className="px-5 pt-5 pb-3 border-b border-[#E3E7EC]">
               <h3 className="text-[13px] font-bold text-[#1A2E4A]">Diligencias detectadas en Drive</h3>
-              <p className="text-[11px] text-gray-500 mt-0.5">OIs e IPs identificadas en los documentos — ¿cuáles registrar?</p>
+              <p className="text-[11px] text-gray-500 mt-0.5">OIs e IPs identificadas en los documentos — selecciona las instrucciones a registrar</p>
             </div>
-            {/* Lista */}
-            <div className="overflow-y-auto flex-1 px-5 py-3 space-y-2">
-              {confirmOisIps.map((oi, i) => (
-                <label key={i} className={`flex items-start gap-3 p-2.5 rounded-lg border cursor-pointer transition-colors ${oisIpsSeleccionados[i] ? 'border-[#2570BA] bg-blue-50' : 'border-[#E3E7EC] hover:border-gray-300'}`}>
-                  <input
-                    type="checkbox"
-                    checked={!!oisIpsSeleccionados[i]}
-                    onChange={e => setOisIpsSeleccionados(prev => ({ ...prev, [i]: e.target.checked }))}
-                    className="mt-0.5 accent-[#2570BA] flex-shrink-0"
-                  />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap mb-0.5">
+            {/* Lista agrupada por oficio, una fila por instrucción */}
+            <div className="overflow-y-auto flex-1 px-5 py-3 space-y-3">
+              {(() => {
+                const grupos = []
+                let grupoActual = null
+                confirmOisIps.forEach((item, i) => {
+                  if (!grupoActual || grupoActual.numero_oficio !== item.numero_oficio) {
+                    grupoActual = { numero_oficio: item.numero_oficio, tipo: item.tipo, fecha: item.fecha, organismo: item.organismo, plazo_dias: item.plazo_dias, items: [] }
+                    grupos.push(grupoActual)
+                  }
+                  grupoActual.items.push({ ...item, idx: i })
+                })
+                return grupos.map((g, gi) => (
+                  <div key={gi} className="border border-[#E3E7EC] rounded-lg overflow-hidden">
+                    {/* Cabecera del oficio */}
+                    <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 border-b border-[#E3E7EC]">
                       <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border flex-shrink-0 ${
-                        oi.tipo === 'OI'
-                          ? 'bg-purple-100 text-purple-700 border-purple-300'
-                          : 'bg-cyan-100 text-cyan-700 border-cyan-300'
-                      }`}>{oi.tipo}</span>
-                      <span className="text-[12px] font-semibold text-gray-800">{oi.numero_oficio}</span>
-                      {oi.fecha && <span className="text-[10px] text-gray-400 flex-shrink-0">{oi.fecha}</span>}
+                        g.tipo === 'OI' ? 'bg-purple-100 text-purple-700 border-purple-300' : 'bg-cyan-100 text-cyan-700 border-cyan-300'
+                      }`}>{g.tipo}</span>
+                      <span className="text-[12px] font-bold text-[#1A2E4A]">{g.numero_oficio}</span>
+                      {g.fecha && <span className="text-[10px] text-gray-400">{g.fecha}</span>}
+                      {g.plazo_dias && <span className="text-[10px] text-amber-600 font-medium">{g.plazo_dias} días</span>}
+                      {g.organismo && <span className="text-[10px] text-gray-500 ml-auto truncate">{g.organismo}</span>}
                     </div>
-                    {oi.descripcion && (
-                      <p className="text-[11px] text-gray-600 leading-snug line-clamp-3 mt-0.5">{oi.descripcion}</p>
-                    )}
-                    {oi.organismo && (
-                      <p className="text-[10px] text-gray-400 mt-0.5 font-medium">{oi.organismo}</p>
-                    )}
+                    {/* Instrucciones */}
+                    <div className="divide-y divide-[#F0F2F5]">
+                      {g.items.map(item => (
+                        <label key={item.idx} className={`flex items-start gap-3 px-3 py-2.5 cursor-pointer transition-colors ${oisIpsSeleccionados[item.idx] ? 'bg-blue-50' : 'hover:bg-gray-50'}`}>
+                          <input
+                            type="checkbox"
+                            checked={!!oisIpsSeleccionados[item.idx]}
+                            onChange={e => setOisIpsSeleccionados(prev => ({ ...prev, [item.idx]: e.target.checked }))}
+                            className="mt-0.5 accent-[#2570BA] flex-shrink-0"
+                          />
+                          <p className="text-[11.5px] text-gray-700 leading-snug flex-1">{item.instruccion}</p>
+                        </label>
+                      ))}
+                    </div>
                   </div>
-                  <span className="flex-shrink-0 text-[9px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500 border border-gray-200 whitespace-nowrap">Por contactar</span>
-                </label>
-              ))}
+                ))
+              })()}
             </div>
             {/* Footer */}
             <div className="px-5 py-4 border-t border-[#E3E7EC] flex items-center justify-between gap-3">
@@ -772,7 +800,7 @@ export default function AnalisisTab({
                   ? 'Registrando…'
                   : (() => {
                       const n = Object.values(oisIpsSeleccionados).filter(Boolean).length
-                      return `Registrar ${n || ''} diligencia${n !== 1 ? 's' : ''} seleccionada${n !== 1 ? 's' : ''}`
+                      return `Registrar ${n || ''} instrucción${n !== 1 ? 'es' : ''} seleccionada${n !== 1 ? 's' : ''}`
                     })()
                 }
               </button>

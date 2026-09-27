@@ -265,18 +265,27 @@ Responde SOLO con un JSON válido (sin markdown ni texto adicional) con esta est
   "proxima_accion": "La acción más importante en una oración directa",
   "proxima_accion_fundamento": "Por qué es la prioritaria",
   "proxima_accion_prioridad": "ALTA|MEDIA|BAJA",
-  "ois_ips": [
+  "diligencias_detectadas": [
     {
-      "tipo": "OI|IP",
-      "numero_oficio": "Número exacto del oficio tal como aparece en el documento (ej: OI 11471-2025, IP 302-2025)",
-      "descripcion": "Texto completo de la instrucción o instrucciones. Si la OI/IP tiene varias instrucciones, listarlas separadas con punto y coma",
+      "tipo": "OI o IP",
+      "numero_oficio": "Número completo del oficio tal como aparece en el documento (ej: 2026-1502-9426)",
       "fecha": "Fecha en formato YYYY-MM-DD si se menciona, o null",
-      "organismo": "Organismo destinatario (PDI, OS-10, Carabineros, SML, etc.)"
+      "organismo": "Organismo destinatario exacto (ej: PDI - BRIDEC, PDI - OFAN RM Centro Norte, OS-10, Carabineros, SML)",
+      "instrucciones": ["Texto literal de cada instrucción como elemento separado del array"],
+      "plazo_dias": null
     }
   ]
 }
 
-INSTRUCCIÓN ESPECIAL PARA ois_ips: Revisa todos los documentos en busca de Órdenes de Investigar (OI) e Instrucciones Particulares (IP) emitidas por el fiscal. Para cada una identifica: número de oficio exacto, fecha de emisión, organismo al que va dirigida, y el texto de cada instrucción (si una OI tiene varias instrucciones separadas, inclúyelas todas en el campo descripcion separadas con " · "). Si no hay OIs ni IPs en los documentos, devuelve un arreglo vacío.`
+Además del análisis general, identifica TODAS las Órdenes de Investigar (OI) e Instrucciones Particulares (IP) que aparezcan en los documentos. Para cada una extrae:
+- tipo: "OI" o "IP"
+- numero_oficio: el número completo (ej: "2026-1502-9426")
+- fecha: fecha del oficio en formato YYYY-MM-DD
+- organismo: a quién va dirigida (ej: "PDI - BRIDEC", "PDI - OFAN RM Centro Norte")
+- instrucciones: array con cada instrucción separada como texto (si la OI tiene varias instrucciones numeradas o separadas, ponlas como elementos distintos del array)
+- plazo_dias: número de días de plazo si lo menciona, null si no
+
+Incluye esto en el JSON de respuesta bajo la clave "diligencias_detectadas". Si no hay OIs ni IPs en los documentos, devuelve un arreglo vacío.`
 
     const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -324,7 +333,7 @@ INSTRUCCIÓN ESPECIAL PARA ois_ips: Revisa todos los documentos en busca de Órd
       proxima_accion_fundamento: parsed.proxima_accion_fundamento || null,
       proxima_accion_prioridad:  parsed.proxima_accion_prioridad || null,
       partes:                    parsed.partes || null,
-      ois_ips:                   parsed.ois_ips || [],
+      diligencias_detectadas:    parsed.diligencias_detectadas || [],
       analisis_ia_at:            new Date().toISOString(),
       analisis_ia_version:       (existing?.analisis_ia_version || 0) + 1,
       drive_folder_id:           folderId,
@@ -363,10 +372,11 @@ INSTRUCCIÓN ESPECIAL PARA ois_ips: Revisa todos los documentos en busca de Órd
 
     return jsonRes({
       ok: true,
-      archivos_vistos: files.length,
-      archivos_nuevos: newDocs.length,
-      partes: parsed.partes,
-      resumen_ejecutivo: parsed.resumen_ejecutivo,
+      archivos_vistos:         files.length,
+      archivos_nuevos:         newDocs.length,
+      partes:                  parsed.partes,
+      resumen_ejecutivo:       parsed.resumen_ejecutivo,
+      diligencias_detectadas:  parsed.diligencias_detectadas || [],
     })
 
   } catch (err: any) {
