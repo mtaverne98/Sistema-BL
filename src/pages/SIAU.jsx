@@ -96,7 +96,7 @@ function SiauCausaIdentChip({ causa_rit, causa_ruc, size }) {
 
 /** Filtra registros de una causa considerando RIT → RUC → sin identificador */
 function matchCausa(r, grupo, clienteNombre) {
-  if (r.cliente_nombre !== clienteNombre) return false
+  if ((r.cliente_nombre || '').toUpperCase() !== (clienteNombre || '').toUpperCase()) return false
   if (grupo.causa_rit)         return r.causa_rit  === grupo.causa_rit
   if (grupo.causa_ruc)         return r.causa_ruc  === grupo.causa_ruc
   if (grupo.causaInfo?.id)     return r.causa_id   === grupo.causaInfo.id
@@ -454,9 +454,9 @@ function DriveUrlInline({ registro, onUpdate }) {
 export function SolicitudesTable({ grupo, registrosAll, onUpdate, onAdd, onDelete, causasInfo, onBack, clienteNombre, embedded = false }) {
   const registros  = useMemo(() =>
     registrosAll
-      .filter(r => matchCausa(r, grupo, clienteNombre))
+      .filter(r => embedded || matchCausa(r, grupo, clienteNombre))
       .sort((a, b) => (b.fecha || '').localeCompare(a.fecha || '')),
-    [registrosAll, grupo.causa_rit, grupo.causa_ruc, clienteNombre])
+    [registrosAll, grupo.causa_rit, grupo.causa_ruc, clienteNombre, embedded])
 
   const [expandedId,      setExpandedId]      = useState(null)
   const [editingId,       setEditingId]       = useState(null)

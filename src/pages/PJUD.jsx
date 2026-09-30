@@ -206,7 +206,7 @@ function CausaIdentChip({ causa_rit, causa_ruc, size = 'md' }) {
 
 /** Filtra registros de una causa considerando RIT → RUC → sin identificador */
 function matchCausa(r, causaData, clienteNombre) {
-  if (r.cliente_nombre !== clienteNombre) return false
+  if ((r.cliente_nombre || '').toUpperCase() !== (clienteNombre || '').toUpperCase()) return false
   if (causaData.causa_rit)       return r.causa_rit === causaData.causa_rit
   if (causaData.causa_ruc)       return r.causa_ruc === causaData.causa_ruc
   if (causaData.causaInfo?.id)   return r.causa_id  === causaData.causaInfo.id
@@ -687,9 +687,9 @@ export function MovimientosTable({ causaData, rowsAll, onUpdate, onAdd, onDelete
   const { causa_rit, causa_ruc, causaInfo, clienteNombre } = causaData
 
   const movimientos = useMemo(() =>
-    rowsAll.filter(r => matchCausa(r, causaData, clienteNombre))
+    rowsAll.filter(r => embedded || matchCausa(r, causaData, clienteNombre))
       .sort((a, b) => (b.fecha || '').localeCompare(a.fecha || '')),
-    [rowsAll, causa_rit, causa_ruc, clienteNombre])
+    [rowsAll, causa_rit, causa_ruc, clienteNombre, embedded])
 
   const [expandedId,      setExpandedId]      = useState(null)
   const [editingId,       setEditingId]       = useState(null)
