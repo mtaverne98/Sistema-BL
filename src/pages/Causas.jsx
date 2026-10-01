@@ -1553,9 +1553,12 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
       setPlazos(p ?? [])
       setLoadingBase(false)
     })
-    // Load last PJUD / SIAU — OR por causa_rit/causa_id para no perder registros
+    // Load last PJUD / SIAU — OR por causa_rit/causa_ruc/causa_id para no perder registros
     {
-      const pFilter = causa.rit ? `causa_rit.eq.${causa.rit},causa_id.eq.${causa.id}` : `causa_id.eq.${causa.id}`
+      const pParts = [`causa_id.eq.${causa.id}`]
+      if (causa.rit) pParts.push(`causa_rit.eq.${causa.rit}`)
+      if (causa.ruc) pParts.push(`causa_ruc.eq.${causa.ruc}`)
+      const pFilter = pParts.join(',')
       supabase.from('pjud').select('fecha,folio,estado,solicitud,respuesta').or(pFilter)
         .order('fecha', { ascending: false }).limit(1)
         .then(({ data }) => setLastPjud(data?.[0] ?? null))
@@ -1571,29 +1574,29 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
       })
   }, [causa?.id])
 
-  // Load PJUD lazily (also for timeline and resumen) — OR por causa_rit/causa_id
+  // Load PJUD lazily (also for timeline and resumen) — OR por causa_rit/causa_ruc/causa_id
   useEffect(() => {
     if ((tab !== 'pjud' && tab !== 'timeline' && tab !== 'resumen') || !causa?.id) return
     if (pjudRows.length > 0) return
     setLoadingPjud(true)
-    const filter = causa.rit
-      ? `causa_rit.eq.${causa.rit},causa_id.eq.${causa.id}`
-      : `causa_id.eq.${causa.id}`
-    supabase.from('pjud').select('*').or(filter).order('fecha', { ascending: false })
+    const parts = [`causa_id.eq.${causa.id}`]
+    if (causa.rit) parts.push(`causa_rit.eq.${causa.rit}`)
+    if (causa.ruc) parts.push(`causa_ruc.eq.${causa.ruc}`)
+    supabase.from('pjud').select('*').or(parts.join(',')).order('fecha', { ascending: false })
       .then(({ data }) => { setPjudRows(data ?? []); setLoadingPjud(false) })
-  }, [tab, causa?.id, causa?.rit])
+  }, [tab, causa?.id, causa?.rit, causa?.ruc])
 
-  // Load SIAU lazily (also for timeline and resumen) — OR por causa_rit/causa_id
+  // Load SIAU lazily (also for timeline and resumen) — OR por causa_rit/causa_ruc/causa_id
   useEffect(() => {
     if ((tab !== 'siau' && tab !== 'timeline' && tab !== 'resumen') || !causa?.id) return
     if (siauRows.length > 0) return
     setLoadingSiau(true)
-    const filter = causa.rit
-      ? `causa_rit.eq.${causa.rit},causa_id.eq.${causa.id}`
-      : `causa_id.eq.${causa.id}`
-    supabase.from('siau').select('*').or(filter).order('fecha', { ascending: false })
+    const parts = [`causa_id.eq.${causa.id}`]
+    if (causa.rit) parts.push(`causa_rit.eq.${causa.rit}`)
+    if (causa.ruc) parts.push(`causa_ruc.eq.${causa.ruc}`)
+    supabase.from('siau').select('*').or(parts.join(',')).order('fecha', { ascending: false })
       .then(({ data }) => { setSiauRows(data ?? []); setLoadingSiau(false) })
-  }, [tab, causa?.id, causa?.rit])
+  }, [tab, causa?.id, causa?.rit, causa?.ruc])
 
   // Load revisiones when tab opens (or on mount for timeline)
   useEffect(() => {
@@ -4879,6 +4882,7 @@ export default function Causas() {
         /* ── Vista de causa completa ── */
         <div className="flex flex-1 min-w-0 overflow-hidden">
           <CausaView
+            key={seleccionada?.id}
             causa={seleccionada}
             onClose={() => setSeleccionada(null)}
             onEdit={() => setFormulario(seleccionada)}
