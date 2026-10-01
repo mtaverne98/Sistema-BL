@@ -32,6 +32,7 @@ export default function InlineField({
   inputClassName = '',
   disabled     = false,
   debounce     = 0,
+  trigger      = 'click',  // 'click' | 'dbl'
 }) {
   const [editing,    setEditing]    = useState(false)
   const [draft,      setDraft]      = useState(value ?? '')
@@ -147,16 +148,18 @@ export default function InlineField({
   // ── Display mode ──────────────────────────────────────────────────────────
   if (!editing) {
     const isEmpty = !value && value !== 0
+    const activate = () => { if (!disabled) { setDraft(value ?? ''); setEditing(true) } }
     return (
       <span
-        onClick={() => { if (!disabled) { setDraft(value ?? ''); setEditing(true) } }}
+        onClick={trigger === 'click' ? activate : undefined}
+        onDoubleClick={trigger === 'dbl' ? activate : undefined}
         className={`
           inline-block rounded px-0.5 -mx-0.5 transition-all leading-snug
-          ${disabled ? 'cursor-default' : 'cursor-text hover:bg-black/[0.04]'}
+          ${disabled ? 'cursor-default' : trigger === 'dbl' ? 'cursor-text hover:bg-black/[0.04]' : 'cursor-text hover:bg-black/[0.04]'}
           ${justSaved ? 'ring-1 ring-emerald-400 bg-emerald-50/50' : ''}
           ${className}
         `}
-        title={disabled ? undefined : 'Clic para editar'}
+        title={disabled ? undefined : trigger === 'dbl' ? 'Doble clic para editar' : 'Clic para editar'}
       >
         <span className={isEmpty ? `text-gray-300 italic ${textClassName}` : textClassName}>
           {isEmpty ? placeholder : value}

@@ -22,13 +22,16 @@ export const CLIENTES = []
 // observaciones, clave_unica, created_at
 
 const ESTADO_BADGE = {
-  Activo:   'bg-emerald-50 text-emerald-600',
-  Inactivo: 'bg-gray-100 text-gray-400',
+  Activo:    'bg-emerald-50 text-emerald-600',
+  Inactivo:  'bg-gray-100 text-gray-400',
+  Rechazado: 'bg-red-50 text-red-500',
 }
 
-/** Color del avatar según estado del cliente — gris para cualquier estado no-Activo */
+/** Color del avatar según estado del cliente */
 function avatarColor(estado) {
-  return estado === 'Activo' ? '#2570ba' : '#9ca3af'
+  if (estado === 'Activo')    return '#2570ba'
+  if (estado === 'Rechazado') return '#C0392B'
+  return '#9ca3af'
 }
 
 /** Dropdown minimalista para cambiar estado de cliente */
@@ -75,7 +78,7 @@ function ClienteEstadoDropdown({ estado, onCambiar }) {
           className="bg-white border border-gray-100 rounded-xl shadow-xl py-1.5 min-w-[140px]"
         >
           <p className="text-[9px] font-semibold text-gray-400 uppercase tracking-widest px-3 pt-1 pb-1.5">Estado</p>
-          {['Activo', 'Inactivo'].map(e => (
+          {['Activo', 'Inactivo', 'Rechazado'].map(e => (
             <button
               key={e}
               onClick={() => { if (e !== estado) onCambiar(e); setOpen(false) }}
@@ -341,7 +344,9 @@ function FichaCliente({ cliente, onClose, onEstadoCambiar, onInlineSave, onReque
   const [tareas,      setTareas]      = useState([])
   const [notasDraft,  setNotasDraft]  = useState(cliente.observaciones ?? '')
   const [notasSaving, setNotasSaving] = useState(false)
-  const notasTimer = useRef(null)
+  const [notasFlash,  setNotasFlash]  = useState(false)
+  const notasTimer      = useRef(null)
+  const notasFlashTimer = useRef(null)
   const [rutCopied,   setRutCopied]   = useState(false)
   // Inline edit state for task titles
   const [editingTarea, setEditingTarea] = useState(null) // id
@@ -438,10 +443,18 @@ function FichaCliente({ cliente, onClose, onEstadoCambiar, onInlineSave, onReque
     clearTimeout(notasTimer.current)
     notasTimer.current = setTimeout(async () => {
       setNotasSaving(true)
-      try { await onInlineSave?.(cliente.id, 'observaciones', v) } finally { setNotasSaving(false) }
+      try {
+        await onInlineSave?.(cliente.id, 'observaciones', v)
+        setNotasFlash(true)
+        clearTimeout(notasFlashTimer.current)
+        notasFlashTimer.current = setTimeout(() => setNotasFlash(false), 1000)
+      } catch {} finally { setNotasSaving(false) }
     }, 1200)
   }
-  useEffect(() => () => clearTimeout(notasTimer.current), [])
+  useEffect(() => () => {
+    clearTimeout(notasTimer.current)
+    clearTimeout(notasFlashTimer.current)
+  }, [])
 
   function copyRut() {
     if (!cliente.rut) return
@@ -488,19 +501,28 @@ function FichaCliente({ cliente, onClose, onEstadoCambiar, onInlineSave, onReque
               value={cliente.nombre}
               onSave={save('nombre')}
               placeholder="Nombre del cliente"
+              trigger="dbl"
               textClassName="text-xl font-bold text-[#1a2e4a] uppercase tracking-tight leading-tight"
               inputClassName="text-xl font-bold w-full uppercase"
             />
             {/* Meta row */}
             <div className="flex items-center gap-2 mt-1.5 flex-wrap">
               <ClienteEstadoDropdown estado={cliente.estado} onCambiar={onEstadoCambiar} />
-              {cliente.rut && <>
-                <span className="text-gray-200 text-xs">·</span>
-                <span className="text-xs font-mono text-gray-500">{cliente.rut}</span>
-                <button onClick={copyRut} className={`transition-colors ${rutCopied ? 'text-emerald-500' : 'text-gray-300 hover:text-[#2570BA]'}`} title="Copiar RUT">
-                  {rutCopied ? <Check size={11} /> : <Copy size={11} />}
-                </button>
-              </>}
+              <span className="text-gray-200 text-xs">·</span>
+              <div className="flex items-center gap-1">
+                <InlineField
+                  value={cliente.rut}
+                  onSave={save('rut')}
+                  placeholder="agregar RUT"
+                  textClassName={`text-xs font-mono ${cliente.rut ? 'text-gray-500' : 'text-gray-300 italic'}`}
+                  inputClassName="text-xs font-mono w-28"
+                />
+                {cliente.rut && (
+                  <button onClick={copyRut} className={`transition-colors ${rutCopied ? 'text-emerald-500' : 'text-gray-300 hover:text-[#2570BA]'}`} title="Copiar RUT">
+                    {rutCopied ? <Check size={11} /> : <Copy size={11} />}
+                  </button>
+                )}
+              </div>
               {cliente.createdAt && <>
                 <span className="text-gray-200 text-xs">·</span>
                 <span className="text-xs text-gray-400">cliente desde {formatFecha(cliente.createdAt)}</span>
@@ -605,7 +627,7 @@ function FichaCliente({ cliente, onClose, onEstadoCambiar, onInlineSave, onReque
               value={notasDraft}
               onChange={e => handleNotasChange(e.target.value)}
               placeholder="Notas internas sobre este cliente…"
-              className="flex-1 text-xs text-gray-700 leading-relaxed resize-none outline-none placeholder:text-gray-300 bg-transparent"
+              className={`flex-1 text-xs text-gray-700 leading-relaxed resize-none outline-none placeholder:text-gray-300 bg-transparent rounded transition-all ${notasFlash ? 'ring-1 ring-emerald-400' : ''}`}
               rows={5}
             />
           </div>
@@ -695,7 +717,7 @@ const FORM_FIELDS = [
   { key: 'direccion',  label: 'Dirección',          placeholder: 'Calle, N°, Ciudad' },
 ]
 
-const ESTADOS_VALIDOS = new Set(['Activo', 'Inactivo'])
+const ESTADOS_VALIDOS = new Set(['Activo', 'Inactivo', 'Rechazado'])
 
 function FormCliente({ inicial, onClose, onGuardar, guardando, errorMsg }) {
   const esEdicion = !!inicial?.id
@@ -756,7 +778,7 @@ function FormCliente({ inicial, onClose, onGuardar, guardando, errorMsg }) {
         <div>
           <label className="block text-[11px] font-medium text-gray-500 mb-1">Estado</label>
           <div className="flex gap-2">
-            {['Activo', 'Inactivo'].map(e => (
+            {['Activo', 'Inactivo', 'Rechazado'].map(e => (
               <button key={e} onClick={() => set('estado', e)}
                 className={`flex-1 py-1.5 text-xs font-medium rounded-lg border transition-all ${
                   form.estado === e
@@ -767,8 +789,8 @@ function FormCliente({ inicial, onClose, onGuardar, guardando, errorMsg }) {
               </button>
             ))}
           </div>
-          {/* Si el cliente tiene un estado desconocido (ej: 'Cerrado'), mostrarlo */}
-          {form.estado && form.estado !== 'Activo' && form.estado !== 'Inactivo' && (
+          {/* Si el cliente tiene un estado desconocido, mostrarlo */}
+          {form.estado && !ESTADOS_VALIDOS.has(form.estado) && (
             <p className="mt-1.5 text-[10px] text-amber-600 bg-amber-50 rounded px-2 py-1">
               Estado actual: <strong>{form.estado}</strong> — al guardar se reemplazará por el seleccionado arriba.
             </p>
@@ -1204,6 +1226,29 @@ export default function Clientes() {
                   </span>
                 )}
               </button>
+
+              {/* Chip Rechazados */}
+              {clientes.some(c => c.estado === 'Rechazado') && (
+                <button
+                  onClick={() => setFiltros(prev => {
+                    const next = new Set(prev)
+                    next.has('Rechazado') ? next.delete('Rechazado') : next.add('Rechazado')
+                    return next
+                  })}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-all ${
+                    filtros.has('Rechazado')
+                      ? 'bg-red-50 text-red-600 border-red-200'
+                      : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'
+                  }`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${filtros.has('Rechazado') ? 'bg-red-400' : 'bg-gray-300'}`} />
+                  Rechazados
+                  {filtros.has('Rechazado') && (
+                    <span className="text-[10px] font-bold bg-red-100 text-red-500 px-1 rounded">
+                      {clientes.filter(c => c.estado === 'Rechazado').length}
+                    </span>
+                  )}
+                </button>
+              )}
 
               {/* Reset — solo visible cuando hay filtros activos */}
               {filtros.size > 0 && (
