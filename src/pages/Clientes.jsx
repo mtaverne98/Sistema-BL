@@ -920,7 +920,7 @@ export default function Clientes() {
       return err.message
     }
 
-    if (formulario === 'nuevo') {
+    if (formulario === 'nuevo' || !formulario?.id) {
       const { data, error: err } = await supabase
         .from('clientes').insert([payload]).select().single()
       if (err) {
@@ -1226,15 +1226,30 @@ export default function Clientes() {
           <div className="px-3 pb-2">
             <span className="text-[11px] font-bold text-gray-300 uppercase tracking-widest">Equipo</span>
           </div>
-          <div className="flex gap-2">
-            {EQUIPO.map(a => (
-              <div key={a.iniciales} className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-50">
-                <div className={`flex-shrink-0 w-6 h-6 rounded-full ${a.bg} flex items-center justify-center`}>
-                  <span className={`text-[10px] font-bold ${a.text}`}>{a.iniciales}</span>
+          <div className="flex flex-wrap gap-2">
+            {EQUIPO.map(a => {
+              const yaEsCliente = clientes.some(c => c.nombre.toLowerCase() === a.nombreCompleto.toLowerCase())
+              return (
+                <div key={a.iniciales} className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-50">
+                  <div className={`flex-shrink-0 w-6 h-6 rounded-full ${a.bg} flex items-center justify-center`}>
+                    <span className={`text-[10px] font-bold ${a.text}`}>{a.iniciales}</span>
+                  </div>
+                  <span className="text-[12px] font-medium text-gray-600">{a.nombreCompleto}</span>
+                  {yaEsCliente ? (
+                    <span className="flex items-center gap-0.5 text-[10px] text-emerald-600 font-medium">
+                      <Check size={10} /> cliente
+                    </span>
+                  ) : (
+                    <button
+                      title="Registrar como cliente"
+                      onClick={() => { setSeleccionado(null); setFormulario({ nombre: a.nombreCompleto }); setFormError(null) }}
+                      className="flex items-center gap-0.5 text-[10px] text-[#2570ba] hover:text-blue-700 font-medium transition-colors">
+                      <Plus size={10} /> cliente
+                    </button>
+                  )}
                 </div>
-                <span className="text-[12px] font-medium text-gray-600">{a.nombreCompleto}</span>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </div>
 
