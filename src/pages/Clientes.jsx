@@ -11,6 +11,7 @@ import {
 import { supabase } from '../lib/supabase'
 import InlineField from '../components/InlineField'
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal'
+import TareasLista from '../components/TareasLista'
 import { EQUIPO } from '../lib/equipo'
 
 // ── Exportación vacía para compatibilidad con CMD+K en MainLayout ──────────
@@ -292,45 +293,6 @@ function ClaveUnicaCell({ value, onSave }) {
   )
 }
 
-// ── Fila de tarea en la ficha ─────────────────────────────────────────────
-function TareaFila({ t, editingTarea, editDraft, setEditDraft, onCheck, onStartEdit, onCommit, onCancelEdit }) {
-  if (editingTarea === t.id) {
-    return (
-      <div className="flex items-start gap-2 py-0.5">
-        <div className="mt-0.5 w-3.5 h-3.5 flex-shrink-0 rounded border border-gray-200" />
-        <input
-          autoFocus
-          value={editDraft}
-          onChange={e => setEditDraft(e.target.value)}
-          onBlur={() => onCommit(t.id)}
-          onKeyDown={e => {
-            if (e.key === 'Enter') { e.preventDefault(); onCommit(t.id) }
-            if (e.key === 'Escape') { onCancelEdit() }
-          }}
-          className="flex-1 text-[11px] text-gray-700 border border-blue-300 rounded px-1.5 py-0.5 outline-none bg-white"
-        />
-      </div>
-    )
-  }
-  return (
-    <div className="flex items-start gap-2 py-0.5 group">
-      <button
-        type="button"
-        onClick={() => onCheck(t)}
-        className="mt-0.5 w-3.5 h-3.5 flex-shrink-0 rounded border border-gray-300 hover:border-[#2570BA] hover:bg-blue-50 transition-colors cursor-pointer"
-        title="Marcar como completada"
-      />
-      <span
-        onDoubleClick={() => onStartEdit(t)}
-        className="flex-1 text-[11px] text-gray-700 leading-snug cursor-text hover:bg-gray-50 rounded px-0.5"
-        title="Doble clic para editar"
-      >
-        {t.titulo || '—'}
-      </span>
-    </div>
-  )
-}
-
 // ── Ficha completa de cliente ─────────────────────────────────────────────
 function FichaCliente({ cliente, onClose, onEstadoCambiar, onInlineSave, onRequestDelete }) {
   const navigate = useNavigate()
@@ -341,21 +303,17 @@ function FichaCliente({ cliente, onClose, onEstadoCambiar, onInlineSave, onReque
   const [pjudMap,     setPjudMap]     = useState({})
   const [lastMovMap,  setLastMovMap]  = useState({})
   const [tareasMap,   setTareasMap]   = useState({})
-  const [tareas,      setTareas]      = useState([])
   const [notasDraft,  setNotasDraft]  = useState(cliente.observaciones ?? '')
   const [notasSaving, setNotasSaving] = useState(false)
   const [notasFlash,  setNotasFlash]  = useState(false)
   const notasTimer      = useRef(null)
   const notasFlashTimer = useRef(null)
   const [rutCopied,   setRutCopied]   = useState(false)
-  // Inline edit state for task titles
-  const [editingTarea, setEditingTarea] = useState(null) // id
-  const [editDraft,    setEditDraft]    = useState('')
 
   // Sync notas draft when cliente prop changes (e.g., after inline save)
   useEffect(() => { setNotasDraft(cliente.observaciones ?? '') }, [cliente.observaciones])
 
-  // Fetch causas + movimientos + tareas
+  // Fetch causas + movimientos (tareas las maneja TareasLista directamente)
   useEffect(() => {
     setLoading(true)
     supabase
@@ -367,12 +325,10 @@ function FichaCliente({ cliente, onClose, onEstadoCambiar, onInlineSave, onReque
         setCausas(list)
         if (list.length === 0) { setLoading(false); return }
         const ids = list.map(c => c.id)
-        const [{ data: siauData }, { data: pjudData }, { data: tareasData }, { data: tareasDetalle }] = await Promise.all([
+        const [{ data: siauData }, { data: pjudData }, { data: tareasData }] = await Promise.all([
           supabase.from('siau').select('causa_id, fecha').in('causa_id', ids),
           supabase.from('pjud').select('causa_id, fecha').in('causa_id', ids),
           supabase.from('tareas').select('causa_id').in('causa_id', ids).neq('estado', 'Completada'),
-          supabase.from('tareas').select('id, titulo, estado, prioridad, causa_id')
-            .in('causa_id', ids).neq('estado', 'Completada').order('created_at', { ascending: true }),
         ])
         const sm = {}, pm = {}, lm = {}, tm = {}
         for (const c of list) { sm[c.id] = 0; pm[c.id] = 0; lm[c.id] = null; tm[c.id] = 0 }
@@ -380,61 +336,9 @@ function FichaCliente({ cliente, onClose, onEstadoCambiar, onInlineSave, onReque
         for (const r of (pjudData  || [])) { pm[r.causa_id]++; if (!lm[r.causa_id] || r.fecha > lm[r.causa_id]) lm[r.causa_id] = r.fecha }
         for (const r of (tareasData || [])) { tm[r.causa_id]++ }
         setSiauMap(sm); setPjudMap(pm); setLastMovMap(lm); setTareasMap(tm)
-        setTareas(tareasDetalle || [])
         setLoading(false)
       })
   }, [cliente.id])
-
-  // Tareas agrupadas por causa
-  const tareasGrouped = useMemo(() => {
-    const map = {}
-    for (const t of tareas) {
-      const key = t.causa_id || '__sin_causa__'
-      if (!map[key]) map[key] = []
-      map[key].push(t)
-    }
-    return map
-  }, [tareas])
-
-  async function handleCheckTarea(tarea) {
-    setTareas(prev => prev.filter(t => t.id !== tarea.id))
-    await supabase.from('tareas').update({ estado: 'Completada' }).eq('id', tarea.id)
-  }
-
-  function startEditTarea(t) {
-    setEditingTarea(t.id)
-    setEditDraft(t.titulo)
-  }
-
-  async function commitEditTarea(id) {
-    const v = editDraft.trim()
-    setEditingTarea(null)
-    if (!v) return
-    setTareas(prev => prev.map(t => t.id === id ? { ...t, titulo: v } : t))
-    await supabase.from('tareas').update({ titulo: v }).eq('id', id)
-  }
-
-  async function handleNuevaTarea(causa) {
-    const titulo = 'Nueva tarea'
-    const { data, error } = await supabase.from('tareas')
-      .insert({
-        titulo,
-        estado: 'Pendiente',
-        prioridad: 'Media',
-        causa_id: causa?.id || null,
-        causa_rit: causa?.rit || null,
-        cliente_id: cliente.id,
-        cliente_nombre: cliente.nombre,
-      })
-      .select('id, titulo, estado, prioridad, causa_id')
-      .single()
-    if (!error && data) {
-      setTareas(prev => [...prev, data])
-      // Auto-enter edit mode for the new task
-      setEditingTarea(data.id)
-      setEditDraft(titulo)
-    }
-  }
 
   const save = (field) => async (value) => onInlineSave?.(cliente.id, field, value)
 
@@ -635,71 +539,13 @@ function FichaCliente({ cliente, onClose, onEstadoCambiar, onInlineSave, onReque
           {/* Tareas */}
           <div className="flex-1 overflow-y-auto border-t border-gray-100 px-6 pt-4 pb-6">
             <p className="text-[10px] font-bold text-gray-300 uppercase tracking-widest mb-3">Tareas pendientes</p>
-
-            {!loading && tareas.length === 0 && Object.keys(tareasGrouped).length === 0 && (
-              <p className="text-[11px] text-gray-300 italic">Sin tareas pendientes</p>
-            )}
-
-            {causas.map(causa => {
-              const grupo = tareasGrouped[causa.id] || []
-              if (grupo.length === 0) return null
-              return (
-                <div key={causa.id} className="mb-4">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide truncate flex-1 mr-2">
-                      {causa.materia || causa.rit || causa.ruc || 'Sin materia'}
-                    </p>
-                    <button
-                      onClick={() => handleNuevaTarea(causa)}
-                      className="flex-shrink-0 text-[10px] text-[#2570BA] hover:underline"
-                    >
-                      + Nueva
-                    </button>
-                  </div>
-                  <div className="space-y-1">
-                    {grupo.map(t => (
-                      <TareaFila key={t.id} t={t} editingTarea={editingTarea} editDraft={editDraft}
-                        setEditDraft={setEditDraft} onCheck={handleCheckTarea}
-                        onStartEdit={startEditTarea} onCommit={commitEditTarea}
-                        onCancelEdit={() => setEditingTarea(null)} />
-                    ))}
-                  </div>
-                </div>
-              )
-            })}
-
-            {/* Tareas sin causa */}
-            {tareasGrouped['__sin_causa__']?.length > 0 && (
-              <div className="mb-4">
-                <div className="flex items-center justify-between mb-1.5">
-                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Sin causa</p>
-                  <button
-                    onClick={() => handleNuevaTarea(null)}
-                    className="flex-shrink-0 text-[10px] text-[#2570BA] hover:underline"
-                  >
-                    + Nueva
-                  </button>
-                </div>
-                <div className="space-y-1">
-                  {tareasGrouped['__sin_causa__'].map(t => (
-                    <TareaFila key={t.id} t={t} editingTarea={editingTarea} editDraft={editDraft}
-                      setEditDraft={setEditDraft} onCheck={handleCheckTarea}
-                      onStartEdit={startEditTarea} onCommit={commitEditTarea}
-                      onCancelEdit={() => setEditingTarea(null)} />
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Botón nueva tarea sin causa cuando no hay causas */}
-            {causas.length === 0 && !loading && (
-              <button
-                onClick={() => handleNuevaTarea(null)}
-                className="text-[11px] text-[#2570BA] hover:underline mt-1"
-              >
-                + Nueva tarea
-              </button>
-            )}
+            <TareasLista
+              clienteId={cliente.id}
+              causaIds={causas.map(c => c.id)}
+              causas={causas}
+              clienteNombre={cliente.nombre}
+              modo="compact"
+            />
           </div>
         </div>
       </div>
