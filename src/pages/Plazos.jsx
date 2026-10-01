@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
+import { EQUIPO_MAP } from '../lib/equipo'
 import { useNavigate } from 'react-router-dom'
 import {
   AlertCircle, Clock, Check, X, Plus, Search,
@@ -44,11 +45,9 @@ const HITO_TIPO_CONFIG = {
   creacion:     { icon: Plus,        color: 'text-gray-400',   bg: 'bg-gray-100'   },
 }
 
-const RESPONSABLE_INFO = {
-  MT: { nombre: 'Macarena T.', color: '#1a2e4a' },
-  AB: { nombre: 'Andrea B.',   color: '#2570ba' },
-  CL: { nombre: 'Claudia L.',  color: '#059669' },
-}
+const RESPONSABLE_INFO = Object.fromEntries(
+  Object.entries(EQUIPO_MAP).map(([k, v]) => [k, { nombre: v.nombre, color: v.color }])
+)
 
 // Campos que existen en la BD
 const DB_FIELDS = new Set(['estado','notas','tipo','causa_rit','causa_id','cliente_id','titulo','fecha_vencimiento'])

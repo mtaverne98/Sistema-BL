@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import { EQUIPO_SELECT } from '../lib/equipo'
 import {
   Plus, X, CheckSquare, Gavel, Clock, MessageSquare,
   Scale, Users, Database, Shield, RefreshCw, FileText,
@@ -252,11 +253,7 @@ function QSelect({ label, value, onChange, options }) {
   )
 }
 
-const RESP_OPTS = [
-  { value: 'MT', label: 'Macarena T.' },
-  { value: 'AB', label: 'Angélica B.' },
-  { value: 'CL', label: 'Catalina L.' },
-]
+const RESP_OPTS = EQUIPO_SELECT
 
 // ── Form fields per entity ────────────────────────────────────────────────────
 function FormFields({ type, form, setForm }) {

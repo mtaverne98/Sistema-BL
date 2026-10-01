@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
+import { EQUIPO_MAP } from '../lib/equipo'
 import { useNavigate, useLocation } from 'react-router-dom'
 import {
   Search, Plus, X, Scale, Gavel, FileText,
@@ -252,8 +253,8 @@ const PROXIMAS_ACCIONES_C = [
   'Seguimiento interno', 'Otro',
 ]
 
-const RESPONSABLE_NAMES_C = { MT: 'Macarena T.', AB: 'Angélica B.', CL: 'Catalina L.' }
-const RESPONSABLE_COLORS_C = { MT: '#1a2e4a', AB: '#2570ba', CL: '#059669' }
+const RESPONSABLE_NAMES_C  = Object.fromEntries(Object.entries(EQUIPO_MAP).map(([k, v]) => [k, v.nombre]))
+const RESPONSABLE_COLORS_C = Object.fromEntries(Object.entries(EQUIPO_MAP).map(([k, v]) => [k, v.color]))
 
 const ACCION_STYLES_C = {
   'Revisar PJUD':           'bg-violet-50 text-violet-700',

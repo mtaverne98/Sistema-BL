@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback, Fragment } from 'react'
 import { Plus, Inbox, Clock, User, Phone, Calendar, AlertTriangle, ChevronRight } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
+import { EQUIPO_SELECT } from '../../lib/equipo'
 
 // ── Constantes ─────────────────────────────────────────────────────────────────
 const ESTADOS  = ['Por contactar', 'Endosada', 'En gestión', 'Parcial', 'Sin resultado', 'Cumplida', 'Vencida']
@@ -160,6 +161,37 @@ function ISelect({ id, field, value, options, onSave }) {
         cfg?.chip || 'bg-gray-50 text-gray-500 border-gray-200'
       }`}>
       {value || '—'}
+    </span>
+  )
+}
+
+// ── Inline edit — responsable (opciones {value, label}) ───────────────────────
+function ISelectResp({ id, field, value, options, onSave, flash }) {
+  const [editing, setEditing] = useState(false)
+  const isFlash = flash === `${id}:${field}`
+  const opt = options.find(o => o.value === value)
+
+  if (editing) {
+    return (
+      <select autoFocus value={value ?? ''}
+        onChange={e => { const v = e.target.value || null; setEditing(false); onSave(id, field, v) }}
+        onBlur={() => setEditing(false)}
+        className="text-xs bg-white border border-blue-300 rounded px-1 py-0.5 outline-none">
+        <option value="">—</option>
+        {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+    )
+  }
+
+  return (
+    <span
+      onClick={e => { e.stopPropagation(); setEditing(true) }}
+      className={`cursor-pointer text-xs rounded px-1 py-0.5 transition-colors ${
+        isFlash ? 'border border-emerald-400 bg-emerald-50 text-emerald-700'
+        : value ? 'font-medium text-gray-700 hover:bg-gray-50'
+        : 'text-gray-300 italic hover:bg-gray-50'
+      }`}>
+      {opt ? opt.label : (value || '—')}
     </span>
   )
 }
@@ -398,7 +430,7 @@ function DilCard({ dil, expanded, onToggle, onSave, setTab }) {
             </div>
             <div className="col-span-2 sm:col-span-3">
               <span className="text-gray-400 font-medium block mb-0.5">Responsable</span>
-              <IText id={dil.id} field="responsable" value={dil.responsable} placeholder="Asignado a…" {...sp}/>
+              <ISelectResp id={dil.id} field="responsable" value={dil.responsable} options={EQUIPO_SELECT} {...sp}/>
             </div>
           </div>
 

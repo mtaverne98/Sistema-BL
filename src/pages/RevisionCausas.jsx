@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
+import { EQUIPO_MAP } from '../lib/equipo'
 import { useNavigate } from 'react-router-dom'
 import {
   Search, Check, X, Plus, Edit2, ExternalLink,
@@ -99,11 +100,9 @@ const ACCION_STYLES = {
   'Otro':                            { bg: 'bg-gray-50',   text: 'text-gray-400'   },
 }
 
-const RESPONSABLE_INFO = {
-  MT: { nombre: 'Macarena T.', color: '#1a2e4a' },
-  AB: { nombre: 'Angélica B.', color: '#2570ba' },
-  CL: { nombre: 'Claudia L.',  color: '#059669' },
-}
+const RESPONSABLE_INFO = Object.fromEntries(
+  Object.entries(EQUIPO_MAP).map(([k, v]) => [k, { nombre: v.nombre, color: v.color }])
+)
 
 const CATEGORIAS_TAREA = [
   'Escrito', 'Audiencia', 'PJUD', 'SIAU', 'Documento',

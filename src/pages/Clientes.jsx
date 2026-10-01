@@ -11,6 +11,7 @@ import {
 import { supabase } from '../lib/supabase'
 import InlineField from '../components/InlineField'
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal'
+import { EQUIPO } from '../lib/equipo'
 
 // ── Exportación vacía para compatibilidad con CMD+K en MainLayout ──────────
 export const CLIENTES = []
@@ -1306,6 +1307,24 @@ export default function Clientes() {
               ))}
             </div>
           )}
+
+          {/* ── Sección Equipo ── */}
+          <div className="mt-6 mx-4 pb-6 border-t border-[#E3E7EC] pt-4">
+            <div className="px-3 pb-2">
+              <span className="text-[11px] font-bold text-gray-300 uppercase tracking-widest">Equipo</span>
+            </div>
+            <div className="space-y-0.5">
+              {EQUIPO.map(a => (
+                <div key={a.iniciales} className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors">
+                  <div className={`flex-shrink-0 w-7 h-7 rounded-full ${a.bg} flex items-center justify-center`}>
+                    <span className={`text-[11px] font-bold ${a.text}`}>{a.iniciales}</span>
+                  </div>
+                  <p className="text-[13px] font-medium text-gray-700 truncate">{a.nombreCompleto}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
         </div>
       </div>
 

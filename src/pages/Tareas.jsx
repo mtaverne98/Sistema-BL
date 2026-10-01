@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
+import { EQUIPO, EQUIPO_OPTS } from '../lib/equipo'
 import { useNavigate } from 'react-router-dom'
 import {
   Search, Plus, X, Check, ChevronDown, ChevronRight,
@@ -45,11 +46,7 @@ const CATEGORIA_STYLES = {
   'Otro':                { badge: 'bg-gray-50 text-gray-400',      dot: 'bg-gray-300'   },
 }
 
-const ABOGADAS = [
-  { key: 'MT', nombre: 'Macarena', bg: 'bg-blue-100',    text: 'text-blue-700',    dot: 'bg-blue-500'    },
-  { key: 'AB', nombre: 'Angélica', bg: 'bg-emerald-100', text: 'text-emerald-700', dot: 'bg-emerald-500' },
-  { key: 'CL', nombre: 'Catalina', bg: 'bg-violet-100',  text: 'text-violet-700',  dot: 'bg-violet-500'  },
-]
+const ABOGADAS = EQUIPO.map(({ iniciales, nombre, bg, text, dot }) => ({ key: iniciales, nombre, bg, text, dot }))
 
 const ACT_STYLES = {
   creacion:   { dot: 'bg-blue-400',    text: 'text-blue-500'   },
@@ -62,7 +59,7 @@ const ACT_STYLES = {
 
 const ESTADO_OPTIONS    = ['Pendiente','En progreso','Esperando antecedentes','En revisión','Bloqueada','Lista para envío','Completada','Cancelada','Vencida']
 const PRIORIDAD_OPTIONS = ['Alta','Media','Baja']
-const RESPONSABLE_OPT   = ['MT','AB','CL']
+const RESPONSABLE_OPT   = EQUIPO_OPTS
 const CATEGORIA_OPTIONS = ['Escrito','Audiencia','SIAU','PJUD','Reunión','Administrativo','Cobranza','Seguimiento cliente','Documento','Otro']
 const GRUPO_OPTIONS     = ['Por fecha','Por prioridad','Por estado','Por responsable','Por causa']
 
