@@ -702,10 +702,12 @@ export default function RevisionCausas() {
     if (!revActiva?.id) return
     const cid = String(causaId)
 
-    // Optimista — agrega o actualiza la fila local
+    // Optimista — guardar estado previo para revertir si falla
+    let prevRcRows
     setRcRows(prev => {
+      prevRcRows = prev
       const idx = prev.findIndex(r => String(r.causa_id) === cid)
-      const entry = { periodo_id: revActiva.id, causa_id: causaId, notas: datos.notas || '', responsable: datos.responsable || 'MT', fecha: datos.fecha || TODAY }
+      const entry = { periodo_id: revActiva.id, causa_id: causaId, nota: datos.notas || '', revisada_at: datos.fecha || TODAY }
       if (idx >= 0) return prev.map((r, i) => i === idx ? { ...r, ...entry } : r)
       return [...prev, { id: `tmp_${Date.now()}`, ...entry }]
     })
@@ -716,10 +718,9 @@ export default function RevisionCausas() {
       { onConflict: 'periodo_id,causa_id' }
     ).select()
     if (rcErr) {
-      const msg = `revision_causas upsert falló: ${rcErr.message} (code: ${rcErr.code}, hint: ${rcErr.hint ?? '—'}, details: ${rcErr.details ?? '—'})`
-      console.error(msg, rcErr)
-      setDbError(msg)
-      // NO revertir: dejar el estado optimista y el error visible para diagnóstico
+      console.error('revision_causas upsert error:', rcErr)
+      setRcRows(prevRcRows)
+      setDbError(`Error al guardar revisión: ${rcErr.message}`)
       return
     }
     setDbError(null)
@@ -748,15 +749,21 @@ export default function RevisionCausas() {
     if (!revActiva?.id) return
     const cid = String(causaId)
 
-    // Optimista
-    setRcRows(prev => prev.filter(r => String(r.causa_id) !== cid))
+    // Optimista — guardar estado previo para revertir si falla
+    let prevRcRows
+    setRcRows(prev => { prevRcRows = prev; return prev.filter(r => String(r.causa_id) !== cid) })
 
     // DB — borra de revision_causas
     const { error: delErr } = await supabase.from('revision_causas')
       .delete()
       .eq('periodo_id', revActiva.id)
       .eq('causa_id', causaId)
-    if (delErr) console.error('revision_causas delete error:', delErr)
+    if (delErr) {
+      console.error('revision_causas delete error:', delErr)
+      setRcRows(prevRcRows)
+      setDbError(`Error al desmarcar revisión: ${delErr.message}`)
+      return
+    }
 
     // revisiones — marca como no revisada
     setRevRows(prev => prev.map(r =>
