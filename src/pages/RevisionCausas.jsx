@@ -672,9 +672,9 @@ export default function RevisionCausas() {
       const cid = String(r.causa_id)
       map[cid] = {
         revisada:    true,
-        notas:       r.notas       || '',
+        notas:       r.nota        || '',
         responsable: r.responsable || 'MT',
-        fecha:       r.fecha       || TODAY,
+        fecha:       r.revisada_at || TODAY,
         semana_key:  pKey,
         history:     [],
       }
@@ -712,7 +712,7 @@ export default function RevisionCausas() {
 
     // DB — revision_causas (fuente de verdad del período actual)
     const { data: rcData, error: rcErr } = await supabase.from('revision_causas').upsert(
-      { periodo_id: revActiva.id, causa_id: causaId, notas: datos.notas || '', responsable: datos.responsable || 'MT', fecha: datos.fecha || TODAY },
+      { periodo_id: revActiva.id, causa_id: causaId, nota: datos.notas || '', revisada_at: datos.fecha || TODAY },
       { onConflict: 'periodo_id,causa_id' }
     ).select()
     if (rcErr) {
