@@ -287,13 +287,12 @@ function ModalConfirmarReset({ onConfirm, onCancel }) {
 }
 
 // ── CausaRow ───────────────────────────────────────────────────────────────────
-function CausaRow({ causa, revData, pKey, onMarcar, onDesmarcar, onCrearTarea }) {
+function CausaRow({ causa, revData, pKey, savingState, onMarcar, onDesmarcar, onCrearTarea }) {
   const revisada = revData?.revisada || false
 
   const [expanded,    setExpanded]    = useState(false)
   const [showHistory, setShowHistory] = useState(false)
   const [showModal,   setShowModal]   = useState(false)
-  const [saving,      setSaving]      = useState(false)
   const [draft, setDraft] = useState({
     notas: revData?.notas || '',
     responsable: revData?.responsable || 'MT',
@@ -312,18 +311,17 @@ function CausaRow({ causa, revData, pKey, onMarcar, onDesmarcar, onCrearTarea })
   // Marcar/desmarcar con un clic — sin formulario, acción inmediata
   function handleCheck(e) {
     e.stopPropagation()
+    if (savingState === 'saving') return
     if (revisada) {
       onDesmarcar(causa.id)
     } else {
-      onMarcar(causa.id, { notas: '', responsable: 'MT', fecha: TODAY, causa_rit: causa.rit, cliente_nombre: causa.cliente_nombre })
+      onMarcar(causa.id, { notas: '', responsable: 'MT', causa_rit: causa.rit, cliente_nombre: causa.cliente_nombre })
     }
   }
 
   async function handleGuardar() {
-    setSaving(true)
-    await onMarcar(causa.id, { ...draft, fecha: TODAY, causa_rit: causa.rit, cliente_nombre: causa.cliente_nombre })
-    setSaving(false)
-    setExpanded(false)
+    const ok = await onMarcar(causa.id, { ...draft, causa_rit: causa.rit, cliente_nombre: causa.cliente_nombre })
+    if (ok) setExpanded(false)
   }
 
   const histCount = (revData?.history || []).filter(h => h.revisada && h.semana_key !== pKey).length
@@ -339,13 +337,19 @@ function CausaRow({ causa, revData, pKey, onMarcar, onDesmarcar, onCrearTarea })
 
           {/* Checkbox — grande y visible, un solo clic */}
           <button onClick={handleCheck}
+            disabled={savingState === 'saving'}
             title={revisada ? 'Desmarcar revisión' : 'Marcar como revisada'}
             className={`flex-shrink-0 w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all duration-150 ${
-              revisada
-                ? 'bg-green-500 border-green-500 hover:bg-green-600 shadow-sm'
-                : 'border-gray-300 bg-white hover:border-green-400 hover:bg-green-50'
+              savingState === 'saving' ? 'border-blue-300 bg-blue-50 cursor-wait' :
+              savingState === 'error'  ? 'border-red-400 bg-red-50' :
+              savingState === 'ok'     ? 'bg-green-500 border-green-500 ring-2 ring-green-300' :
+              revisada ? 'bg-green-500 border-green-500 hover:bg-green-600 shadow-sm' :
+              'border-gray-300 bg-white hover:border-green-400 hover:bg-green-50'
             }`}>
-            {revisada && <Check size={13} className="text-white" strokeWidth={2.5} />}
+            {savingState === 'saving' && <Loader2 size={11} className="animate-spin text-blue-500" />}
+            {savingState === 'error'  && <X size={11} className="text-red-500" />}
+            {savingState === 'ok'     && <Check size={13} className="text-white" strokeWidth={2.5} />}
+            {!savingState && revisada  && <Check size={13} className="text-white" strokeWidth={2.5} />}
           </button>
 
           {/* Content — clic en el texto abre la causa */}
@@ -434,9 +438,9 @@ function CausaRow({ causa, revData, pKey, onMarcar, onDesmarcar, onCrearTarea })
                   </select>
                 </div>
                 <div className="flex items-center gap-2 pt-0.5">
-                  <button onClick={handleGuardar} disabled={saving}
+                  <button onClick={handleGuardar} disabled={savingState === 'saving'}
                     className="text-[12px] px-3.5 py-1.5 bg-[#2570BA] text-white rounded-lg hover:bg-[#2570BA]/90 flex items-center gap-1.5 font-medium disabled:opacity-60">
-                    {saving ? <Loader2 size={11} className="animate-spin" /> : <Check size={11} />}
+                    {savingState === 'saving' ? <Loader2 size={11} className="animate-spin" /> : <Check size={11} />}
                     Guardar revisión
                   </button>
                   <button onClick={() => setExpanded(false)}
@@ -491,7 +495,7 @@ function CausaRow({ causa, revData, pKey, onMarcar, onDesmarcar, onCrearTarea })
 }
 
 // ── ClienteBlock ───────────────────────────────────────────────────────────────
-function ClienteBlock({ clienteNombre, clienteEstado, causas, reviewMap, pKey, onMarcar, onDesmarcar, onCrearTarea }) {
+function ClienteBlock({ clienteNombre, clienteEstado, causas, reviewMap, pKey, savingMap, onMarcar, onDesmarcar, onCrearTarea }) {
   const [open, setOpen] = useState(false)
   // Gris si el cliente no tiene ninguna causa activa (Abierta/Revisar)
   const isInactivo = causas.length === 0
@@ -541,6 +545,7 @@ function ClienteBlock({ clienteNombre, clienteEstado, causas, reviewMap, pKey, o
             <CausaRow key={causa.id} causa={causa}
               revData={reviewMap[String(causa.id)]}
               pKey={pKey}
+              savingState={savingMap?.[String(causa.id)] || null}
               onMarcar={onMarcar}
               onDesmarcar={onDesmarcar}
               onCrearTarea={onCrearTarea} />
@@ -564,6 +569,7 @@ export default function RevisionCausas() {
   const [dbError,            setDbError]            = useState(null)
   const [showReset,          setShowReset]          = useState(false)
   const [editingFechaInicio, setEditingFechaInicio] = useState(false)
+  const [savingMap,          setSavingMap]          = useState({}) // { [causaId]: 'saving'|'ok'|'error' }
 
   const periodStart   = revActiva?.fecha_inicio?.slice(0, 10) ?? TODAY
   const periodEnd     = addDays(periodStart, 14)
@@ -699,77 +705,113 @@ export default function RevisionCausas() {
 
   // ── CRUD ───────────────────────────────────────────────────────────────────
   const marcarRevision = useCallback(async (causaId, datos) => {
-    if (!revActiva?.id) return
+    if (!revActiva?.id) return false
     const cid = String(causaId)
 
-    // Optimista — guardar estado previo para revertir si falla
+    setSavingMap(prev => ({ ...prev, [cid]: 'saving' }))
+
+    // Guardar estado previo para revertir si falla
     let prevRcRows
     setRcRows(prev => {
       prevRcRows = prev
       const idx = prev.findIndex(r => String(r.causa_id) === cid)
-      const entry = { periodo_id: revActiva.id, causa_id: causaId, nota: datos.notas || '', revisada_at: datos.fecha || TODAY }
+      const entry = { periodo_id: revActiva.id, causa_id: causaId, nota: datos.notas || '', revisada_at: TODAY }
       if (idx >= 0) return prev.map((r, i) => i === idx ? { ...r, ...entry } : r)
       return [...prev, { id: `tmp_${Date.now()}`, ...entry }]
     })
 
-    // DB — revision_causas (fuente de verdad del período actual)
+    // DB — revision_causas con columnas explícitas (sin fecha, sin responsable)
     const { data: rcData, error: rcErr } = await supabase.from('revision_causas').upsert(
-      { periodo_id: revActiva.id, causa_id: causaId, nota: datos.notas || '', revisada_at: datos.fecha || TODAY },
+      { periodo_id: revActiva.id, causa_id: causaId, nota: datos.notas || '', revisada_at: TODAY },
       { onConflict: 'periodo_id,causa_id' }
     ).select()
+
     if (rcErr) {
       console.error('revision_causas upsert error:', rcErr)
       setRcRows(prevRcRows)
+      setSavingMap(prev => ({ ...prev, [cid]: 'error' }))
       setDbError(`Error al guardar revisión: ${rcErr.message}`)
-      return
-    }
-    setDbError(null)
-    // Reemplazar fila optimista con la real devuelta por Supabase
-    if (rcData?.[0]) {
-      const real = rcData[0]
-      setRcRows(prev => {
-        const filtered = prev.filter(r => !(String(r.id).startsWith('tmp_') && String(r.causa_id) === cid))
-        const existing = filtered.find(r => String(r.causa_id) === cid)
-        if (existing) return filtered.map(r => String(r.causa_id) === cid ? { ...r, ...real } : r)
-        return [...filtered, real]
-      })
+      setTimeout(() => setSavingMap(prev => ({ ...prev, [cid]: null })), 3000)
+      return false
     }
 
-    // revisiones — mantiene historial para períodos anteriores
-    const payload = { semana_key: pKey, causa_id: causaId, revisada: true, ...datos }
+    // Lectura de confirmación — verificar que el registro quedó en la base
+    const { data: confirmRow, error: confirmErr } = await supabase.from('revision_causas')
+      .select('id, revisada_at')
+      .eq('periodo_id', revActiva.id)
+      .eq('causa_id', causaId)
+      .maybeSingle()
+
+    if (confirmErr || !confirmRow) {
+      console.error('revision_causas confirm read failed:', confirmErr)
+      setRcRows(prevRcRows)
+      setSavingMap(prev => ({ ...prev, [cid]: 'error' }))
+      setDbError('No se pudo confirmar el guardado. Intenta nuevamente.')
+      setTimeout(() => setSavingMap(prev => ({ ...prev, [cid]: null })), 3000)
+      return false
+    }
+
+    // Reemplazar fila optimista con la real confirmada
+    const real = rcData?.[0] || confirmRow
+    setRcRows(prev => {
+      const filtered = prev.filter(r => !(String(r.id).startsWith('tmp_') && String(r.causa_id) === cid))
+      const existing = filtered.find(r => String(r.causa_id) === cid)
+      if (existing) return filtered.map(r => String(r.causa_id) === cid ? { ...r, ...real } : r)
+      return [...filtered, real]
+    })
+
+    setSavingMap(prev => ({ ...prev, [cid]: 'ok' }))
+    setTimeout(() => setSavingMap(prev => ({ ...prev, [cid]: null })), 2000)
+    setDbError(null)
+
+    // revisiones — historial para períodos anteriores, non-critical, columnas explícitas
     setRevRows(prev => {
       const exists = prev.find(r => r.semana_key === pKey && String(r.causa_id) === cid)
-      if (exists) return prev.map(r => r.semana_key === pKey && String(r.causa_id) === cid ? { ...r, ...datos, revisada: true } : r)
-      return [...prev, { id: `tmp2_${Date.now()}`, semana_key: pKey, causa_id: causaId, revisada: true, ...datos }]
+      if (exists) return prev.map(r => r.semana_key === pKey && String(r.causa_id) === cid ? { ...r, notas: datos.notas || '', revisada: true } : r)
+      return [...prev, { id: `tmp2_${Date.now()}`, semana_key: pKey, causa_id: causaId, revisada: true, notas: datos.notas || '', responsable: datos.responsable || '' }]
     })
-    await supabase.from('revisiones').upsert(payload, { onConflict: 'semana_key,causa_id' })
+    supabase.from('revisiones').upsert(
+      { semana_key: pKey, causa_id: causaId, revisada: true, notas: datos.notas || '', responsable: datos.responsable || '' },
+      { onConflict: 'semana_key,causa_id' }
+    ).then(({ error }) => { if (error) console.warn('revisiones upsert (non-critical):', error.message) })
+
+    return true
   }, [pKey, revActiva])
 
   const desmarcarRevision = useCallback(async (causaId) => {
     if (!revActiva?.id) return
     const cid = String(causaId)
 
-    // Optimista — guardar estado previo para revertir si falla
+    setSavingMap(prev => ({ ...prev, [cid]: 'saving' }))
+
     let prevRcRows
     setRcRows(prev => { prevRcRows = prev; return prev.filter(r => String(r.causa_id) !== cid) })
 
-    // DB — borra de revision_causas
     const { error: delErr } = await supabase.from('revision_causas')
       .delete()
       .eq('periodo_id', revActiva.id)
       .eq('causa_id', causaId)
+
     if (delErr) {
       console.error('revision_causas delete error:', delErr)
       setRcRows(prevRcRows)
+      setSavingMap(prev => ({ ...prev, [cid]: 'error' }))
       setDbError(`Error al desmarcar revisión: ${delErr.message}`)
+      setTimeout(() => setSavingMap(prev => ({ ...prev, [cid]: null })), 3000)
       return
     }
 
-    // revisiones — marca como no revisada
+    setSavingMap(prev => ({ ...prev, [cid]: null }))
+
+    // revisiones — historial, non-critical
     setRevRows(prev => prev.map(r =>
       r.semana_key === pKey && String(r.causa_id) === cid ? { ...r, revisada: false } : r
     ))
-    await supabase.from('revisiones').update({ revisada: false }).eq('semana_key', pKey).eq('causa_id', causaId)
+    supabase.from('revisiones')
+      .update({ revisada: false })
+      .eq('semana_key', pKey)
+      .eq('causa_id', causaId)
+      .then(({ error }) => { if (error) console.warn('revisiones update (non-critical):', error.message) })
   }, [pKey, revActiva])
 
   const addTarea = useCallback(async (tarea) => {
@@ -1020,6 +1062,7 @@ export default function RevisionCausas() {
                           causas={causas}
                           reviewMap={reviewMap}
                           pKey={pKey}
+                          savingMap={savingMap}
                           onMarcar={marcarRevision}
                           onDesmarcar={desmarcarRevision}
                           onCrearTarea={addTarea} />
