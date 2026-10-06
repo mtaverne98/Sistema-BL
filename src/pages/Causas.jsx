@@ -4229,7 +4229,7 @@ function CausasSidebar({ causas, clienteActivo, onSelect, busquedaSidebar, setBu
 
   return (
     <>
-    <div className="flex-shrink-0 flex flex-col bg-white overflow-hidden"
+    <div className="bl-causas-sidebar flex-shrink-0 flex flex-col bg-white overflow-hidden"
       style={{ width: collapsed ? 32 : panelWidth, transition: dragging.current ? 'none' : 'width 0.2s' }}>
 
       {/* Toggle button */}

@@ -544,8 +544,8 @@ export default function MainLayout() {
   // Mobile / responsive state
   const [mobileOpen, setMobileOpen] = useState(false)
   const [screenWidth, setScreenWidth] = useState(() => window.innerWidth)
-  const isMobile = screenWidth < 900
-  const isTablet  = screenWidth >= 900 && screenWidth < 1280
+  const isMobile = screenWidth < 768
+  const isTablet  = screenWidth >= 768 && screenWidth < 1280
   const isPhone   = isMobile
   const isResponsive = isPhone
 
@@ -562,7 +562,7 @@ export default function MainLayout() {
   const [sbCollapsed, setSbCollapsed] = useState(() => {
     try {
       // Auto-collapse on tablet (768–1279px) on first load
-      if (window.innerWidth < 1280 && window.innerWidth >= 900) return true
+      if (window.innerWidth < 1280 && window.innerWidth >= 768) return true
       return JSON.parse(localStorage.getItem('sb-collapsed') ?? 'false')
     } catch { return false }
   })
@@ -636,7 +636,7 @@ export default function MainLayout() {
     })
   }
 
-  const currentSbWidth = isPhone ? 280 : (effectiveCollapsed ? 56 : sbWidth)
+  const currentSbWidth = isPhone ? 280 : (effectiveCollapsed ? 52 : sbWidth)
 
   // Global shortcuts
   useEffect(() => {

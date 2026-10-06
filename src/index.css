@@ -37,8 +37,19 @@
 /* ── Tablas: siempre scrollables dentro de su contenedor ──────────── */
 .siau-table, .pjud-table { width: max-content; min-width: 100%; }
 
-/* ── Tablet (900–1279px) — iPad vertical ───────────────────────────── */
+/* ── ≤ 1279px (1024–1280px): sidebar icono, ajustes leves de densidad ──── */
 @media (max-width: 1279px) {
+
+  /* Recuadro de resumen de causa: 3 col → 2 col */
+  .bl-resumen-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+
+  /* Dashboard: métricas 5 col → 3 col, secciones 3 col → 2 col */
+  .dashboard-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
+  .dashboard-main    { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+}
+
+/* ── ≤ 1023px (768–1024px): columnas apiladas, tablas simplificadas ──────── */
+@media (max-width: 1023px) {
 
   /* Panel de causa: dos columnas → apiladas */
   .bl-causa-cols {
@@ -70,10 +81,7 @@
     flex: 0 0 auto;
   }
 
-  /* Recuadro de resumen de causa: 3 col → 2 col */
-  .bl-resumen-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
-
-  /* SIAU: ocultar columnas secundarias */
+  /* SIAU: ocultar columnas secundarias (organismo, folio, contadores) */
   .siau-table th:nth-child(3), .siau-table td:nth-child(3),
   .siau-table th:nth-child(6), .siau-table td:nth-child(6),
   .siau-table th:nth-child(7), .siau-table td:nth-child(7),
@@ -84,17 +92,16 @@
   .pjud-table th:nth-child(6), .pjud-table td:nth-child(6),
   .pjud-table th:nth-child(7), .pjud-table td:nth-child(7) { display: none !important; }
 
-  /* Dashboard: métricas en 2 col */
+  /* Dashboard: métricas 5→2 col, secciones 3→1 col */
   .dashboard-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
   .dashboard-main    { grid-template-columns: repeat(1, minmax(0, 1fr)) !important; }
-
-  /* Áreas de toque táctil: 44px */
-  button:not(.no-touch-min) { min-height: 44px; }
-  .no-touch-min { min-height: unset !important; min-width: unset !important; }
 }
 
-/* ── Teléfono (<900px) ──────────────────────────────────────────────── */
-@media (max-width: 899px) {
+/* ── ≤ 767px (< 768px móvil): una sola columna, hamburguesa ───────────── */
+@media (max-width: 767px) {
+
+  /* Recuadro de resumen de causa: 2→1 col en móvil */
+  .bl-resumen-grid { grid-template-columns: repeat(1, minmax(0, 1fr)) !important; }
 
   /* Ocultar columnas secundarias en cualquier tabla */
   .portrait-hidden { display: none !important; }
@@ -114,4 +121,18 @@
     box-shadow: none !important;
     border-left: none !important;
   }
+
+  /* Sidebar de clientes en Causas: oculto en móvil (el usuario navega por búsqueda) */
+  .bl-causas-sidebar { display: none !important; }
+
+  /* Áreas de toque mínimo 44px */
+  button:not(.no-touch-min) { min-height: 44px; }
+  .no-touch-min { min-height: unset !important; min-width: unset !important; }
+
+  /* Dashboard: métricas 2 col en móvil */
+  .dashboard-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .dashboard-main    { grid-template-columns: repeat(1, minmax(0, 1fr)) !important; }
+
+  /* Espacio para la barra inferior fija (56px) + FAB (ya incluido en fab-clear) */
+  .fab-clear { padding-bottom: 152px; }
 }
