@@ -303,6 +303,7 @@ function FichaCliente({ cliente, onClose, onEstadoCambiar, onInlineSave, onReque
   const [pjudMap,     setPjudMap]     = useState({})
   const [lastMovMap,  setLastMovMap]  = useState({})
   const [tareasMap,   setTareasMap]   = useState({})
+  const [sortBy,      setSortBy]      = useState('fecha')
   const [notasDraft,  setNotasDraft]  = useState(cliente.observaciones ?? '')
   const [notasSaving, setNotasSaving] = useState(false)
   const [notasFlash,  setNotasFlash]  = useState(false)
@@ -451,71 +452,114 @@ function FichaCliente({ cliente, onClose, onEstadoCambiar, onInlineSave, onReque
 
         {/* Causas */}
         <div className="flex-1 overflow-y-auto px-8 py-6 fab-clear">
-          <p className="text-[10px] font-bold text-gray-300 uppercase tracking-widest mb-3">Causas</p>
+          {/* Encabezado + selector de orden */}
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-[10px] font-bold text-gray-300 uppercase tracking-widest">Causas</p>
+            <div className="flex items-center gap-0.5 bg-gray-100 rounded-lg p-0.5">
+              {[['fecha','Fecha'],['estado','Estado'],['materia','Materia'],['area','Área']].map(([val,lbl]) => (
+                <button
+                  key={val}
+                  onClick={() => setSortBy(val)}
+                  className={`text-[10px] font-medium px-2 py-0.5 rounded-md transition-colors no-touch-min ${sortBy === val ? 'bg-white text-[#2570BA] shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+                >
+                  {lbl}
+                </button>
+              ))}
+            </div>
+          </div>
           {loading ? (
             <div className="flex justify-center py-12"><Loader2 size={20} className="animate-spin text-gray-300" /></div>
           ) : causas.length === 0 ? (
             <p className="text-sm text-gray-400 text-center py-12">Sin causas registradas</p>
-          ) : causas.map(c => {
-            const siau      = siauMap[c.id]    || 0
-            const pjud      = pjudMap[c.id]    || 0
-            const tareas    = tareasMap[c.id]  || 0
-            const lastMov   = lastMovMap[c.id]
-            const diasMov   = daysSince(lastMov)
-            const sinMov    = diasMov !== null && diasMov > 60
-            const dotColor  = CAUSA_ESTADO_DOT[c.estado] ?? '#9ca3af'
-            return (
-              <div
-                key={c.id}
-                className="mb-2 bg-white border border-gray-100 rounded-xl px-4 py-3.5 hover:border-[#2570BA]/30 hover:shadow-sm transition-all cursor-pointer"
-                onClick={() => {
-                  setActiveCausa({ id: c.id, rit: c.rit || null, ruc: c.ruc || null, materia: c.materia || '', cliente_nombre: cliente.nombre || '', cliente_id: cliente.id })
-                  navigate('/causas')
-                }}
-              >
-                <div className="flex items-start gap-3">
-                  <div className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0" style={{ backgroundColor: dotColor }} />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-gray-800 leading-snug">{c.materia || '—'}</p>
-                        <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                          {c.area    && <span className="text-[10px] text-gray-400">{c.area}</span>}
-                          {c.parte   && <><span className="text-gray-200 text-[10px]">·</span><span className="text-[10px] text-gray-400">{c.parte}</span></>}
-                          {c.tribunal && <><span className="text-gray-200 text-[10px]">·</span><span className="text-[10px] text-gray-400 truncate max-w-[200px]">{c.tribunal}</span></>}
-                          {c.rit     && <><span className="text-gray-200 text-[10px]">·</span><span className="text-[10px] font-mono text-gray-400">{c.rit}</span></>}
+          ) : (() => {
+            const sorted = [...causas].sort((a, b) => {
+              if (sortBy === 'estado')  return (a.estado || '').localeCompare(b.estado || '', 'es')
+              if (sortBy === 'materia') return (a.materia || '').localeCompare(b.materia || '', 'es')
+              if (sortBy === 'area')    return (a.area || 'Sin área').localeCompare(b.area || 'Sin área', 'es')
+              const la = lastMovMap[a.id] ?? ''
+              const lb = lastMovMap[b.id] ?? ''
+              return lb.localeCompare(la)
+            })
+
+            const renderCard = (c) => {
+              const siau    = siauMap[c.id]   || 0
+              const pjud    = pjudMap[c.id]   || 0
+              const tareas  = tareasMap[c.id] || 0
+              const lastMov = lastMovMap[c.id]
+              const diasMov = daysSince(lastMov)
+              const sinMov  = diasMov !== null && diasMov > 60
+              const dotColor = CAUSA_ESTADO_DOT[c.estado] ?? '#9ca3af'
+              return (
+                <div
+                  key={c.id}
+                  className="mb-2 bg-white border border-gray-100 rounded-xl px-4 py-3.5 hover:border-[#2570BA]/30 hover:shadow-sm transition-all cursor-pointer"
+                  onClick={() => {
+                    setActiveCausa({ id: c.id, rit: c.rit || null, ruc: c.ruc || null, materia: c.materia || '', cliente_nombre: cliente.nombre || '', cliente_id: cliente.id })
+                    navigate('/causas')
+                  }}
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0" style={{ backgroundColor: dotColor }} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-gray-800 leading-snug">{c.materia || '—'}</p>
+                          <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                            {c.area    && <span className="text-[10px] text-gray-400">{c.area}</span>}
+                            {c.parte   && <><span className="text-gray-200 text-[10px]">·</span><span className="text-[10px] text-gray-400">{c.parte}</span></>}
+                            {c.tribunal && <><span className="text-gray-200 text-[10px]">·</span><span className="text-[10px] text-gray-400 truncate max-w-[200px]">{c.tribunal}</span></>}
+                            {c.rit     && <><span className="text-gray-200 text-[10px]">·</span><span className="text-[10px] font-mono text-gray-400">{c.rit}</span></>}
+                          </div>
+                        </div>
+                        <div className="flex-shrink-0 text-right">
+                          {(siau > 0 || pjud > 0) && (
+                            <p className="text-[10px] text-gray-400 whitespace-nowrap">
+                              {siau > 0 && `${siau} SIAU`}{siau > 0 && pjud > 0 && ' · '}{pjud > 0 && `${pjud} PJUD`}
+                            </p>
+                          )}
+                          {lastMov && (
+                            <p className="text-[10px] text-gray-300 mt-0.5 whitespace-nowrap">últ. {formatMovDate(lastMov)}</p>
+                          )}
                         </div>
                       </div>
-                      <div className="flex-shrink-0 text-right">
-                        {(siau > 0 || pjud > 0) && (
-                          <p className="text-[10px] text-gray-400 whitespace-nowrap">
-                            {siau > 0 && `${siau} SIAU`}{siau > 0 && pjud > 0 && ' · '}{pjud > 0 && `${pjud} PJUD`}
-                          </p>
-                        )}
-                        {lastMov && (
-                          <p className="text-[10px] text-gray-300 mt-0.5 whitespace-nowrap">últ. {formatMovDate(lastMov)}</p>
-                        )}
-                      </div>
+                      {(tareas > 0 || sinMov) && (
+                        <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                          {tareas > 0 && (
+                            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-50 text-amber-600 border border-amber-100">
+                              {tareas} tarea{tareas !== 1 ? 's' : ''} pendiente{tareas !== 1 ? 's' : ''}
+                            </span>
+                          )}
+                          {sinMov && (
+                            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-red-50 text-red-400 border border-red-100">
+                              Sin movimiento · {diasMov}d
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </div>
-                    {(tareas > 0 || sinMov) && (
-                      <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-                        {tareas > 0 && (
-                          <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-50 text-amber-600 border border-amber-100">
-                            {tareas} tarea{tareas !== 1 ? 's' : ''} pendiente{tareas !== 1 ? 's' : ''}
-                          </span>
-                        )}
-                        {sinMov && (
-                          <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-red-50 text-red-400 border border-red-100">
-                            Sin movimiento · {diasMov}d
-                          </span>
-                        )}
-                      </div>
-                    )}
                   </div>
                 </div>
-              </div>
-            )
-          })}
+              )
+            }
+
+            if (sortBy === 'area') {
+              const grupos = {}
+              for (const c of sorted) {
+                const g = c.area || 'Sin área'
+                if (!grupos[g]) grupos[g] = []
+                grupos[g].push(c)
+              }
+              return Object.entries(grupos).map(([grupo, items], gi) => (
+                <div key={grupo}>
+                  {gi > 0 && <div className="border-t border-dashed border-gray-200 my-4" />}
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">{grupo}</p>
+                  {items.map(renderCard)}
+                </div>
+              ))
+            }
+
+            return sorted.map(renderCard)
+          })()}
         </div>
 
         {/* Notas + Tareas */}
