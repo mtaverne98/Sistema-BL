@@ -10,7 +10,7 @@ import {
   Loader2, AlertTriangle, RefreshCw, Trash2, Check,
   Calendar, Activity, Flame, PlusSquare,
   UserCheck, Upload, Table2, Database, Shield, ExternalLink,
-  ListTodo, Inbox, FileSearch, Link2, Download, ClipboardCopy,
+  ListTodo, Inbox, FileSearch, Link2, Download, ClipboardCopy, GripVertical,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 
@@ -179,6 +179,7 @@ function normalizeEstado(e) {
   return e
 }
 const AREAS    = ['Penal', 'Familia', 'Laboral', 'Civil', 'JPL', 'Administrativo', 'Corte de Apelaciones', 'Corte Suprema']
+const DEFAULT_AREA_ORDER = ['Penal', 'Familia', 'Civil', 'Policía Local', 'Consumo']
 
 // ── Lógica de área jurídica ────────────────────────────────────────────────
 function getAreaGroup(area) {
@@ -4155,7 +4156,7 @@ function clienteAvatarColor(isSelected, hasActiveCausas) {
 }
 
 // ── Sidebar de navegación interna ─────────────────────────────────────────
-function CausasSidebar({ causas, clienteActivo, onSelect, busquedaSidebar, setBusquedaSidebar, clienteEstadoMap = {}, listaClientes = [] }) {
+function CausasSidebar({ causas, clienteActivo, onSelect, busquedaSidebar, setBusquedaSidebar, clienteEstadoMap = {}, listaClientes = [], groupBy = 'cliente', areaOrder = DEFAULT_AREA_ORDER, onSelectArea }) {
   const [collapsed, setCollapsed] = useState(false)
   const [panelWidth, setPanelWidth] = useState(() => {
     const s = localStorage.getItem('causas_sidebar_w')
@@ -4241,65 +4242,92 @@ function CausasSidebar({ causas, clienteActivo, onSelect, busquedaSidebar, setBu
       </button>
 
       {!collapsed && <>
-      <div className="px-3 pt-3 pb-3 border-b border-gray-100">
-        <div className="relative">
-          <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-300" />
-          <input
-            value={busquedaSidebar}
-            onChange={e => setBusquedaSidebar(e.target.value)}
-            placeholder="Cliente, RIT…"
-            className="w-full pl-7 pr-2 py-1.5 text-xs border border-gray-200 rounded-lg outline-none focus:border-[#2570ba] transition-all placeholder:text-gray-300"
-          />
-        </div>
-      </div>
-      <nav className="flex-1 overflow-y-auto py-2">
-        <button onClick={() => onSelect(null)}
-          className={`w-full flex items-center justify-between px-4 py-2 text-xs font-semibold transition-colors ${
-            clienteActivo === null ? 'bg-[#2570BA] text-white' : 'text-gray-700 hover:bg-gray-50'
-          }`}>
-          <div className="flex items-center gap-2">
-            <Scale size={12} className={clienteActivo === null ? 'text-white/70' : 'text-gray-400'} />
-            <span>Todas las causas</span>
+      {groupBy !== 'area' && (
+        <div className="px-3 pt-3 pb-3 border-b border-gray-100">
+          <div className="relative">
+            <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-300" />
+            <input
+              value={busquedaSidebar}
+              onChange={e => setBusquedaSidebar(e.target.value)}
+              placeholder="Cliente, RIT…"
+              className="w-full pl-7 pr-2 py-1.5 text-xs border border-gray-200 rounded-lg outline-none focus:border-[#2570ba] transition-all placeholder:text-gray-300"
+            />
           </div>
-          <span className={`text-[10px] font-medium tabular-nums ${clienteActivo === null ? 'text-white/60' : 'text-gray-400'}`}>
-            {causas.length}
-          </span>
-        </button>
-        <div className="mx-4 my-2 border-t border-gray-100" />
-        {byLetterSidebar.length === 0
-          ? <p className="px-4 py-6 text-[11px] text-gray-400 text-center">Sin resultados</p>
-          : byLetterSidebar.map(([letra, grupo]) => (
-            <div key={letra}>
-              <p className="px-4 pt-3 pb-0.5 text-[9px] font-bold text-gray-300 uppercase tracking-widest">{letra}</p>
-              {grupo.map(c => {
-                const isSelected     = clienteActivo === c.nombre
-                const hasActiveCausas = c.activas > 0
-                const isInactivo    = !hasActiveCausas
-                const avatarBg      = clienteAvatarColor(isSelected, hasActiveCausas)
-                return (
-                  <button key={c.nombre} onClick={() => onSelect(c.nombre)}
-                    className={`w-full flex items-center justify-between px-4 py-1.5 text-left transition-colors group ${
-                      isSelected ? 'bg-[#e8f0fb] text-[#1a2e4a]' : isInactivo ? 'text-gray-400 hover:bg-gray-50' : 'text-gray-600 hover:bg-gray-50'
-                    }`}>
-                    <div className="flex items-center gap-2 min-w-0">
-                      <div className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[8px] font-bold flex-shrink-0"
-                        style={{ backgroundColor: avatarBg }}>
-                        {initials(c.nombre)}
-                      </div>
-                      <span className={`text-xs truncate leading-snug ${isInactivo && !isSelected ? 'text-gray-400' : ''}`}>
-                        {c.nombre.split(' ')[0]}
-                      </span>
-                    </div>
-                    <span className={`text-[10px] tabular-nums font-medium flex-shrink-0 ml-1 ${
-                      isSelected ? 'text-[#2570ba]' : 'text-gray-300 group-hover:text-gray-500'
-                    }`}>{c.total}</span>
-                  </button>
-                )
-              })}
+        </div>
+      )}
+      {groupBy === 'area' ? (
+        <nav className="flex-1 overflow-y-auto py-2">
+          <div className="px-4 pb-2 pt-1">
+            <p className="text-[9px] font-bold text-gray-300 uppercase tracking-widest">Áreas</p>
+          </div>
+          {(() => {
+            const areaCounts = {}
+            causas.forEach(c => {
+              const a = c.area || 'Sin área'
+              areaCounts[a] = (areaCounts[a] || 0) + 1
+            })
+            const items = []
+            areaOrder.forEach(a => { if (areaCounts[a]) items.push([a, areaCounts[a]]) })
+            Object.keys(areaCounts).filter(a => !areaOrder.includes(a)).sort((a,b) => a.localeCompare(b,'es')).forEach(a => items.push([a, areaCounts[a]]))
+            return items.map(([area, count]) => (
+              <button key={area} onClick={() => onSelectArea?.(area)}
+                className="w-full flex items-center justify-between px-4 py-2 text-left transition-colors hover:bg-gray-50 group">
+                <span className="text-xs text-gray-600 group-hover:text-gray-900">{area}</span>
+                <span className="text-[10px] tabular-nums font-medium text-gray-300 group-hover:text-gray-500">{count}</span>
+              </button>
+            ))
+          })()}
+        </nav>
+      ) : (
+        <nav className="flex-1 overflow-y-auto py-2">
+          <button onClick={() => onSelect(null)}
+            className={`w-full flex items-center justify-between px-4 py-2 text-xs font-semibold transition-colors ${
+              clienteActivo === null ? 'bg-[#2570BA] text-white' : 'text-gray-700 hover:bg-gray-50'
+            }`}>
+            <div className="flex items-center gap-2">
+              <Scale size={12} className={clienteActivo === null ? 'text-white/70' : 'text-gray-400'} />
+              <span>Todas las causas</span>
             </div>
-          ))
-        }
-      </nav>
+            <span className={`text-[10px] font-medium tabular-nums ${clienteActivo === null ? 'text-white/60' : 'text-gray-400'}`}>
+              {causas.length}
+            </span>
+          </button>
+          <div className="mx-4 my-2 border-t border-gray-100" />
+          {byLetterSidebar.length === 0
+            ? <p className="px-4 py-6 text-[11px] text-gray-400 text-center">Sin resultados</p>
+            : byLetterSidebar.map(([letra, grupo]) => (
+              <div key={letra}>
+                <p className="px-4 pt-3 pb-0.5 text-[9px] font-bold text-gray-300 uppercase tracking-widest">{letra}</p>
+                {grupo.map(c => {
+                  const isSelected     = clienteActivo === c.nombre
+                  const hasActiveCausas = c.activas > 0
+                  const isInactivo    = !hasActiveCausas
+                  const avatarBg      = clienteAvatarColor(isSelected, hasActiveCausas)
+                  return (
+                    <button key={c.nombre} onClick={() => onSelect(c.nombre)}
+                      className={`w-full flex items-center justify-between px-4 py-1.5 text-left transition-colors group ${
+                        isSelected ? 'bg-[#e8f0fb] text-[#1a2e4a]' : isInactivo ? 'text-gray-400 hover:bg-gray-50' : 'text-gray-600 hover:bg-gray-50'
+                      }`}>
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[8px] font-bold flex-shrink-0"
+                          style={{ backgroundColor: avatarBg }}>
+                          {initials(c.nombre)}
+                        </div>
+                        <span className={`text-xs truncate leading-snug ${isInactivo && !isSelected ? 'text-gray-400' : ''}`}>
+                          {c.nombre.split(' ')[0]}
+                        </span>
+                      </div>
+                      <span className={`text-[10px] tabular-nums font-medium flex-shrink-0 ml-1 ${
+                        isSelected ? 'text-[#2570ba]' : 'text-gray-300 group-hover:text-gray-500'
+                      }`}>{c.total}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            ))
+          }
+        </nav>
+      )}
       </>}
     </div>
 
@@ -4399,6 +4427,15 @@ export default function Causas() {
   const setArea     = useCallback((v) => { setAreaRaw(v);     try { v ? localStorage.setItem('filtros_causas.area',      v) : localStorage.removeItem('filtros_causas.area')      } catch {} }, [])
   const setClEstado = useCallback((v) => { setClEstadoRaw(v); try { v ? localStorage.setItem('filtros_causas.clEstado', v) : localStorage.removeItem('filtros_causas.clEstado') } catch {} }, [])
   const [vista, setVista]             = useState('agrupado')
+  const [groupBy, setGroupByRaw]  = useState(() => { try { return localStorage.getItem('causas.groupBy') ?? 'cliente' } catch { return 'cliente' } })
+  const [sortBy, setSortByRaw]    = useState(() => { try { return localStorage.getItem('causas.sortBy')  ?? 'fecha'   } catch { return 'fecha'   } })
+  const [areaOrder, setAreaOrderRaw] = useState(() => {
+    try { const s = localStorage.getItem('causas.areaOrder'); return s ? JSON.parse(s) : DEFAULT_AREA_ORDER } catch { return DEFAULT_AREA_ORDER }
+  })
+  const setGroupBy   = useCallback((v) => { setGroupByRaw(v);   try { localStorage.setItem('causas.groupBy', v) } catch {} }, [])
+  const setSortBy    = useCallback((v) => { setSortByRaw(v);    try { localStorage.setItem('causas.sortBy', v) }  catch {} }, [])
+  const setAreaOrder = useCallback((v) => { setAreaOrderRaw(v); try { localStorage.setItem('causas.areaOrder', JSON.stringify(v)) } catch {} }, [])
+  const dragAreaRef  = useRef(null)
   const [seleccionada, setSeleccionada] = useState(null)
   const [mostrarFiltros, setFiltros]  = useState(false)
   const [formulario, setFormulario]   = useState(null) // null | 'nueva' | objeto causa para editar
@@ -4667,12 +4704,51 @@ export default function Causas() {
       : filtradasSinCliente
   , [filtradasSinCliente, clienteActivo])
 
-  const ordenadas = useMemo(() =>
-    [...filtradas].sort((a, b) => a.cliente_nombre.localeCompare(b.cliente_nombre, 'es'))
-  , [filtradas])
+  const ordenadas = useMemo(() => {
+    const areaRank = a => { const i = areaOrder.indexOf(a); return i === -1 ? areaOrder.length : i }
+    const sortFn = (a, b) => {
+      switch (sortBy) {
+        case 'estado':  return (a.estado  ?? '').localeCompare(b.estado  ?? '', 'es')
+        case 'rit':     return (a.rit     ?? '').localeCompare(b.rit     ?? '', 'es')
+        case 'materia': return (a.materia ?? '').localeCompare(b.materia ?? '', 'es')
+        default: return new Date(b.created_at ?? 0) - new Date(a.created_at ?? 0)
+      }
+    }
+    if (groupBy === 'cliente') {
+      return [...filtradas].sort((a, b) => {
+        const nc = a.cliente_nombre.localeCompare(b.cliente_nombre, 'es')
+        if (nc !== 0) return nc
+        const ra = areaRank(a.area), rb = areaRank(b.area)
+        if (ra !== rb) return ra - rb
+        return sortFn(a, b)
+      })
+    }
+    return [...filtradas].sort(sortFn)
+  }, [filtradas, groupBy, sortBy, areaOrder])
 
-  // Agrupadas A-Z por primera letra del nombre de cliente
   const agrupadas = useMemo(() => {
+    if (groupBy === 'area') {
+      const grupos = {}
+      ordenadas.forEach(c => {
+        const k = c.area || 'Sin área'
+        if (!grupos[k]) grupos[k] = []
+        grupos[k].push(c)
+      })
+      const result = []
+      areaOrder.forEach(a => { if (grupos[a]) result.push([a, grupos[a]]) })
+      Object.keys(grupos).filter(k => !areaOrder.includes(k)).sort((a,b) => a.localeCompare(b,'es')).forEach(k => result.push([k, grupos[k]]))
+      return result
+    }
+    if (groupBy === 'materia') {
+      const grupos = {}
+      ordenadas.forEach(c => {
+        const k = c.materia || 'Sin materia'
+        if (!grupos[k]) grupos[k] = []
+        grupos[k].push(c)
+      })
+      return Object.entries(grupos).sort(([a], [b]) => a.localeCompare(b, 'es'))
+    }
+    // groupBy === 'cliente': A-Z por primera letra
     const grupos = {}
     ordenadas.forEach(c => {
       const letra = c.cliente_nombre.trim().charAt(0).toUpperCase() || '#'
@@ -4680,7 +4756,7 @@ export default function Causas() {
       grupos[letra].push(c)
     })
     return Object.entries(grupos).sort(([a], [b]) => a.localeCompare(b))
-  }, [ordenadas])
+  }, [ordenadas, groupBy, areaOrder])
 
   const isDefaultEstadoFiltro = filtroEstados.length === DEFAULT_ESTADOS_FILTRO.length &&
     DEFAULT_ESTADOS_FILTRO.every(e => filtroEstados.includes(e))
@@ -4738,6 +4814,12 @@ export default function Causas() {
         setBusquedaSidebar={setSidebar}
         clienteEstadoMap={clienteEstadoMap}
         listaClientes={listaClientes}
+        groupBy={groupBy}
+        areaOrder={areaOrder}
+        onSelectArea={area => {
+          const el = document.querySelector(`[data-area="${area}"]`)
+          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        }}
       />
 
       {seleccionada ? (
@@ -4817,13 +4899,33 @@ export default function Causas() {
                     <Layers size={12} />
                   </button>
                 </div>
-                {vista === 'agrupado' && (
+                {vista === 'agrupado' && groupBy === 'cliente' && (
                   <button onClick={() => setExpandTodos(!expandTodos)}
                     className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-gray-500 hover:text-gray-800 border border-gray-200 rounded-lg transition-colors">
                     {expandTodos ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
                     {expandTodos ? 'Colapsar todo' : 'Expandir todo'}
                   </button>
                 )}
+              </div>
+              <div className="flex items-center gap-3 mt-2">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Agrupar</span>
+                  <div className="flex items-center gap-0.5 border border-gray-200 rounded-lg p-0.5">
+                    {[['cliente','Cliente'],['area','Área'],['materia','Materia']].map(([v,l]) => (
+                      <button key={v} onClick={() => setGroupBy(v)}
+                        className={`px-2 py-1 text-[11px] rounded transition-colors no-touch-min ${groupBy===v ? 'bg-[#2570BA] text-white' : 'text-gray-500 hover:text-gray-700'}`}>{l}</button>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Ordenar</span>
+                  <div className="flex items-center gap-0.5 border border-gray-200 rounded-lg p-0.5">
+                    {[['fecha','Fecha'],['estado','Estado'],['rit','RIT'],['materia','Materia']].map(([v,l]) => (
+                      <button key={v} onClick={() => setSortBy(v)}
+                        className={`px-2 py-1 text-[11px] rounded transition-colors no-touch-min ${sortBy===v ? 'bg-[#2570BA] text-white' : 'text-gray-500 hover:text-gray-700'}`}>{l}</button>
+                    ))}
+                  </div>
+                </div>
               </div>
               {mostrarFiltros && (
                 <div className="flex items-start gap-4 mt-3 pt-3 border-t border-gray-100 flex-wrap">
@@ -5217,6 +5319,56 @@ export default function Causas() {
                           rightContent={<><AreaBadge area={c.area} /><EstadoBadge estado={c.estado} /></>}
                           onClick={() => { setSeleccionada(seleccionada?.id === c.id ? null : c); setFormulario(null) }}
                         />
+                      ))}
+                    </div>
+                  ) : groupBy === 'area' ? (
+                    <div className="py-2">
+                      {agrupadas.map(([area, lista], idx) => (
+                        <div key={area} data-area={area}
+                          draggable
+                          onDragStart={() => { dragAreaRef.current = idx }}
+                          onDragOver={e => e.preventDefault()}
+                          onDrop={() => {
+                            const from = dragAreaRef.current
+                            if (from == null || from === idx) return
+                            const next = [...agrupadas]
+                            const [moved] = next.splice(from, 1)
+                            next.splice(idx, 0, moved)
+                            setAreaOrder(next.map(([a]) => a))
+                            dragAreaRef.current = null
+                          }}
+                          className="mb-3">
+                          <div className="flex items-center gap-2 px-6 pt-3 pb-1.5 cursor-grab active:cursor-grabbing select-none">
+                            <GripVertical size={13} className="text-gray-300 flex-shrink-0" />
+                            <span className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">{area}</span>
+                            <span className="text-[11px] text-gray-300 ml-1">({lista.length})</span>
+                          </div>
+                          <div className="px-4 space-y-0.5">
+                            {lista.map(c => (
+                              <CausaAccordionCard key={c.id} rit={c.rit} ruc={c.ruc} materia={c.materia}
+                                rightContent={<><span className="text-[10px] text-gray-400 truncate max-w-[90px] uppercase">{c.cliente_nombre}</span><EstadoBadge estado={c.estado} /></>}
+                                onClick={() => { setSeleccionada(seleccionada?.id === c.id ? null : c); setFormulario(null) }} />
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : groupBy === 'materia' ? (
+                    <div className="py-2">
+                      {agrupadas.map(([materia, lista]) => (
+                        <div key={materia} className="mb-3">
+                          <div className="flex items-center gap-2 px-6 pt-3 pb-1.5">
+                            <span className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">{materia}</span>
+                            <span className="text-[11px] text-gray-300 ml-1">({lista.length})</span>
+                          </div>
+                          <div className="px-4 space-y-0.5">
+                            {lista.map(c => (
+                              <CausaAccordionCard key={c.id} rit={c.rit} ruc={c.ruc} materia={null}
+                                rightContent={<><span className="text-[10px] text-gray-400 truncate max-w-[90px] uppercase">{c.cliente_nombre}</span><AreaBadge area={c.area} /><EstadoBadge estado={c.estado} /></>}
+                                onClick={() => { setSeleccionada(seleccionada?.id === c.id ? null : c); setFormulario(null) }} />
+                            ))}
+                          </div>
+                        </div>
                       ))}
                     </div>
                   ) : (() => {
