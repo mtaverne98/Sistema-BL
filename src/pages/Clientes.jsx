@@ -741,6 +741,7 @@ export default function Clientes() {
   const [clienteHasActiveCausasSet, setClienteHasActiveCausasSet] = useState(new Set())
   const [todasCausas, setTodasCausas]           = useState([])
   const [expandedClientes, setExpandedClientes] = useState(new Set())
+  const [sortByLista,     setSortByLista]       = useState('rit')
   const [formulario, setFormulario] = useState(null) // null | 'nuevo' | objeto cliente
   const [formError, setFormError] = useState(null)   // error del formulario modal
   const [deleteModal, setDeleteModal] = useState(null) // null | { cliente, causasCount }
@@ -767,7 +768,7 @@ export default function Clientes() {
       .then(({ data }) => {
         setClienteHasActiveCausasSet(new Set((data || []).map(c => c.cliente_id).filter(Boolean)))
       })
-    supabase.from('causas').select('id, rit, ruc, materia, estado, cliente_id').order('rit', { ascending: true })
+    supabase.from('causas').select('id, rit, ruc, materia, estado, area, cliente_id').order('rit', { ascending: true })
       .then(({ data }) => setTodasCausas(data || []))
   }, [fetchClientes])
 
@@ -1226,6 +1227,49 @@ export default function Clientes() {
                         `${causasCliente.length} causa${causasCliente.length !== 1 ? 's' : ''}`,
                         c.rut ? c.rut : null,
                       ].filter(Boolean).join(' · ')
+
+                      const sortedCausas = [...causasCliente].sort((a, b) => {
+                        if (sortByLista === 'estado')  return (a.estado  || '').localeCompare(b.estado  || '', 'es')
+                        if (sortByLista === 'materia') return (a.materia || '').localeCompare(b.materia || '', 'es')
+                        if (sortByLista === 'area')    return (a.area || 'Sin área').localeCompare(b.area || 'Sin área', 'es')
+                        return 0 // rit: orden original de la query
+                      })
+
+                      const causaCard = (ca) => (
+                        <CausaAccordionCard
+                          key={ca.id}
+                          rit={ca.rit}
+                          ruc={ca.ruc}
+                          materia={ca.materia}
+                          rightContent={
+                            <div className="flex items-center gap-1.5">
+                              {ca.area && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-indigo-50 text-indigo-500 border border-indigo-100">
+                                  {ca.area}
+                                </span>
+                              )}
+                              <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                                ['Abierta', 'Revisar'].includes(ca.estado)
+                                  ? 'bg-emerald-50 text-emerald-600' : 'bg-gray-100 text-gray-400'
+                              }`}>
+                                {ca.estado || '—'}
+                              </span>
+                            </div>
+                          }
+                          onClick={() => {
+                            setActiveCausa({
+                              id:             ca.id,
+                              rit:            ca.rit || null,
+                              ruc:            ca.ruc || null,
+                              materia:        ca.materia || '',
+                              cliente_nombre: c.nombre || '',
+                              cliente_id:     c.id,
+                            })
+                            navigate('/causas')
+                          }}
+                        />
+                      )
+
                       return (
                         <ClienteAccordionRow
                           key={c.id}
@@ -1239,33 +1283,38 @@ export default function Clientes() {
                         >
                           {causasCliente.length === 0 ? (
                             <p className="px-4 py-2 text-[11px] text-gray-300 italic">Sin causas registradas</p>
-                          ) : causasCliente.map(ca => (
-                            <CausaAccordionCard
-                              key={ca.id}
-                              rit={ca.rit}
-                              ruc={ca.ruc}
-                              materia={ca.materia}
-                              rightContent={
-                                <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
-                                  ['Abierta', 'Revisar'].includes(ca.estado)
-                                    ? 'bg-blue-50 text-blue-500' : 'bg-gray-100 text-gray-400'
-                                }`}>
-                                  {ca.estado || '—'}
-                                </span>
+                          ) : (<>
+                            {causasCliente.length > 1 && (
+                              <div className="flex justify-end px-1 pt-1 pb-0.5">
+                                <div className="flex items-center gap-0.5 bg-gray-100 rounded-lg p-0.5">
+                                  {[['rit','RIT'],['estado','Estado'],['materia','Materia'],['area','Área']].map(([val,lbl]) => (
+                                    <button
+                                      key={val}
+                                      onClick={e => { e.stopPropagation(); setSortByLista(val) }}
+                                      className={`text-[10px] font-medium px-2 py-0.5 rounded-md transition-colors no-touch-min ${sortByLista === val ? 'bg-white text-[#2570BA] shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+                                    >
+                                      {lbl}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                            {sortByLista === 'area' ? (() => {
+                              const grupos = {}
+                              for (const ca of sortedCausas) {
+                                const g = ca.area || 'Sin área'
+                                if (!grupos[g]) grupos[g] = []
+                                grupos[g].push(ca)
                               }
-                              onClick={() => {
-                                setActiveCausa({
-                                  id:             ca.id,
-                                  rit:            ca.rit || null,
-                                  ruc:            ca.ruc || null,
-                                  materia:        ca.materia || '',
-                                  cliente_nombre: c.nombre || '',
-                                  cliente_id:     c.id,
-                                })
-                                navigate('/causas')
-                              }}
-                            />
-                          ))}
+                              return Object.entries(grupos).map(([grupo, items], gi) => (
+                                <div key={grupo}>
+                                  {gi > 0 && <div className="border-t border-dashed border-gray-100 my-1" />}
+                                  <p className="text-[9px] font-bold text-gray-300 uppercase tracking-widest px-4 pt-1.5 pb-0.5">{grupo}</p>
+                                  {items.map(causaCard)}
+                                </div>
+                              ))
+                            })() : sortedCausas.map(causaCard)}
+                          </>)}
                         </ClienteAccordionRow>
                       )
                     })}
