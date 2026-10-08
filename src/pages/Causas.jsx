@@ -208,7 +208,7 @@ const ETAPAS = {
 }
 
 const TIPOS_RECURSO = [
-  'Apelación', 'Protección', 'Amparo', 'Nulidad', 'Queja', 'Casación', 'Reposición', 'Otro',
+  'Apelación', 'Recurso de nulidad', 'Amparo', 'Otro recurso',
 ]
 
 const PARTE_OPCIONES = {
@@ -1231,7 +1231,7 @@ function ExportarFichaModal({ causa, audiencias, siauRows, pjudRows, tareas, seg
 }
 
 // ── CausaView — Vista completa de expediente jurídico ──────────────────────
-function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCliente }) {
+function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCliente, onNewVinculada, onSelectCausa }) {
   const navigate = useNavigate()
   const { setActiveCausa, activeTab, setActiveTab } = useNavigation()
 
@@ -1403,6 +1403,16 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
   const [currentWeekRev,  setCurrentWeekRev]  = useState(undefined) // undefined=loading, null=none
   const [weekRevDraft,    setWeekRevDraft]    = useState('')
   const [weekRevSaving,   setWeekRevSaving]   = useState(false)
+
+  // Recursos y apelaciones vinculadas a esta causa
+  const [recursosVinculados, setRecursosVinculados] = useState([])
+  useEffect(() => {
+    if (!causa?.rit) { setRecursosVinculados([]); return }
+    supabase.from('causas')
+      .select('id, rit, materia, estado, area, tipo_recurso')
+      .eq('causa_origen_rit', causa.rit)
+      .then(({ data }) => setRecursosVinculados(data || []))
+  }, [causa?.rit, causa?.id])
 
   function showToast(msg) {
     setToastMsg(msg)
@@ -2040,6 +2050,13 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
           {/* Accesos directos cross-módulo */}
           <div className="flex items-center gap-1">
             <button
+              onClick={onNewVinculada}
+              title="Crear recurso o apelación vinculada a esta causa"
+              className="flex items-center gap-1 text-[11px] font-medium text-[#2570ba] hover:bg-blue-50 border border-[#2570ba]/30 px-2 py-1 rounded-lg transition-colors"
+            >
+              <Link2 size={11} /> Vinculada
+            </button>
+            <button
               onClick={() => navigate('/pjud')}
               title="Ver movimientos PJUD de esta causa"
               className="flex items-center gap-1 text-[11px] font-medium text-gray-400 hover:text-[#2570ba] hover:bg-blue-50 px-2 py-1 rounded-lg transition-colors"
@@ -2504,6 +2521,42 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                 </button>
               </div>
             </div>
+
+            {/* ── CAUSA DE ORIGEN + RECURSOS VINCULADOS ────────────────── */}
+            {(causa.causa_origen_rit || recursosVinculados.length > 0) && (
+              <div className="flex-shrink-0 mx-4 mb-2 rounded-xl border border-[#E2E5EA] bg-white px-4 py-2.5 flex flex-col gap-1.5">
+                {causa.causa_origen_rit && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest whitespace-nowrap">Causa origen</span>
+                    <button
+                      onClick={() => onSelectCausa?.({ byRit: causa.causa_origen_rit })}
+                      className="text-[11px] font-mono text-[#2570ba] hover:underline"
+                    >
+                      {causa.causa_origen_rit}
+                    </button>
+                    {causa.tipo_recurso && <span className="text-[10px] text-gray-400">{causa.tipo_recurso}</span>}
+                  </div>
+                )}
+                {recursosVinculados.length > 0 && (
+                  <div className="flex items-start gap-2">
+                    <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest whitespace-nowrap mt-0.5">Recursos</span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {recursosVinculados.map(r => (
+                        <button key={r.id}
+                          onClick={() => onSelectCausa?.(r.id)}
+                          className="flex items-center gap-1.5 text-[10px] px-2 py-0.5 rounded-full border border-[#2570ba]/20 bg-blue-50 text-[#2570ba] hover:bg-blue-100 transition-colors">
+                          {r.tipo_recurso && <span className="font-medium">{r.tipo_recurso}</span>}
+                          {r.rit && <span className="font-mono opacity-70">{r.rit}</span>}
+                          <span className={`px-1.5 py-px rounded text-[9px] font-medium ${
+                            ['Abierta','Revisar'].includes(r.estado) ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'
+                          }`}>{r.estado}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* ── DOS COLUMNAS ─────────────────────────────────────────── */}
             <div className="flex flex-1 min-h-0 bl-causa-cols">
@@ -4836,6 +4889,21 @@ export default function Causas() {
               setSeleccionada(null)
               setCliente(nombre)
               setBusqueda('')
+            }}
+            onNewVinculada={() => setFormulario({
+              cliente_id:       seleccionada.cliente_id,
+              cliente_nombre:   seleccionada.cliente_nombre,
+              area:             'Corte de Apelaciones',
+              parte:            'Recurrente',
+              causa_origen_rit: seleccionada.rit || '',
+              tipo_recurso:     'Apelación',
+              estado:           'Abierta',
+            })}
+            onSelectCausa={ref => {
+              const found = ref?.byRit
+                ? causas.find(c => c.rit === ref.byRit)
+                : causas.find(c => c.id === ref)
+              if (found) { setSeleccionada(found); setFormulario(null) }
             }}
           />
           {formulario && (

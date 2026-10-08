@@ -319,7 +319,7 @@ function FichaCliente({ cliente, onClose, onEstadoCambiar, onInlineSave, onReque
     setLoading(true)
     supabase
       .from('causas')
-      .select('id, rit, ruc, materia, tribunal, fiscalia, estado, area, parte, etapa_procesal')
+      .select('id, rit, ruc, materia, tribunal, fiscalia, estado, area, parte, etapa_procesal, causa_origen_rit, tipo_recurso')
       .eq('cliente_id', cliente.id)
       .then(async ({ data }) => {
         const list = data || []
@@ -558,7 +558,27 @@ function FichaCliente({ cliente, onClose, onEstadoCambiar, onInlineSave, onReque
               ))
             }
 
-            return sorted.map(renderCard)
+            // Jerarquía: causas con causa_origen_rit aparecen indentadas bajo su origen
+            const ritSet = new Set(sorted.map(c => c.rit).filter(Boolean))
+            const childrenByRit = {}
+            const roots = []
+            for (const c of sorted) {
+              if (c.causa_origen_rit && ritSet.has(c.causa_origen_rit)) {
+                if (!childrenByRit[c.causa_origen_rit]) childrenByRit[c.causa_origen_rit] = []
+                childrenByRit[c.causa_origen_rit].push(c)
+              } else {
+                roots.push(c)
+              }
+            }
+            return roots.flatMap(c => [
+              <div key={c.id}>{renderCard(c)}</div>,
+              ...(childrenByRit[c.rit] || []).map(child => (
+                <div key={child.id} className="ml-5 relative">
+                  <div className="absolute -left-3 top-5 w-3 border-l-2 border-b-2 border-dashed border-gray-200 rounded-bl-lg h-4" />
+                  <div className="opacity-90">{renderCard(child)}</div>
+                </div>
+              )),
+            ])
           })()}
         </div>
 
@@ -768,7 +788,7 @@ export default function Clientes() {
       .then(({ data }) => {
         setClienteHasActiveCausasSet(new Set((data || []).map(c => c.cliente_id).filter(Boolean)))
       })
-    supabase.from('causas').select('id, rit, ruc, materia, estado, area, cliente_id').order('rit', { ascending: true })
+    supabase.from('causas').select('id, rit, ruc, materia, estado, area, cliente_id, causa_origen_rit, tipo_recurso').order('rit', { ascending: true })
       .then(({ data }) => setTodasCausas(data || []))
   }, [fetchClientes])
 
@@ -1313,7 +1333,28 @@ export default function Clientes() {
                                   {items.map(causaCard)}
                                 </div>
                               ))
-                            })() : sortedCausas.map(causaCard)}
+                            })() : (() => {
+                              const rits = new Set(sortedCausas.map(ca => ca.rit).filter(Boolean))
+                              const childrenMap = {}
+                              const rootCausas = []
+                              for (const ca of sortedCausas) {
+                                if (ca.causa_origen_rit && rits.has(ca.causa_origen_rit)) {
+                                  if (!childrenMap[ca.causa_origen_rit]) childrenMap[ca.causa_origen_rit] = []
+                                  childrenMap[ca.causa_origen_rit].push(ca)
+                                } else {
+                                  rootCausas.push(ca)
+                                }
+                              }
+                              return rootCausas.flatMap(ca => [
+                                <div key={ca.id}>{causaCard(ca)}</div>,
+                                ...(childrenMap[ca.rit] || []).map(child => (
+                                  <div key={child.id} className="ml-4 relative">
+                                    <div className="absolute -left-2.5 top-4 w-2.5 border-l-2 border-b-2 border-dashed border-gray-200 rounded-bl-lg h-3.5" />
+                                    <div className="opacity-90">{causaCard(child)}</div>
+                                  </div>
+                                )),
+                              ])
+                            })()}
                           </>)}
                         </ClienteAccordionRow>
                       )
