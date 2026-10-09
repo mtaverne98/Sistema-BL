@@ -4625,7 +4625,7 @@ export default function Causas() {
     setGuardando(true)
     const payload = mapToDb(form)
 
-    if (formulario === 'nueva') {
+    if (formulario === 'nueva' || (formulario && !formulario.id)) {
       const { data, error: err } = await supabase.from('causas').insert([payload]).select().single()
       if (err) { alert('Error al guardar: ' + err.message) }
       else {
