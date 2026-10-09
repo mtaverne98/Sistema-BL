@@ -837,8 +837,18 @@ function FormCausa({ inicial, onClose, onGuardar, guardando, clientes = [], onCr
           <FormInput label="Caratulado" value={form.materia} onChange={v => set('materia', v)} placeholder="González con Empresa S.A." />
           <SelectDropdown label="Tipo de recurso" value={form.tipo_recurso} onChange={v => set('tipo_recurso', v)} options={TIPOS_RECURSO} placeholder="Seleccionar tipo…" clearable />
           <SectionDivider label="Causa de origen" />
-          <CausaOrigenSelector value={form.causa_origen_rit} onChange={v => set('causa_origen_rit', v)}
-            causas={causas.filter(c => getAreaGroup(c.area) !== 'corte')} />
+          {form._origenFixed ? (
+            <div>
+              <label className="block text-[11px] font-medium text-gray-500 mb-1">Causa de origen vinculada</label>
+              <div className="w-full flex items-center gap-2 px-3 py-2 text-xs border border-gray-200 rounded-lg bg-gray-50 text-gray-500 cursor-not-allowed">
+                <span className="font-mono text-violet-500">{form.causa_origen_rit}</span>
+                <span className="text-gray-400 text-[10px]">(no editable)</span>
+              </div>
+            </div>
+          ) : (
+            <CausaOrigenSelector value={form.causa_origen_rit} onChange={v => set('causa_origen_rit', v)}
+              causas={causas.filter(c => getAreaGroup(c.area) !== 'corte')} />
+          )}
         </>)}
 
         {/* ── Proceso (todas las áreas) ── */}
@@ -1409,7 +1419,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
   useEffect(() => {
     if (!causa?.rit) { setRecursosVinculados([]); return }
     supabase.from('causas')
-      .select('id, rit, materia, estado, area, tipo_recurso')
+      .select('id, rit, materia, estado, area, tipo_recurso, tribunal')
       .eq('causa_origen_rit', causa.rit)
       .then(({ data }) => setRecursosVinculados(data || []))
   }, [causa?.rit, causa?.id])
@@ -2054,7 +2064,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
               title="Crear recurso o apelación vinculada a esta causa"
               className="flex items-center gap-1 text-[11px] font-medium text-[#2570ba] hover:bg-blue-50 border border-[#2570ba]/30 px-2 py-1 rounded-lg transition-colors"
             >
-              <Link2 size={11} /> Vinculada
+              <Plus size={11} /> Causa vinculada
             </button>
             <button
               onClick={() => navigate('/pjud')}
@@ -2522,39 +2532,49 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
               </div>
             </div>
 
-            {/* ── CAUSA DE ORIGEN + RECURSOS VINCULADOS ────────────────── */}
-            {(causa.causa_origen_rit || recursosVinculados.length > 0) && (
-              <div className="flex-shrink-0 mx-4 mb-2 rounded-xl border border-[#E2E5EA] bg-white px-4 py-2.5 flex flex-col gap-1.5">
-                {causa.causa_origen_rit && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest whitespace-nowrap">Causa origen</span>
-                    <button
-                      onClick={() => onSelectCausa?.({ byRit: causa.causa_origen_rit })}
-                      className="text-[11px] font-mono text-[#2570ba] hover:underline"
+            {/* ── CAUSA DE ORIGEN ──────────────────────────────────────── */}
+            {causa.causa_origen_rit && (
+              <div className="flex-shrink-0 mx-4 mb-1 rounded-xl border border-[#E2E5EA] bg-white px-4 py-2 flex items-center gap-2">
+                <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest whitespace-nowrap">Causa origen</span>
+                <button
+                  onClick={() => onSelectCausa?.({ byRit: causa.causa_origen_rit })}
+                  className="font-mono text-[11px] text-[#2570ba] hover:underline"
+                >
+                  {causa.causa_origen_rit}
+                </button>
+                {causa.tipo_recurso && (
+                  <span className="text-[10px] px-1.5 py-px rounded bg-blue-50 text-[#2570ba] font-medium">{causa.tipo_recurso}</span>
+                )}
+              </div>
+            )}
+
+            {/* ── RECURSOS Y APELACIONES ───────────────────────────────── */}
+            {recursosVinculados.length > 0 && (
+              <div className="flex-shrink-0 mx-4 mb-2 rounded-xl border border-[#E2E5EA] bg-white overflow-hidden">
+                <div className="px-4 py-1.5 border-b border-[#F0F2F5] bg-[#F7F8FA]">
+                  <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Recursos y apelaciones</span>
+                </div>
+                <div className="divide-y divide-[#F0F2F5]">
+                  {recursosVinculados.map(r => (
+                    <button key={r.id}
+                      onClick={() => onSelectCausa?.(r.id)}
+                      className="w-full flex items-center gap-3 px-4 py-2 hover:bg-[#F7F8FA] transition-colors text-left"
                     >
-                      {causa.causa_origen_rit}
+                      {r.tipo_recurso && (
+                        <span className="text-[10px] px-1.5 py-px rounded bg-blue-50 text-[#2570ba] font-medium whitespace-nowrap flex-shrink-0">{r.tipo_recurso}</span>
+                      )}
+                      {r.rit && (
+                        <span className="font-mono text-[11px] text-gray-700 flex-shrink-0">{r.rit}</span>
+                      )}
+                      {r.tribunal && (
+                        <span className="text-[10px] text-gray-400 truncate flex-1">{r.tribunal}</span>
+                      )}
+                      <span className={`text-[9px] px-1.5 py-px rounded font-medium flex-shrink-0 ${
+                        ['Abierta','Revisar'].includes(r.estado) ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'
+                      }`}>{r.estado}</span>
                     </button>
-                    {causa.tipo_recurso && <span className="text-[10px] text-gray-400">{causa.tipo_recurso}</span>}
-                  </div>
-                )}
-                {recursosVinculados.length > 0 && (
-                  <div className="flex items-start gap-2">
-                    <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest whitespace-nowrap mt-0.5">Recursos</span>
-                    <div className="flex flex-wrap gap-1.5">
-                      {recursosVinculados.map(r => (
-                        <button key={r.id}
-                          onClick={() => onSelectCausa?.(r.id)}
-                          className="flex items-center gap-1.5 text-[10px] px-2 py-0.5 rounded-full border border-[#2570ba]/20 bg-blue-50 text-[#2570ba] hover:bg-blue-100 transition-colors">
-                          {r.tipo_recurso && <span className="font-medium">{r.tipo_recurso}</span>}
-                          {r.rit && <span className="font-mono opacity-70">{r.rit}</span>}
-                          <span className={`px-1.5 py-px rounded text-[9px] font-medium ${
-                            ['Abierta','Revisar'].includes(r.estado) ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'
-                          }`}>{r.estado}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                  ))}
+                </div>
               </div>
             )}
 
@@ -4898,6 +4918,7 @@ export default function Causas() {
               causa_origen_rit: seleccionada.rit || '',
               tipo_recurso:     'Apelación',
               estado:           'Abierta',
+              _origenFixed:     true,
             })}
             onSelectCausa={ref => {
               const found = ref?.byRit
