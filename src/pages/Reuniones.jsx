@@ -424,9 +424,11 @@ function HistorialItem({ reunion, temas, tareas, onDeleteReunion }) {
 
   return (
     <div className="border border-gray-100 rounded-2xl overflow-hidden">
-      <button
+      <div
         onClick={() => setOpen(o => !o)}
-        className={`w-full flex items-center gap-4 px-5 py-4 text-left transition-colors ${
+        role="button" tabIndex={0}
+        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') setOpen(o => !o) }}
+        className={`w-full flex items-center gap-4 px-5 py-4 text-left transition-colors cursor-pointer select-none ${
           open ? 'bg-[#1a2e4a]/[0.03]' : 'bg-white hover:bg-gray-50'
         }`}>
 
@@ -453,13 +455,13 @@ function HistorialItem({ reunion, temas, tareas, onDeleteReunion }) {
           </span>
           {onDeleteReunion && (
             <button onClick={e => { e.stopPropagation(); onDeleteReunion(reunion) }}
-              className="p-1 rounded-lg text-gray-300 hover:text-red-400 hover:bg-red-50 transition-colors">
+              className="p-1 rounded-lg text-gray-300 hover:text-red-400 hover:bg-red-50 transition-colors no-touch-min">
               <Trash2 size={13}/>
             </button>
           )}
           <ChevronDown size={14} className={`text-gray-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}/>
         </div>
-      </button>
+      </div>
 
       {open && (
         <div className="border-t border-gray-100 bg-[#fafafa] px-5 py-4 space-y-3">

@@ -172,6 +172,87 @@ function DilInlineDate({ id, field, value, placeholder = '—', ec, setEc, commi
   )
 }
 
+// ── Entrevistas: componentes de edición inline (nivel módulo para evitar
+//    desmonte/remonte al cambiar cellDraft en el padre) ──────────────────────
+const ENT_TIPOS = ['Entrevista', 'Llamada', 'Reunión']
+const ENT_TIPO_CLS = {
+  'Entrevista': 'bg-violet-50 text-violet-700 border-violet-200',
+  'Llamada':    'bg-blue-50 text-blue-700 border-blue-200',
+  'Reunión':    'bg-teal-50 text-teal-700 border-teal-200',
+}
+
+function EntInlineText({ id, field, value, placeholder = '—', multiline = false, ec, setEc, commit }) {
+  const active = ec?.id === id && ec?.field === field
+  const [draft, setDraft] = useState(value ?? '')
+  useEffect(() => { if (!active) setDraft(value ?? '') }, [value, active]) // eslint-disable-line
+  if (active) {
+    const props = {
+      autoFocus: true,
+      value: draft,
+      onChange: e => setDraft(e.target.value),
+      onFocus: e => e.target.select(),
+      onBlur: () => commit(id, field, draft),
+      onKeyDown: e => {
+        if (!multiline && e.key === 'Enter') { e.preventDefault(); commit(id, field, draft) }
+        if (e.key === 'Escape') { setDraft(value ?? ''); setEc(null) }
+      },
+      className: 'w-full text-xs text-gray-700 bg-white border border-blue-300 rounded px-1.5 py-0.5 outline-none',
+    }
+    return multiline ? <textarea rows={4} {...props} /> : <input {...props} />
+  }
+  return (
+    <span onClick={() => setEc({ id, field })}
+      className={`cursor-text text-xs ${value ? 'text-gray-700' : 'text-gray-300 italic'} hover:bg-gray-50 rounded px-0.5`}>
+      {value || placeholder}
+    </span>
+  )
+}
+
+function EntInlineSelect({ id, field, value, ec, setEc, commit }) {
+  const active = ec?.id === id && ec?.field === field
+  const [draft, setDraft] = useState(value ?? 'Entrevista')
+  useEffect(() => { if (!active) setDraft(value ?? 'Entrevista') }, [value, active]) // eslint-disable-line
+  if (active) {
+    return (
+      <select autoFocus value={draft}
+        onChange={e => setDraft(e.target.value)}
+        onBlur={() => commit(id, field, draft)}
+        className="text-xs text-gray-700 bg-white border border-blue-300 rounded px-1.5 py-0.5 outline-none">
+        {ENT_TIPOS.map(t => <option key={t} value={t}>{t}</option>)}
+      </select>
+    )
+  }
+  return (
+    <span onClick={() => { setEc({ id, field }); setDraft(value ?? 'Entrevista') }}
+      className={`cursor-pointer inline-flex items-center px-1.5 py-0.5 rounded-full border text-[10px] font-semibold ${ENT_TIPO_CLS[value] || 'bg-gray-50 text-gray-500 border-gray-200'}`}>
+      {value || 'Sin tipo'}
+    </span>
+  )
+}
+
+function EntInlineDate({ id, field, value, ec, setEc, commit }) {
+  const active = ec?.id === id && ec?.field === field
+  const [draft, setDraft] = useState(value ?? '')
+  useEffect(() => { if (!active) setDraft(value ?? '') }, [value, active]) // eslint-disable-line
+  const fmt = iso => { if (!iso) return '—'; const [y,m,d] = iso.split('-'); return `${d}/${m}/${y}` }
+  if (active) {
+    return (
+      <input autoFocus type="date" value={draft}
+        onChange={e => setDraft(e.target.value)}
+        onBlur={() => commit(id, field, draft)}
+        onKeyDown={e => { if (e.key === 'Escape') { setDraft(value ?? ''); setEc(null) } }}
+        className="text-xs text-gray-700 bg-white border border-blue-300 rounded px-1.5 py-0.5 outline-none"
+      />
+    )
+  }
+  return (
+    <span onClick={() => setEc({ id, field })}
+      className={`cursor-text text-xs ${value ? 'text-gray-700' : 'text-gray-300 italic'} hover:bg-gray-50 rounded px-0.5`}>
+      {fmt(value)}
+    </span>
+  )
+}
+
 // Mapeo de estados legacy → nuevo estándar (para filtrado sin esperar SQL)
 function normalizeEstado(e) {
   if (e === 'En tramitación' || e === 'Administrativa') return 'Abierta'
@@ -3605,13 +3686,6 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
             return `${d}/${m}/${y}`
           }
 
-          const TIPOS = ['Entrevista', 'Llamada', 'Reunión']
-          const tipoChipCls = {
-            'Entrevista': 'bg-violet-50 text-violet-700 border-violet-200',
-            'Llamada':    'bg-blue-50 text-blue-700 border-blue-200',
-            'Reunión':    'bg-teal-50 text-teal-700 border-teal-200',
-          }
-
           const filtered = entrevistas.filter(e => {
             if (entFilter === 'entrevistas') return e.tipo === 'Entrevista'
             if (entFilter === 'llamadas')    return e.tipo === 'Llamada'
@@ -3675,81 +3749,6 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
             }
           }
 
-          function EntInlineText({ id, field, value, placeholder = '—', multiline = false }) {
-            const isEdit = editingCell?.id === id && editingCell?.field === field
-            if (isEdit) {
-              const props = {
-                autoFocus: true,
-                value: cellDraft,
-                onChange: e => setCellDraft(e.target.value),
-                onBlur: () => commitEntField(id, field, cellDraft),
-                onKeyDown: e => {
-                  if (!multiline && e.key === 'Enter') { e.preventDefault(); commitEntField(id, field, cellDraft) }
-                  if (e.key === 'Escape') setEditingCell(null)
-                },
-                className: 'w-full text-xs text-gray-700 bg-white border border-blue-300 rounded px-1.5 py-0.5 outline-none',
-              }
-              return multiline ? <textarea rows={4} {...props} /> : <input {...props} />
-            }
-            return (
-              <span
-                onClick={() => { setEditingCell({ id, field }); setCellDraft(value ?? '') }}
-                className={`cursor-text text-xs ${value ? 'text-gray-700' : 'text-gray-300 italic'} hover:bg-gray-50 rounded px-0.5`}
-              >
-                {value || placeholder}
-              </span>
-            )
-          }
-
-          function EntInlineSelect({ id, field, value }) {
-            const isEdit = editingCell?.id === id && editingCell?.field === field
-            if (isEdit) {
-              return (
-                <select
-                  autoFocus
-                  value={cellDraft}
-                  onChange={e => setCellDraft(e.target.value)}
-                  onBlur={() => commitEntField(id, field, cellDraft)}
-                  className="text-xs text-gray-700 bg-white border border-blue-300 rounded px-1.5 py-0.5 outline-none"
-                >
-                  {TIPOS.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
-              )
-            }
-            return (
-              <span
-                onClick={() => { setEditingCell({ id, field }); setCellDraft(value ?? 'Entrevista') }}
-                className={`cursor-pointer inline-flex items-center px-1.5 py-0.5 rounded-full border text-[10px] font-semibold ${tipoChipCls[value] || 'bg-gray-50 text-gray-500 border-gray-200'}`}
-              >
-                {value || 'Sin tipo'}
-              </span>
-            )
-          }
-
-          function EntInlineDate({ id, field, value }) {
-            const isEdit = editingCell?.id === id && editingCell?.field === field
-            if (isEdit) {
-              return (
-                <input
-                  autoFocus type="date"
-                  value={cellDraft}
-                  onChange={e => setCellDraft(e.target.value)}
-                  onBlur={() => commitEntField(id, field, cellDraft)}
-                  onKeyDown={e => { if (e.key === 'Escape') setEditingCell(null) }}
-                  className="text-xs text-gray-700 bg-white border border-blue-300 rounded px-1.5 py-0.5 outline-none"
-                />
-              )
-            }
-            return (
-              <span
-                onClick={() => { setEditingCell({ id, field }); setCellDraft(value ?? '') }}
-                className={`cursor-text text-xs ${value ? 'text-gray-700' : 'text-gray-300 italic'} hover:bg-gray-50 rounded px-0.5`}
-              >
-                {value ? fmtEntFecha(value) : '—'}
-              </span>
-            )
-          }
-
           const FILTERS = [
             { key: 'todas',       label: 'Todas' },
             { key: 'entrevistas', label: 'Entrevistas' },
@@ -3802,7 +3801,7 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                           >
                             <ChevronRight size={14} className={`text-gray-300 flex-shrink-0 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
                             <span className="text-[11px] text-gray-400 tabular-nums flex-shrink-0 w-16">{fmtEntFecha(ent.fecha)}</span>
-                            <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full border text-[10px] font-semibold flex-shrink-0 ${tipoChipCls[ent.tipo] || 'bg-gray-50 text-gray-500 border-gray-200'}`}>
+                            <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full border text-[10px] font-semibold flex-shrink-0 ${ENT_TIPO_CLS[ent.tipo] || 'bg-gray-50 text-gray-500 border-gray-200'}`}>
                               {ent.tipo || '—'}
                             </span>
                             <span className="flex-1 text-[12px] font-semibold text-gray-800 truncate">{ent.persona || <span className="text-gray-300 font-normal italic">Sin nombre</span>}</span>
@@ -3820,30 +3819,30 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
                                 <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-[11px] mb-3">
                                   <div>
                                     <span className="text-gray-400 font-medium block mb-0.5">Fecha</span>
-                                    <EntInlineDate id={ent.id} field="fecha" value={ent.fecha} />
+                                    <EntInlineDate id={ent.id} field="fecha" value={ent.fecha} ec={editingCell} setEc={setEditingCell} commit={commitEntField} />
                                   </div>
                                   <div>
                                     <span className="text-gray-400 font-medium block mb-0.5">Tipo</span>
-                                    <EntInlineSelect id={ent.id} field="tipo" value={ent.tipo} />
+                                    <EntInlineSelect id={ent.id} field="tipo" value={ent.tipo} ec={editingCell} setEc={setEditingCell} commit={commitEntField} />
                                   </div>
                                   <div>
                                     <span className="text-gray-400 font-medium block mb-0.5">Persona</span>
-                                    <EntInlineText id={ent.id} field="persona" value={ent.persona} />
+                                    <EntInlineText id={ent.id} field="persona" value={ent.persona} ec={editingCell} setEc={setEditingCell} commit={commitEntField} />
                                   </div>
                                   <div>
                                     <span className="text-gray-400 font-medium block mb-0.5">Cargo</span>
-                                    <EntInlineText id={ent.id} field="cargo" value={ent.cargo} />
+                                    <EntInlineText id={ent.id} field="cargo" value={ent.cargo} ec={editingCell} setEc={setEditingCell} commit={commitEntField} />
                                   </div>
                                   <div className="col-span-2">
                                     <span className="text-gray-400 font-medium block mb-0.5">Institución</span>
-                                    <EntInlineText id={ent.id} field="institucion" value={ent.institucion} />
+                                    <EntInlineText id={ent.id} field="institucion" value={ent.institucion} ec={editingCell} setEc={setEditingCell} commit={commitEntField} />
                                   </div>
                                 </div>
 
                                 {/* Relato */}
                                 <div className="mb-3">
                                   <span className="text-gray-400 font-medium text-[11px] block mb-1">Relato</span>
-                                  <EntInlineText id={ent.id} field="relato" value={ent.relato} placeholder="Agregar relato…" multiline />
+                                  <EntInlineText id={ent.id} field="relato" value={ent.relato} placeholder="Agregar relato…" multiline ec={editingCell} setEc={setEditingCell} commit={commitEntField} />
                                 </div>
 
                                 {/* Separator */}
