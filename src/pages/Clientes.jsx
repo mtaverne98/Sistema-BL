@@ -986,6 +986,11 @@ export default function Clientes() {
       throw new Error(msg)
     }
 
+    // Propagar nuevo nombre a todas las causas del cliente
+    if (field === 'nombre' && finalValue) {
+      await supabase.from('causas').update({ cliente_nombre: finalValue }).eq('cliente_id', id)
+    }
+
     // Éxito — actualizar estado local
     const patch = { [field]: value }
     setClientes(prev => prev.map(c => c.id === id ? { ...c, ...patch } : c)
