@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Check, Loader2, CheckSquare, Undo2 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
+import { FormNuevaTareaModal } from './FormNuevaTarea'
 
 const TODAY = new Date().toISOString().slice(0, 10)
 
@@ -83,6 +84,7 @@ export default function TareasLista({
   const [editDraft,  setEditDraft]  = useState('')
   const [showComp,   setShowComp]   = useState(false)
   const [resolviendo, setResolviendo] = useState({}) // { id: true } mientras desaparece
+  const [formModal,  setFormModal]  = useState(null)  // null | { cliente_id, cliente_nombre, causa_id, causa_rit }
   const undoTimers = useRef({})
   const skipEvent  = useRef(false)
 
@@ -200,26 +202,22 @@ export default function TareasLista({
   }
 
   // ── Nueva tarea ────────────────────────────────────────────────────────────
-  async function handleNueva(causaCtx) {
-    const titulo = 'Nueva tarea'
-    const { data, error } = await supabase.from('tareas')
-      .insert({
-        titulo,
-        estado: 'Pendiente',
-        prioridad: 'Media',
-        causa_id:      causaCtx?.id   ?? causaId ?? null,
-        causa_rit:     causaCtx?.rit  ?? causa?.rit  ?? null,
-        cliente_id:    clienteId      ?? causa?.cliente_id ?? null,
-        cliente_nombre:clienteNombre  ?? causa?.cliente_nombre ?? null,
-      })
-      .select('*')
-      .single()
-    if (!error && data) {
-      updateList(prev => [...prev, data])
-      setEditingId(data.id)
-      setEditDraft(titulo)
-      dispatch()
-    }
+  function handleNueva(causaCtx) {
+    const resolvedCausaId  = causaCtx?.id  ?? causaId  ?? null
+    const resolvedCausaRit = causaCtx?.rit ?? causa?.rit ?? null
+    const resolvedClienteId    = clienteId   ?? causa?.cliente_id    ?? null
+    const resolvedClienteNombre= clienteNombre ?? causa?.cliente_nombre ?? null
+    setFormModal({
+      causa_id:       resolvedCausaId,
+      causa_rit:      resolvedCausaRit,
+      cliente_id:     resolvedClienteId,
+      cliente_nombre: resolvedClienteNombre,
+    })
+  }
+
+  function handleFormSave(nuevaTarea) {
+    updateList(prev => [...prev, nuevaTarea])
+    setFormModal(null)
   }
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -231,8 +229,21 @@ export default function TareasLista({
     )
   }
 
-  if (modo === 'compact') return <CompactMode {...{ tareas, causas, clienteId, editingId, editDraft, setEditDraft, resolviendo, handleCheck, handleUndo, startEdit, commitEdit, setEditingId, handleNueva }} />
-  return <FullMode {...{ tareas, editingId, editDraft, setEditDraft, showComp, setShowComp, handleCheck, startEdit, commitEdit, setEditingId, handleNueva, causa }} />
+  return (
+    <>
+      {formModal && (
+        <FormNuevaTareaModal
+          initialValues={formModal}
+          onClose={() => setFormModal(null)}
+          onSave={handleFormSave}
+        />
+      )}
+      {modo === 'compact'
+        ? <CompactMode {...{ tareas, causas, clienteId, editingId, editDraft, setEditDraft, resolviendo, handleCheck, handleUndo, startEdit, commitEdit, setEditingId, handleNueva }} />
+        : <FullMode {...{ tareas, editingId, editDraft, setEditDraft, showComp, setShowComp, handleCheck, startEdit, commitEdit, setEditingId, handleNueva, causa }} />
+      }
+    </>
+  )
 }
 
 // ── Compact mode (FichaCliente) ───────────────────────────────────────────────
