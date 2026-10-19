@@ -5,10 +5,12 @@ import {
   Search, Check, X, Plus, Edit2, ExternalLink,
   FileText, Scale, ChevronDown, ChevronRight, ArrowRight,
   RefreshCw, History, Loader2, AlertCircle, CheckCircle2, Calendar,
+  Download,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useNavigation } from '../context/NavigationContext'
 import CopyValue from '../components/CopyValue'
+import { exportarRevision } from '../lib/exportRevision'
 
 const TODAY = new Date().toISOString().slice(0, 10)
 
@@ -570,6 +572,7 @@ export default function RevisionCausas() {
   const [showReset,          setShowReset]          = useState(false)
   const [editingFechaInicio, setEditingFechaInicio] = useState(false)
   const [savingMap,          setSavingMap]          = useState({}) // { [causaId]: 'saving'|'ok'|'error' }
+  const [exporting,          setExporting]          = useState(false)
 
   const periodStart   = revActiva?.fecha_inicio?.slice(0, 10) ?? TODAY
   const periodEnd     = addDays(periodStart, 14)
@@ -836,6 +839,18 @@ export default function RevisionCausas() {
     }
   }, [])
 
+  async function handleExportar() {
+    setExporting(true)
+    try {
+      await exportarRevision({ causasActivas, rcRows, periodStart, periodEnd })
+    } catch (err) {
+      console.error('Error al exportar revisión:', err)
+      setDbError(`Error al generar el archivo: ${err.message}`)
+    } finally {
+      setExporting(false)
+    }
+  }
+
   async function handleReset() {
     // Desactiva el período actual
     if (revActiva?.id) {
@@ -984,6 +999,12 @@ export default function RevisionCausas() {
               </p>
               <p className="text-[11px] text-gray-400 mt-0.5">causas revisadas</p>
             </div>
+            {/* Exportar */}
+            <button onClick={handleExportar} disabled={exporting}
+              className="flex items-center gap-1.5 text-[12px] font-medium text-[#2570BA] px-3.5 py-2 rounded-xl border border-[#2570BA]/30 hover:bg-blue-50 transition-colors disabled:opacity-50">
+              {exporting ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+              Exportar revisión
+            </button>
             {/* Reset button */}
             <button onClick={() => setShowReset(true)}
               className="flex items-center gap-1.5 text-[12px] font-medium text-gray-500 px-3.5 py-2 rounded-xl border border-gray-200 hover:bg-gray-50 hover:text-gray-700 transition-colors">
