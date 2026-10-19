@@ -5,12 +5,13 @@ import {
   Search, Check, X, Plus, Edit2, ExternalLink,
   FileText, Scale, ChevronDown, ChevronRight, ArrowRight,
   RefreshCw, History, Loader2, AlertCircle, CheckCircle2, Calendar,
-  Download,
+  FileSpreadsheet,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useNavigation } from '../context/NavigationContext'
 import CopyValue from '../components/CopyValue'
-import { exportarRevision } from '../lib/exportRevision'
+import { exportarRevisionSheets } from '../lib/exportRevisionSheets'
+import { checkDriveConnection } from '../lib/driveApi'
 
 const TODAY = new Date().toISOString().slice(0, 10)
 
@@ -573,6 +574,7 @@ export default function RevisionCausas() {
   const [editingFechaInicio, setEditingFechaInicio] = useState(false)
   const [savingMap,          setSavingMap]          = useState({}) // { [causaId]: 'saving'|'ok'|'error' }
   const [exporting,          setExporting]          = useState(false)
+  const [exportResult,       setExportResult]       = useState(null) // { url, title }
 
   const periodStart   = revActiva?.fecha_inicio?.slice(0, 10) ?? TODAY
   const periodEnd     = addDays(periodStart, 14)
@@ -841,11 +843,23 @@ export default function RevisionCausas() {
 
   async function handleExportar() {
     setExporting(true)
+    setExportResult(null)
     try {
-      await exportarRevision({ causasActivas, rcRows, periodStart, periodEnd })
+      const connected = await checkDriveConnection(supabase)
+      if (!connected) {
+        setDbError('Drive no conectado. Ve a Configuración → Google Drive y conecta tu cuenta.')
+        return
+      }
+      const result = await exportarRevisionSheets({ causasActivas, rcRows, periodStart, periodEnd })
+      setExportResult(result)
+      window.open(result.url, '_blank', 'noopener')
     } catch (err) {
       console.error('Error al exportar revisión:', err)
-      setDbError(`Error al generar el archivo: ${err.message}`)
+      if (err.message === 'RECONNECT_DRIVE') {
+        setDbError('El token de Drive necesita permisos adicionales. Ve a Configuración → Google Drive, desconecta y vuelve a conectar.')
+      } else {
+        setDbError(`Error al generar la hoja: ${err.message}`)
+      }
     } finally {
       setExporting(false)
     }
@@ -933,6 +947,21 @@ export default function RevisionCausas() {
         </div>
       )}
 
+      {/* ── Banner export exitoso ── */}
+      {exportResult && (
+        <div className="flex-shrink-0 bg-green-50 border-b border-green-200 px-6 py-3 flex items-center gap-3">
+          <CheckCircle2 size={15} className="text-green-600 flex-shrink-0" />
+          <p className="text-[12px] text-green-800 flex-1">
+            Hoja creada: <strong>{exportResult.title}</strong>
+          </p>
+          <a href={exportResult.url} target="_blank" rel="noopener noreferrer"
+            className="flex items-center gap-1 text-[12px] font-medium text-green-700 hover:text-green-900 underline">
+            Abrir en Google Sheets <ExternalLink size={11} />
+          </a>
+          <button onClick={() => setExportResult(null)} className="text-green-400 hover:text-green-600 flex-shrink-0 ml-2">✕</button>
+        </div>
+      )}
+
       {/* ── Banner período vencido ── */}
       {periodExpired && (
         <div className="flex-shrink-0 bg-amber-50 border-b border-amber-200 px-6 py-3 flex items-center gap-3">
@@ -1002,8 +1031,8 @@ export default function RevisionCausas() {
             {/* Exportar */}
             <button onClick={handleExportar} disabled={exporting}
               className="flex items-center gap-1.5 text-[12px] font-medium text-[#2570BA] px-3.5 py-2 rounded-xl border border-[#2570BA]/30 hover:bg-blue-50 transition-colors disabled:opacity-50">
-              {exporting ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
-              Exportar revisión
+              {exporting ? <Loader2 size={13} className="animate-spin" /> : <FileSpreadsheet size={13} />}
+              {exporting ? 'Generando…' : 'Exportar a Sheets'}
             </button>
             {/* Reset button */}
             <button onClick={() => setShowReset(true)}

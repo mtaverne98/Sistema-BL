@@ -7,7 +7,7 @@ const REDIRECT_URI    = 'https://zzcdkjoetgclbtcuqswr.supabase.co/functions/v1/g
 const SUPABASE_URL    = 'https://zzcdkjoetgclbtcuqswr.supabase.co'
 const SUPABASE_ANON   = import.meta.env.VITE_SUPABASE_ANON_KEY
 const REFRESH_EF_URL  = `${SUPABASE_URL}/functions/v1/google-token-refresh`
-const DRIVE_SCOPE     = 'https://www.googleapis.com/auth/drive.file'
+const DRIVE_SCOPE     = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/spreadsheets'
 const DRIVE_ROW_ID    = '00000000-0000-0000-0000-000000000002'
 const SHARED_DRIVE_ID = '1qS_tWyJItFqccW6Ig8MpmvSs2hhQ-_1a'
 
