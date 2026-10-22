@@ -465,6 +465,8 @@ function mapCausa(row) {
     tribunal:         row.tribunal         ?? '',
     fiscalia:         row.fiscalia         ?? null,
     fiscal:           row.fiscal           ?? null,
+    fiscal_telefono:  row.fiscal_telefono  ?? null,
+    fiscal_email:     row.fiscal_email     ?? null,
     area:             row.area             ?? 'Penal',
     materia:          row.materia          ?? '',
     querellante:      row.querellante      ?? null,

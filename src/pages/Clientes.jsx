@@ -1001,12 +1001,18 @@ export default function Clientes() {
   // ── Cambio rápido de estado ─────────────────────────────────────────────
   const handleEstadoCambiar = useCallback(async (nuevoEstado) => {
     if (!clienteSeleccionado) return
+    const optimista = { ...clienteSeleccionado, estado: nuevoEstado }
+    setClientes(prev => prev.map(c => c.id === clienteSeleccionado.id ? optimista : c))
+    setSeleccionado(optimista)
     const { data, error: err } = await supabase
       .from('clientes').update({ estado: nuevoEstado }).eq('id', clienteSeleccionado.id).select().single()
     if (!err && data) {
       const actualizado = mapCliente(data)
       setClientes(prev => prev.map(c => c.id === actualizado.id ? actualizado : c))
       setSeleccionado(actualizado)
+    } else if (err) {
+      setClientes(prev => prev.map(c => c.id === clienteSeleccionado.id ? clienteSeleccionado : c))
+      setSeleccionado(clienteSeleccionado)
     }
   }, [clienteSeleccionado])
 
