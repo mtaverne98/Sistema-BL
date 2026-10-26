@@ -5,6 +5,7 @@ import {
   FileText, Clock, CheckCircle2, X, Check, Edit2,
   AlertCircle, Scale, Bell, Users, Briefcase, Landmark,
   MoreHorizontal, CalendarPlus, ListTodo, Loader2, Table2, Gavel, Trash2, ChevronLeft,
+  Mail, RefreshCw, Link2, Inbox,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import CargaMasivaModal from '../components/CargaMasivaModal'
@@ -1120,6 +1121,232 @@ function CausaGroupRow({ causa, metaRows, records, isLoading, isExpanded, onTogg
   )
 }
 
+// ── Bandeja judicial ──────────────────────────────────────────────────────────
+
+const SUPABASE_EF_URL = 'https://zzcdkjoetgclbtcuqswr.supabase.co/functions/v1'
+const SUPABASE_ANON   = import.meta.env.VITE_SUPABASE_ANON_KEY
+
+function AsignadaRow({ row, onRegistrar }) {
+  const [loading, setLoading] = useState(false)
+  async function handleRegistrar() {
+    setLoading(true)
+    await onRegistrar()
+    setLoading(false)
+  }
+  const causa = row.causas
+  return (
+    <div className="bg-white border border-gray-100 rounded-xl px-4 py-3 flex items-start gap-3">
+      <div className="flex-1 min-w-0">
+        <p className="text-[12px] font-medium text-gray-800 truncate">{row.subject}</p>
+        <div className="flex items-center gap-2 mt-1 flex-wrap">
+          <span className="text-[11px] text-gray-400">{fmtFecha(row.received_at?.slice(0, 10))}</span>
+          {causa && <span className="text-[11px] text-[#2570BA] font-medium">{causa.cliente_nombre}</span>}
+          {(causa?.rit || row.rit_detectado) && (
+            <CausaIdentChip causa_rit={causa?.rit || row.rit_detectado} size="sm" />
+          )}
+        </div>
+        {row.snippet && (
+          <p className="text-[11px] text-gray-400 mt-1 line-clamp-1">{row.snippet}</p>
+        )}
+      </div>
+      <button onClick={handleRegistrar} disabled={loading}
+        className="flex items-center gap-1.5 text-[11px] font-semibold bg-[#1a2e4a] text-white px-3 py-1.5 rounded-lg hover:bg-[#1a2e4a]/80 disabled:opacity-50 transition-colors whitespace-nowrap flex-shrink-0">
+        {loading ? <Loader2 size={11} className="animate-spin" /> : <Scale size={11} />}
+        Registrar en PJUD
+      </button>
+    </div>
+  )
+}
+
+function SinCausaRow({ row, causasInfo, onAsignar }) {
+  const [causaId, setCausaId] = useState('')
+  const [asignando, setAsignando] = useState(false)
+
+  async function handleAsignar() {
+    if (!causaId) return
+    setAsignando(true)
+    await onAsignar(causaId)
+    setAsignando(false)
+  }
+
+  return (
+    <div className="bg-white border border-gray-100 rounded-xl px-4 py-3 flex items-start gap-3">
+      <div className="flex-1 min-w-0">
+        <p className="text-[12px] font-medium text-gray-800 truncate">{row.subject}</p>
+        <div className="flex items-center gap-2 mt-1 flex-wrap">
+          <span className="text-[11px] text-gray-400">{fmtFecha(row.received_at?.slice(0, 10))}</span>
+          {row.rit_detectado && <span className="text-[11px] text-gray-500 font-mono">RIT {row.rit_detectado}</span>}
+          {row.ruc_detectado && <span className="text-[11px] text-gray-500 font-mono">RUC {row.ruc_detectado}</span>}
+        </div>
+        {row.snippet && (
+          <p className="text-[11px] text-gray-400 mt-1 line-clamp-1">{row.snippet}</p>
+        )}
+      </div>
+      <div className="flex items-center gap-2 flex-shrink-0">
+        <select value={causaId} onChange={e => setCausaId(e.target.value)}
+          className="text-[11px] border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-gray-700 focus:outline-none focus:border-[#2570ba] max-w-[180px]">
+          <option value="">Asignar causa…</option>
+          {causasInfo.map(c => (
+            <option key={c.id} value={c.id}>{c.cliente_nombre}{c.rit ? ` (${c.rit})` : ''}</option>
+          ))}
+        </select>
+        <button onClick={handleAsignar} disabled={!causaId || asignando}
+          className="flex items-center gap-1.5 text-[11px] font-semibold bg-[#2570BA] text-white px-3 py-1.5 rounded-lg hover:bg-[#2570BA]/80 disabled:opacity-50 transition-colors whitespace-nowrap">
+          {asignando ? <Loader2 size={11} className="animate-spin" /> : <Link2 size={11} />}
+          Asignar
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function BandejaJudicial({ causasInfo, onRegistered }) {
+  const [rows,     setRows]     = useState([])
+  const [cargando, setCargando] = useState(true)
+  const [syncing,  setSyncing]  = useState(false)
+  const [syncMsg,  setSyncMsg]  = useState(null)
+
+  async function loadBandeja() {
+    const { data } = await supabase
+      .from('pjud_inbox')
+      .select('*, causas(id, rit, ruc, cliente_nombre, cliente_id)')
+      .eq('estado', 'pendiente')
+      .order('received_at', { ascending: false })
+    setRows(data || [])
+  }
+
+  async function sincronizar() {
+    setSyncing(true)
+    setSyncMsg(null)
+    try {
+      const res  = await fetch(`${SUPABASE_EF_URL}/gmail-pjud-sync`, {
+        method:  'POST',
+        headers: { apikey: SUPABASE_ANON, Authorization: `Bearer ${SUPABASE_ANON}` },
+      })
+      const data = await res.json()
+      if (data.error) setSyncMsg({ type: 'error', text: data.error })
+      else setSyncMsg({ type: 'ok', text: data.synced > 0 ? `${data.synced} correo(s) nuevo(s)` : 'Sin novedades' })
+    } catch (e) {
+      setSyncMsg({ type: 'error', text: e.message })
+    } finally {
+      setSyncing(false)
+    }
+  }
+
+  // On mount: sync then load
+  useEffect(() => {
+    async function init() {
+      setCargando(true)
+      try { await sincronizar() } catch (_) {}
+      await loadBandeja()
+      setCargando(false)
+    }
+    init()
+  }, []) // eslint-disable-line
+
+  async function registrar(row) {
+    const causa   = row.causas
+    const payload = {
+      fecha:              row.received_at?.slice(0, 10) || TODAY,
+      solicitud:          row.subject || '',
+      presenta:           'Tribunal',
+      estado:             'Pendiente',
+      tipo_solicitud:     'Solicitud',
+      causa_id:           row.causa_id,
+      causa_rit:          causa?.rit || row.rit_detectado || null,
+      causa_ruc:          causa?.ruc || row.ruc_detectado || null,
+      cliente_nombre:     causa?.cliente_nombre || '',
+      cliente_id:         causa?.cliente_id || null,
+      notas:              row.snippet || null,
+    }
+    const { data: pjudData, error: pjudErr } = await supabase.from('pjud').insert([payload]).select().single()
+    if (pjudErr) { alert('Error al registrar: ' + pjudErr.message); return }
+    await supabase.from('pjud_inbox').update({ estado: 'procesado' }).eq('id', row.id)
+    setRows(prev => prev.filter(r => r.id !== row.id))
+    onRegistered?.(mapPjudRow(pjudData))
+  }
+
+  async function asignarCausa(rowId, causaId) {
+    if (!causaId) return
+    const { error: err } = await supabase.from('pjud_inbox').update({ causa_id: causaId }).eq('id', rowId)
+    if (err) { alert('Error al asignar: ' + err.message); return }
+    const causa = causasInfo.find(c => c.id === causaId)
+    setRows(prev => prev.map(r => r.id === rowId ? { ...r, causa_id: causaId, causas: causa } : r))
+  }
+
+  const asignadas = rows.filter(r => r.causa_id)
+  const sinCausa  = rows.filter(r => !r.causa_id)
+
+  if (cargando) return (
+    <div className="flex items-center justify-center py-20">
+      <Loader2 size={24} className="animate-spin text-gray-300" />
+    </div>
+  )
+
+  return (
+    <div className="flex-1 overflow-y-auto px-6 py-5 max-w-3xl">
+      {/* Sync bar */}
+      <div className="flex items-center gap-3 mb-5">
+        <button onClick={async () => { await sincronizar(); await loadBandeja() }} disabled={syncing}
+          className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-50 transition-colors">
+          <RefreshCw size={12} className={syncing ? 'animate-spin' : ''} />
+          {syncing ? 'Sincronizando…' : 'Sincronizar'}
+        </button>
+        {syncMsg && (
+          <span className={`text-[11px] font-medium ${syncMsg.type === 'ok' ? 'text-green-600' : 'text-red-600'}`}>
+            {syncMsg.text}
+          </span>
+        )}
+        <span className="ml-auto text-[11px] text-gray-400">
+          {rows.length} pendiente(s)
+        </span>
+      </div>
+
+      <div className="space-y-6">
+        {/* Asignadas */}
+        {asignadas.length > 0 && (
+          <section>
+            <p className="text-[11px] font-bold text-gray-300 uppercase tracking-widest mb-2.5 px-1">
+              Asignadas — {asignadas.length}
+            </p>
+            <div className="space-y-2">
+              {asignadas.map(row => (
+                <AsignadaRow key={row.id} row={row} onRegistrar={() => registrar(row)} />
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Sin causa */}
+        {sinCausa.length > 0 && (
+          <section>
+            <p className="text-[11px] font-bold text-gray-300 uppercase tracking-widest mb-2.5 px-1">
+              Sin causa — {sinCausa.length}
+            </p>
+            <div className="space-y-2">
+              {sinCausa.map(row => (
+                <SinCausaRow
+                  key={row.id}
+                  row={row}
+                  causasInfo={causasInfo}
+                  onAsignar={causaId => asignarCausa(row.id, causaId)}
+                />
+              ))}
+            </div>
+          </section>
+        )}
+
+        {rows.length === 0 && (
+          <div className="text-center py-16">
+            <Inbox size={28} strokeWidth={1.5} className="mx-auto mb-2 text-gray-200" />
+            <p className="text-sm text-gray-400">Bandeja al día — sin correos pendientes</p>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── Main PJUD ──────────────────────────────────────────────────────────────────
 export default function PJUD() {
   const navigate  = useNavigate()
@@ -1134,6 +1361,7 @@ export default function PJUD() {
   const [updateError, setUpdateError] = useState(null)
   const [search,      setSearch]      = useState('')
   const [showNuevaSolicitud, setShowNuevaSolicitud] = useState(false)
+  const [activeTab, setActiveTab] = useState('movimientos') // 'movimientos' | 'bandeja'
 
   const loadingRef = useRef(new Set())
   const loadedRef  = useRef(new Set())
@@ -1291,6 +1519,15 @@ export default function PJUD() {
     if (err) console.error('Error creando plazo:', err.message)
   }, [])
 
+  const handleRegistered = useCallback((newRow) => {
+    const causaId = newRow.causa_id
+    if (causaId) {
+      setRecordsMap(prev => ({ ...prev, [causaId]: [newRow, ...(prev[causaId] || [])] }))
+      loadedRef.current.add(causaId)
+    }
+    setMetaRows(prev => [{ id: newRow.id, causa_id: causaId, estado: newRow.estado, accion_requerida: newRow.accion_requerida }, ...prev])
+  }, [])
+
   function handleOpenCausa(causa) {
     if (!causa?.id) return
     setActiveCausa({
@@ -1357,10 +1594,12 @@ export default function PJUD() {
         <div className="flex items-center justify-between mb-4">
           <h1 className="text-lg font-bold text-[#1a2e4a]">PJUD</h1>
           <div className="flex items-center gap-2">
-            <button onClick={() => setShowNuevaSolicitud(true)}
-              className="flex items-center gap-1.5 text-xs font-semibold bg-[#2570BA] text-white px-4 py-2 rounded-xl hover:bg-[#2570BA]/90 transition-colors shadow-sm">
-              <Plus size={14}/> Nueva entrada
-            </button>
+            {activeTab === 'movimientos' && (
+              <button onClick={() => setShowNuevaSolicitud(true)}
+                className="flex items-center gap-1.5 text-xs font-semibold bg-[#2570BA] text-white px-4 py-2 rounded-xl hover:bg-[#2570BA]/90 transition-colors shadow-sm">
+                <Plus size={14}/> Nueva entrada
+              </button>
+            )}
             <a href="https://oficinajudicialvirtual.pjud.cl/" target="_blank" rel="noopener noreferrer"
               className="flex items-center gap-1.5 text-xs font-medium px-4 py-2 rounded-xl border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors">
               <Scale size={14}/> Portal PJUD
@@ -1368,38 +1607,59 @@ export default function PJUD() {
           </div>
         </div>
 
-        {!cargando && (
-          <div className="grid grid-cols-4 gap-2.5 mb-4">
-            {[
-              { label: 'Movimientos',         value: stats.total,      bg: 'bg-gray-50',   ic: 'text-gray-500',   Icon: FileText   },
-              { label: 'Pendientes',           value: stats.pendientes, bg: 'bg-amber-50',  ic: 'text-amber-500',  Icon: Clock      },
-              { label: 'Con acción requerida', value: stats.conAccion,  bg: 'bg-red-50',    ic: 'text-red-500',    Icon: Bell       },
-              { label: 'Urgentes',             value: stats.urgentes,   bg: 'bg-orange-50', ic: 'text-orange-500', Icon: AlertCircle},
-            ].map(({ label, value, bg, ic, Icon }) => (
-              <div key={label} className="bg-white border border-gray-100 rounded-xl px-4 py-3 flex items-center gap-3">
-                <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 ${bg}`}>
-                  <Icon size={14} className={ic} />
-                </div>
-                <div>
-                  <p className="text-[22px] font-bold text-gray-900 leading-none tabular-nums">{value}</p>
-                  <p className="text-[11px] text-gray-400 mt-0.5 leading-tight">{label}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        <div className="relative max-w-sm">
-          <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300"/>
-          <input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Buscar cliente, RIT, materia…"
-            className="w-full pl-8 pr-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#2570ba] transition-all placeholder:text-gray-300 bg-white"/>
-          {search && (
-            <button onClick={() => setSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-              <X size={12}/>
+        {/* Pestañas */}
+        <div className="flex gap-1 mb-4 border-b border-gray-100">
+          {[
+            { id: 'movimientos', label: 'Movimientos', Icon: FileText },
+            { id: 'bandeja',     label: 'Bandeja judicial', Icon: Mail },
+          ].map(({ id, label, Icon }) => (
+            <button key={id} onClick={() => setActiveTab(id)}
+              className={`flex items-center gap-1.5 text-[12px] font-semibold px-4 py-2 border-b-2 transition-colors -mb-px ${
+                activeTab === id
+                  ? 'border-[#2570BA] text-[#2570BA]'
+                  : 'border-transparent text-gray-400 hover:text-gray-600'
+              }`}>
+              <Icon size={13}/>{label}
             </button>
-          )}
+          ))}
         </div>
+
+        {activeTab === 'movimientos' && (
+          <>
+            {!cargando && (
+              <div className="grid grid-cols-4 gap-2.5 mb-4">
+                {[
+                  { label: 'Movimientos',         value: stats.total,      bg: 'bg-gray-50',   ic: 'text-gray-500',   Icon: FileText   },
+                  { label: 'Pendientes',           value: stats.pendientes, bg: 'bg-amber-50',  ic: 'text-amber-500',  Icon: Clock      },
+                  { label: 'Con acción requerida', value: stats.conAccion,  bg: 'bg-red-50',    ic: 'text-red-500',    Icon: Bell       },
+                  { label: 'Urgentes',             value: stats.urgentes,   bg: 'bg-orange-50', ic: 'text-orange-500', Icon: AlertCircle},
+                ].map(({ label, value, bg, ic, Icon }) => (
+                  <div key={label} className="bg-white border border-gray-100 rounded-xl px-4 py-3 flex items-center gap-3">
+                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 ${bg}`}>
+                      <Icon size={14} className={ic} />
+                    </div>
+                    <div>
+                      <p className="text-[22px] font-bold text-gray-900 leading-none tabular-nums">{value}</p>
+                      <p className="text-[11px] text-gray-400 mt-0.5 leading-tight">{label}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="relative max-w-sm">
+              <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300"/>
+              <input value={search} onChange={e => setSearch(e.target.value)}
+                placeholder="Buscar cliente, RIT, materia…"
+                className="w-full pl-8 pr-3 py-2 text-sm border border-gray-200 rounded-xl outline-none focus:border-[#2570ba] transition-all placeholder:text-gray-300 bg-white"/>
+              {search && (
+                <button onClick={() => setSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                  <X size={12}/>
+                </button>
+              )}
+            </div>
+          </>
+        )}
       </div>
 
       {error && (
@@ -1409,47 +1669,51 @@ export default function PJUD() {
         </div>
       )}
 
-      {/* List */}
-      <div className="flex-1 overflow-y-auto px-6 py-5">
-        {cargando ? (
-          <div className="flex items-center justify-center py-20">
-            <Loader2 size={24} className="animate-spin text-gray-300"/>
-          </div>
-        ) : byLetter.length === 0 ? (
-          <div className="text-center py-20">
-            <Scale size={28} strokeWidth={1.5} className="mx-auto mb-2 text-gray-200"/>
-            <p className="text-sm text-gray-400">{search ? `Sin resultados para "${search}"` : 'Sin movimientos PJUD registrados'}</p>
-          </div>
-        ) : (
-          <div className="space-y-6 max-w-3xl">
-            {byLetter.map(([letra, causas]) => (
-              <div key={letra}>
-                <p className="text-[11px] font-bold text-gray-300 uppercase tracking-widest mb-2.5 px-1">{letra}</p>
-                <div className="space-y-2">
-                  {causas.map(causa => (
-                    <CausaGroupRow
-                      key={causa.id}
-                      causa={causa}
-                      metaRows={metaRows}
-                      records={recordsMap[causa.id] || []}
-                      isLoading={loadingIds.has(causa.id)}
-                      isExpanded={expandedIds.has(causa.id)}
-                      onToggle={toggleCausa}
-                      onUpdate={handleUpdate}
-                      onAdd={handleAddMovimiento}
-                      onDelete={handleDeleteRow}
-                      causasInfo={causasInfo}
-                      addTarea={handleAddTarea}
-                      addPlazo={handleAddPlazo}
-                      onOpenCausa={handleOpenCausa}
-                    />
-                  ))}
+      {/* Body */}
+      {activeTab === 'bandeja' ? (
+        <BandejaJudicial causasInfo={causasInfo} onRegistered={handleRegistered} />
+      ) : (
+        <div className="flex-1 overflow-y-auto px-6 py-5">
+          {cargando ? (
+            <div className="flex items-center justify-center py-20">
+              <Loader2 size={24} className="animate-spin text-gray-300"/>
+            </div>
+          ) : byLetter.length === 0 ? (
+            <div className="text-center py-20">
+              <Scale size={28} strokeWidth={1.5} className="mx-auto mb-2 text-gray-200"/>
+              <p className="text-sm text-gray-400">{search ? `Sin resultados para "${search}"` : 'Sin movimientos PJUD registrados'}</p>
+            </div>
+          ) : (
+            <div className="space-y-6 max-w-3xl">
+              {byLetter.map(([letra, causas]) => (
+                <div key={letra}>
+                  <p className="text-[11px] font-bold text-gray-300 uppercase tracking-widest mb-2.5 px-1">{letra}</p>
+                  <div className="space-y-2">
+                    {causas.map(causa => (
+                      <CausaGroupRow
+                        key={causa.id}
+                        causa={causa}
+                        metaRows={metaRows}
+                        records={recordsMap[causa.id] || []}
+                        isLoading={loadingIds.has(causa.id)}
+                        isExpanded={expandedIds.has(causa.id)}
+                        onToggle={toggleCausa}
+                        onUpdate={handleUpdate}
+                        onAdd={handleAddMovimiento}
+                        onDelete={handleDeleteRow}
+                        causasInfo={causasInfo}
+                        addTarea={handleAddTarea}
+                        addPlazo={handleAddPlazo}
+                        onOpenCausa={handleOpenCausa}
+                      />
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {showNuevaSolicitud && (
         <FormNuevaEntrada
