@@ -1412,7 +1412,7 @@ function BandejaJudicial({ causasInfo, onRegistered }) {
     const today = new Date().toISOString().slice(0, 10)
     const { data } = await supabase
       .from('pjud_inbox')
-      .select('*, causas(id, rit, ruc, cliente_nombre, cliente_id, drive_folder_id)')
+      .select('*, causas(id, rit, ruc, cliente_nombre, cliente_id)')
       .or('estado.eq.pendiente,estado.eq.registrado')
       .order('fecha', { ascending: false })
     // Keep only pendientes + registradas hoy
