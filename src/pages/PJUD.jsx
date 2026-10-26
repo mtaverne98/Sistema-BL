@@ -1413,9 +1413,14 @@ function BandejaJudicial({ causasInfo, onRegistered }) {
     const { data } = await supabase
       .from('pjud_inbox')
       .select('*, causas(id, rit, ruc, cliente_nombre, cliente_id, drive_folder_id)')
-      .or(`estado.eq.pendiente,and(estado.eq.registrado,procesado_at.gte.${today}T00:00:00)`)
+      .or('estado.eq.pendiente,estado.eq.registrado')
       .order('fecha', { ascending: false })
-    setRows(data || [])
+    // Keep only pendientes + registradas hoy
+    const filtered = (data || []).filter(r =>
+      r.estado === 'pendiente' ||
+      (r.estado === 'registrado' && r.procesado_at?.startsWith(today))
+    )
+    setRows(filtered)
   }
 
   async function sincronizar() {
