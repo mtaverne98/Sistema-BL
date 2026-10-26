@@ -1,0 +1,2 @@
+[functions.pjud-confirmar]
+verify_jwt = false

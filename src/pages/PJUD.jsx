@@ -1126,76 +1126,278 @@ function CausaGroupRow({ causa, metaRows, records, isLoading, isExpanded, onTogg
 const SUPABASE_EF_URL = 'https://zzcdkjoetgclbtcuqswr.supabase.co/functions/v1'
 const SUPABASE_ANON   = import.meta.env.VITE_SUPABASE_ANON_KEY
 
-function AsignadaRow({ row, onRegistrar }) {
-  const [loading, setLoading] = useState(false)
-  async function handleRegistrar() {
-    setLoading(true)
-    await onRegistrar()
-    setLoading(false)
-  }
-  const causa = row.causas
-  return (
-    <div className="bg-white border border-gray-100 rounded-xl px-4 py-3 flex items-start gap-3">
-      <div className="flex-1 min-w-0">
-        <p className="text-[12px] font-medium text-gray-800 truncate">{row.subject}</p>
-        <div className="flex items-center gap-2 mt-1 flex-wrap">
-          <span className="text-[11px] text-gray-400">{fmtFecha(row.received_at?.slice(0, 10))}</span>
-          {causa && <span className="text-[11px] text-[#2570BA] font-medium">{causa.cliente_nombre}</span>}
-          {(causa?.rit || row.rit_detectado) && (
-            <CausaIdentChip causa_rit={causa?.rit || row.rit_detectado} size="sm" />
-          )}
-        </div>
-        {row.snippet && (
-          <p className="text-[11px] text-gray-400 mt-1 line-clamp-1">{row.snippet}</p>
-        )}
-      </div>
-      <button onClick={handleRegistrar} disabled={loading}
-        className="flex items-center gap-1.5 text-[11px] font-semibold bg-[#1a2e4a] text-white px-3 py-1.5 rounded-lg hover:bg-[#1a2e4a]/80 disabled:opacity-50 transition-colors whitespace-nowrap flex-shrink-0">
-        {loading ? <Loader2 size={11} className="animate-spin" /> : <Scale size={11} />}
-        Registrar en PJUD
-      </button>
-    </div>
-  )
+const TIPOS_RESOLUCION = [
+  'Resolución de trámite', 'Sentencia definitiva', 'Auto',
+  'Decreto', 'Interlocutoria', 'Otra',
+]
+
+async function efFetch(path, opts = {}) {
+  const res = await fetch(`${SUPABASE_EF_URL}/${path}`, {
+    ...opts,
+    headers: {
+      apikey: SUPABASE_ANON,
+      Authorization: `Bearer ${SUPABASE_ANON}`,
+      'Content-Type': 'application/json',
+      ...(opts.headers || {}),
+    },
+  })
+  return res.json()
 }
 
-function SinCausaRow({ row, causasInfo, onAsignar }) {
-  const [causaId, setCausaId] = useState('')
-  const [asignando, setAsignando] = useState(false)
+function InboxCard({ row, causasInfo, onDone }) {
+  const [expanded,    setExpanded]    = useState(false)
+  const [edit,        setEdit]        = useState({
+    nombre_archivo: row.nombre_archivo || '',
+    fecha:          row.fecha          || '',
+    folio:          row.folio          || '',
+    tipo_resolucion: row.tipo_resolucion || '',
+    tribunal:        row.tribunal       || '',
+    resumen_ia:      row.resumen_ia     || '',
+  })
+  const [confirming,  setConfirming]  = useState(false)
+  const [descartando, setDescartando] = useState(false)
+  const [status,      setStatus]      = useState(null)  // null | 'ok' | 'error'
+  const [statusMsg,   setStatusMsg]   = useState('')
+  const [causaId,     setCausaId]     = useState(row.causa_id || '')
+  const [pdfLoading,  setPdfLoading]  = useState(false)
 
-  async function handleAsignar() {
-    if (!causaId) return
-    setAsignando(true)
-    await onAsignar(causaId)
-    setAsignando(false)
+  const causa    = row.causas
+  const hasCausa = !!(causaId || row.causa_id)
+
+  function fieldChange(key, val) {
+    setEdit(prev => ({ ...prev, [key]: val }))
   }
 
+  async function handleVerPDF() {
+    setPdfLoading(true)
+    try {
+      const data = await efFetch(`pjud-pdf-preview?inbox_id=${row.id}`)
+      if (data.error) { alert('PDF no disponible: ' + data.error); return }
+      const binary = atob(data.pdf_base64)
+      const bytes  = new Uint8Array(binary.length)
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+      const blob = new Blob([bytes], { type: 'application/pdf' })
+      window.open(URL.createObjectURL(blob), '_blank')
+    } catch (e) {
+      alert('Error al cargar PDF: ' + e.message)
+    } finally {
+      setPdfLoading(false)
+    }
+  }
+
+  async function handleAsignarCausa() {
+    if (!causaId) return
+    await supabase.from('pjud_inbox').update({ causa_id: causaId }).eq('id', row.id)
+    onDone('asignada', row.id, causaId)
+  }
+
+  async function handleConfirmar() {
+    if (!hasCausa) { alert('Asigna una causa antes de confirmar'); return }
+    setConfirming(true)
+    try {
+      const data = await efFetch('pjud-confirmar', {
+        method: 'POST',
+        body: JSON.stringify({
+          inbox_id:       row.id,
+          nombre_archivo: edit.nombre_archivo,
+          fecha:          edit.fecha,
+          folio:          edit.folio,
+          tipo_resolucion: edit.tipo_resolucion,
+          tribunal:        edit.tribunal,
+          resumen:         edit.resumen_ia,
+        }),
+      })
+      if (data.error) { setStatus('error'); setStatusMsg(data.error) }
+      else { setStatus('ok'); onDone('registrado', row.id) }
+    } catch (e) {
+      setStatus('error'); setStatusMsg(e.message)
+    } finally {
+      setConfirming(false)
+    }
+  }
+
+  async function handleDescartar() {
+    setDescartando(true)
+    await supabase.from('pjud_inbox').update({ estado: 'descartado' }).eq('id', row.id)
+    onDone('descartado', row.id)
+  }
+
+  if (status === 'ok') return (
+    <div className="bg-white border border-green-100 rounded-xl px-4 py-3 flex items-center gap-2">
+      <CheckCircle2 size={14} className="text-[#1E9E6A] flex-shrink-0" />
+      <span className="text-[12px] font-medium text-[#1E9E6A]">Registrada en PJUD</span>
+      {edit.nombre_archivo && (
+        <span className="text-[11px] text-gray-400 ml-1 truncate">{edit.nombre_archivo}</span>
+      )}
+    </div>
+  )
+
   return (
-    <div className="bg-white border border-gray-100 rounded-xl px-4 py-3 flex items-start gap-3">
-      <div className="flex-1 min-w-0">
-        <p className="text-[12px] font-medium text-gray-800 truncate">{row.subject}</p>
-        <div className="flex items-center gap-2 mt-1 flex-wrap">
-          <span className="text-[11px] text-gray-400">{fmtFecha(row.received_at?.slice(0, 10))}</span>
-          {row.rit_detectado && <span className="text-[11px] text-gray-500 font-mono">RIT {row.rit_detectado}</span>}
-          {row.ruc_detectado && <span className="text-[11px] text-gray-500 font-mono">RUC {row.ruc_detectado}</span>}
+    <div className={`bg-white border rounded-xl transition-all ${expanded ? 'border-[#2570BA] shadow-sm' : 'border-gray-100'}`}>
+      {/* Header row */}
+      <button
+        className="w-full flex items-start gap-3 px-4 py-3 text-left"
+        onClick={() => setExpanded(v => !v)}
+      >
+        <span className="mt-0.5 text-gray-300 flex-shrink-0">
+          {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        </span>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="text-[12px] font-semibold text-gray-800 truncate">
+              {edit.nombre_archivo || row.asunto || '(sin asunto)'}
+            </p>
+            {row.resumen_ia && (
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#f0f7ff] text-[#2570BA] border border-[#d0e8ff] whitespace-nowrap flex-shrink-0">
+                ✦ IA
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2 mt-1 flex-wrap">
+            <span className="text-[11px] text-gray-400">{fmtFecha(edit.fecha || row.fecha)}</span>
+            {causa && <span className="text-[11px] text-[#2570BA] font-medium">{causa.cliente_nombre}</span>}
+            {(causa?.rit || row.rit_detectado) && (
+              <CausaIdentChip causa_rit={causa?.rit || row.rit_detectado} size="sm" />
+            )}
+            {edit.tipo_resolucion && (
+              <span className="text-[10px] text-gray-400 italic">{edit.tipo_resolucion}</span>
+            )}
+          </div>
         </div>
-        {row.snippet && (
-          <p className="text-[11px] text-gray-400 mt-1 line-clamp-1">{row.snippet}</p>
-        )}
-      </div>
-      <div className="flex items-center gap-2 flex-shrink-0">
-        <select value={causaId} onChange={e => setCausaId(e.target.value)}
-          className="text-[11px] border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-gray-700 focus:outline-none focus:border-[#2570ba] max-w-[180px]">
-          <option value="">Asignar causa…</option>
-          {causasInfo.map(c => (
-            <option key={c.id} value={c.id}>{c.cliente_nombre}{c.rit ? ` (${c.rit})` : ''}</option>
-          ))}
-        </select>
-        <button onClick={handleAsignar} disabled={!causaId || asignando}
-          className="flex items-center gap-1.5 text-[11px] font-semibold bg-[#2570BA] text-white px-3 py-1.5 rounded-lg hover:bg-[#2570BA]/80 disabled:opacity-50 transition-colors whitespace-nowrap">
-          {asignando ? <Loader2 size={11} className="animate-spin" /> : <Link2 size={11} />}
-          Asignar
-        </button>
-      </div>
+      </button>
+
+      {/* Expanded body */}
+      {expanded && (
+        <div className="px-4 pb-4 border-t border-gray-50 pt-3 space-y-3">
+          {/* AI notice */}
+          {row.resumen_ia && (
+            <div className="flex items-center gap-2 text-[11px] text-[#2570BA] bg-[#f0f7ff] rounded-lg px-3 py-1.5">
+              <span className="font-bold">✦</span>
+              <span>Extraído por IA — revisa antes de confirmar</span>
+              {row.gmail_attachment_id && (
+                <button
+                  onClick={handleVerPDF} disabled={pdfLoading}
+                  className="ml-auto flex items-center gap-1 font-semibold hover:underline disabled:opacity-50"
+                >
+                  {pdfLoading ? <Loader2 size={11} className="animate-spin" /> : null}
+                  Ver PDF ↗
+                </button>
+              )}
+            </div>
+          )}
+          {!row.resumen_ia && row.gmail_attachment_id && (
+            <div className="flex items-center justify-end">
+              <button onClick={handleVerPDF} disabled={pdfLoading}
+                className="text-[11px] text-[#2570BA] font-semibold hover:underline disabled:opacity-50 flex items-center gap-1">
+                {pdfLoading ? <Loader2 size={11} className="animate-spin" /> : null}
+                Ver PDF ↗
+              </button>
+            </div>
+          )}
+
+          {/* Nombre archivo */}
+          <div>
+            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">
+              Nombre del archivo
+            </label>
+            <input
+              value={edit.nombre_archivo}
+              onChange={e => fieldChange('nombre_archivo', e.target.value)}
+              className="w-full text-[11px] font-mono border border-gray-200 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:border-[#2570BA]"
+              placeholder="2024-01-15_tramite_Garcia_O-123-2024.pdf"
+            />
+          </div>
+
+          {/* Grid: fecha · folio · tipo · tribunal */}
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">Fecha</label>
+              <input
+                type="date"
+                value={edit.fecha}
+                onChange={e => fieldChange('fecha', e.target.value)}
+                className="w-full text-[11px] border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:border-[#2570BA]"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">Folio</label>
+              <input
+                value={edit.folio}
+                onChange={e => fieldChange('folio', e.target.value)}
+                className="w-full text-[11px] border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:border-[#2570BA]"
+                placeholder="123"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">Tipo</label>
+              <select
+                value={edit.tipo_resolucion}
+                onChange={e => fieldChange('tipo_resolucion', e.target.value)}
+                className="w-full text-[11px] border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:border-[#2570BA]"
+              >
+                <option value="">Seleccionar…</option>
+                {TIPOS_RESOLUCION.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">Tribunal</label>
+              <input
+                value={edit.tribunal}
+                onChange={e => fieldChange('tribunal', e.target.value)}
+                className="w-full text-[11px] border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:border-[#2570BA]"
+                placeholder="JG de Las Condes"
+              />
+            </div>
+          </div>
+
+          {/* Resumen */}
+          <div>
+            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">Resumen</label>
+            <textarea
+              value={edit.resumen_ia}
+              onChange={e => fieldChange('resumen_ia', e.target.value)}
+              rows={3}
+              className="w-full text-[11px] border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:border-[#2570BA] resize-none"
+              placeholder="Qué resuelve esta resolución…"
+            />
+          </div>
+
+          {/* Sin causa: selector */}
+          {!row.causa_id && (
+            <div className="flex items-center gap-2 pt-1 border-t border-dashed border-gray-100">
+              <select value={causaId} onChange={e => setCausaId(e.target.value)}
+                className="flex-1 text-[11px] border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:border-[#2570ba]">
+                <option value="">Asignar causa…</option>
+                {causasInfo.map(c => (
+                  <option key={c.id} value={c.id}>{c.cliente_nombre}{c.rit ? ` (${c.rit})` : ''}</option>
+                ))}
+              </select>
+              <button onClick={handleAsignarCausa} disabled={!causaId}
+                className="flex items-center gap-1.5 text-[11px] font-semibold bg-[#2570BA] text-white px-3 py-1.5 rounded-lg hover:bg-[#2570BA]/80 disabled:opacity-50 transition-colors whitespace-nowrap">
+                <Link2 size={11} />Asignar
+              </button>
+            </div>
+          )}
+
+          {/* Error */}
+          {status === 'error' && (
+            <p className="text-[11px] text-red-600 bg-red-50 rounded-lg px-3 py-1.5">{statusMsg}</p>
+          )}
+
+          {/* Actions */}
+          <div className="flex items-center gap-2 pt-1 justify-end">
+            <button onClick={handleDescartar} disabled={descartando}
+              className="text-[11px] font-semibold text-gray-400 hover:text-gray-600 px-3 py-1.5 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors">
+              {descartando ? <Loader2 size={11} className="animate-spin inline" /> : null} Descartar
+            </button>
+            <button onClick={handleConfirmar} disabled={confirming || !hasCausa}
+              className="flex items-center gap-1.5 text-[11px] font-semibold bg-[#1a2e4a] text-white px-4 py-1.5 rounded-lg hover:bg-[#1a2e4a]/80 disabled:opacity-50 transition-colors whitespace-nowrap">
+              {confirming ? <Loader2 size={11} className="animate-spin" /> : <Scale size={11} />}
+              Confirmar y registrar
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -1207,25 +1409,21 @@ function BandejaJudicial({ causasInfo, onRegistered }) {
   const [syncMsg,  setSyncMsg]  = useState(null)
 
   async function loadBandeja() {
+    const today = new Date().toISOString().slice(0, 10)
     const { data } = await supabase
       .from('pjud_inbox')
-      .select('*, causas(id, rit, ruc, cliente_nombre, cliente_id)')
-      .eq('estado', 'pendiente')
-      .order('received_at', { ascending: false })
+      .select('*, causas(id, rit, ruc, cliente_nombre, cliente_id, drive_folder_id)')
+      .or(`estado.eq.pendiente,and(estado.eq.registrado,procesado_at.gte.${today}T00:00:00)`)
+      .order('fecha', { ascending: false })
     setRows(data || [])
   }
 
   async function sincronizar() {
-    setSyncing(true)
-    setSyncMsg(null)
+    setSyncing(true); setSyncMsg(null)
     try {
-      const res  = await fetch(`${SUPABASE_EF_URL}/gmail-pjud-sync`, {
-        method:  'POST',
-        headers: { apikey: SUPABASE_ANON, Authorization: `Bearer ${SUPABASE_ANON}` },
-      })
-      const data = await res.json()
+      const data = await efFetch('gmail-pjud-sync', { method: 'POST' })
       if (data.error) setSyncMsg({ type: 'error', text: data.error })
-      else setSyncMsg({ type: 'ok', text: data.synced > 0 ? `${data.synced} correo(s) nuevo(s)` : 'Sin novedades' })
+      else setSyncMsg({ type: 'ok', text: data.nuevos > 0 ? `${data.nuevos} nueva(s) resolución(es)` : 'Sin novedades' })
     } catch (e) {
       setSyncMsg({ type: 'error', text: e.message })
     } finally {
@@ -1233,7 +1431,6 @@ function BandejaJudicial({ causasInfo, onRegistered }) {
     }
   }
 
-  // On mount: sync then load
   useEffect(() => {
     async function init() {
       setCargando(true)
@@ -1244,38 +1441,22 @@ function BandejaJudicial({ causasInfo, onRegistered }) {
     init()
   }, []) // eslint-disable-line
 
-  async function registrar(row) {
-    const causa   = row.causas
-    const payload = {
-      fecha:              row.received_at?.slice(0, 10) || TODAY,
-      solicitud:          row.subject || '',
-      presenta:           'Tribunal',
-      estado:             'Pendiente',
-      tipo_solicitud:     'Solicitud',
-      causa_id:           row.causa_id,
-      causa_rit:          causa?.rit || row.rit_detectado || null,
-      causa_ruc:          causa?.ruc || row.ruc_detectado || null,
-      cliente_nombre:     causa?.cliente_nombre || '',
-      cliente_id:         causa?.cliente_id || null,
-      notas:              row.snippet || null,
+  function handleDone(action, rowId, causaId) {
+    if (action === 'descartado') {
+      setRows(prev => prev.filter(r => r.id !== rowId))
+    } else if (action === 'registrado') {
+      setRows(prev => prev.map(r => r.id === rowId ? { ...r, estado: 'registrado' } : r))
+    } else if (action === 'asignada' && causaId) {
+      const causa = causasInfo.find(c => c.id === causaId)
+      setRows(prev => prev.map(r => r.id === rowId ? { ...r, causa_id: causaId, causas: causa } : r))
     }
-    const { data: pjudData, error: pjudErr } = await supabase.from('pjud').insert([payload]).select().single()
-    if (pjudErr) { alert('Error al registrar: ' + pjudErr.message); return }
-    await supabase.from('pjud_inbox').update({ estado: 'procesado' }).eq('id', row.id)
-    setRows(prev => prev.filter(r => r.id !== row.id))
-    onRegistered?.(mapPjudRow(pjudData))
   }
 
-  async function asignarCausa(rowId, causaId) {
-    if (!causaId) return
-    const { error: err } = await supabase.from('pjud_inbox').update({ causa_id: causaId }).eq('id', rowId)
-    if (err) { alert('Error al asignar: ' + err.message); return }
-    const causa = causasInfo.find(c => c.id === causaId)
-    setRows(prev => prev.map(r => r.id === rowId ? { ...r, causa_id: causaId, causas: causa } : r))
-  }
-
-  const asignadas = rows.filter(r => r.causa_id)
-  const sinCausa  = rows.filter(r => !r.causa_id)
+  const pendientes       = rows.filter(r => r.estado === 'pendiente')
+  const asignadas        = pendientes.filter(r => r.causa_id)
+  const sinCausa         = pendientes.filter(r => !r.causa_id)
+  const registradasHoy   = rows.filter(r => r.estado === 'registrado')
+  const totalPendientes  = pendientes.length
 
   if (cargando) return (
     <div className="flex items-center justify-center py-20">
@@ -1293,12 +1474,12 @@ function BandejaJudicial({ causasInfo, onRegistered }) {
           {syncing ? 'Sincronizando…' : 'Sincronizar'}
         </button>
         {syncMsg && (
-          <span className={`text-[11px] font-medium ${syncMsg.type === 'ok' ? 'text-green-600' : 'text-red-600'}`}>
+          <span className={`text-[11px] font-medium ${syncMsg.type === 'ok' ? 'text-[#1E9E6A]' : 'text-red-600'}`}>
             {syncMsg.text}
           </span>
         )}
         <span className="ml-auto text-[11px] text-gray-400">
-          {rows.length} pendiente(s)
+          {totalPendientes > 0 ? `${totalPendientes} pendiente(s)` : 'Al día'}
         </span>
       </div>
 
@@ -1307,11 +1488,11 @@ function BandejaJudicial({ causasInfo, onRegistered }) {
         {asignadas.length > 0 && (
           <section>
             <p className="text-[11px] font-bold text-gray-300 uppercase tracking-widest mb-2.5 px-1">
-              Asignadas — {asignadas.length}
+              Resoluciones asignadas — {asignadas.length}
             </p>
             <div className="space-y-2">
               {asignadas.map(row => (
-                <AsignadaRow key={row.id} row={row} onRegistrar={() => registrar(row)} />
+                <InboxCard key={row.id} row={row} causasInfo={causasInfo} onDone={handleDone} />
               ))}
             </div>
           </section>
@@ -1321,16 +1502,40 @@ function BandejaJudicial({ causasInfo, onRegistered }) {
         {sinCausa.length > 0 && (
           <section>
             <p className="text-[11px] font-bold text-gray-300 uppercase tracking-widest mb-2.5 px-1">
-              Sin causa — {sinCausa.length}
+              Sin causa asignada — {sinCausa.length}
             </p>
             <div className="space-y-2">
               {sinCausa.map(row => (
-                <SinCausaRow
-                  key={row.id}
-                  row={row}
-                  causasInfo={causasInfo}
-                  onAsignar={causaId => asignarCausa(row.id, causaId)}
-                />
+                <InboxCard key={row.id} row={row} causasInfo={causasInfo} onDone={handleDone} />
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Registradas hoy */}
+        {registradasHoy.length > 0 && (
+          <section>
+            <p className="text-[11px] font-bold text-gray-300 uppercase tracking-widest mb-2.5 px-1">
+              Registradas hoy — {registradasHoy.length}
+            </p>
+            <div className="space-y-2">
+              {registradasHoy.map(row => (
+                <div key={row.id} className="bg-white border border-gray-100 rounded-xl px-4 py-3 flex items-center gap-3">
+                  <CheckCircle2 size={14} className="text-[#1E9E6A] flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[12px] font-medium text-gray-700 truncate">{row.nombre_archivo || row.asunto}</p>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      {row.causas && <span className="text-[11px] text-[#2570BA] font-medium">{row.causas.cliente_nombre}</span>}
+                      {row.tipo_resolucion && <span className="text-[10px] text-gray-400 italic">{row.tipo_resolucion}</span>}
+                    </div>
+                  </div>
+                  {row.drive_url && (
+                    <a href={row.drive_url} target="_blank" rel="noopener noreferrer"
+                      className="text-[11px] text-[#2570BA] font-semibold hover:underline whitespace-nowrap">
+                      Ver en Drive ↗
+                    </a>
+                  )}
+                </div>
               ))}
             </div>
           </section>
@@ -1362,6 +1567,7 @@ export default function PJUD() {
   const [search,      setSearch]      = useState('')
   const [showNuevaSolicitud, setShowNuevaSolicitud] = useState(false)
   const [activeTab, setActiveTab] = useState('movimientos') // 'movimientos' | 'bandeja'
+  const [bandejaCount, setBandejaCount] = useState(0)
 
   const loadingRef = useRef(new Set())
   const loadedRef  = useRef(new Set())
@@ -1388,6 +1594,8 @@ export default function PJUD() {
       setMetaRows((meta || []).filter(m => m.causa_id))
       setCargando(false)
     })
+    supabase.from('pjud_inbox').select('id', { count: 'exact', head: true })
+      .eq('estado', 'pendiente').then(({ count }) => setBandejaCount(count || 0))
   }, [])
 
   useEffect(() => {
@@ -1620,6 +1828,11 @@ export default function PJUD() {
                   : 'border-transparent text-gray-400 hover:text-gray-600'
               }`}>
               <Icon size={13}/>{label}
+              {id === 'bandeja' && bandejaCount > 0 && (
+                <span className="ml-0.5 text-[10px] font-bold bg-red-500 text-white rounded-full px-1.5 py-0.5 leading-none">
+                  {bandejaCount}
+                </span>
+              )}
             </button>
           ))}
         </div>
