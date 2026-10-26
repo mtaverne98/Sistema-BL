@@ -1410,11 +1410,12 @@ function BandejaJudicial({ causasInfo, onRegistered }) {
 
   async function loadBandeja() {
     const today = new Date().toISOString().slice(0, 10)
-    const { data } = await supabase
+    const { data, error: qErr } = await supabase
       .from('pjud_inbox')
       .select('*, causas(id, rit, ruc, cliente_nombre, cliente_id)')
       .or('estado.eq.pendiente,estado.eq.registrado')
-      .order('fecha', { ascending: false })
+      .order('created_at', { ascending: false })
+    if (qErr) { console.error('loadBandeja error:', qErr); return }
     // Keep only pendientes + registradas hoy
     const filtered = (data || []).filter(r =>
       r.estado === 'pendiente' ||
