@@ -1433,10 +1433,13 @@ function BandejaJudicial({ causasInfo, onRegistered }) {
 
   useEffect(() => {
     async function init() {
+      // Load bandeja immediately, sync in background
       setCargando(true)
-      try { await sincronizar() } catch (_) {}
       await loadBandeja()
       setCargando(false)
+      // Then sync (may take a while — Claude per email)
+      try { await sincronizar() } catch (_) {}
+      await loadBandeja()
     }
     init()
   }, []) // eslint-disable-line

@@ -251,10 +251,10 @@ serve(async (req) => {
     const { data: existing } = await sb.from('pjud_inbox').select('gmail_message_id')
     const knownIds = new Set((existing || []).map((r: { gmail_message_id: string }) => r.gmail_message_id))
 
-    // List messages
+    // List messages (max 20 to avoid timeout; filter nuevos and limit to 5)
     const since = new Date(Date.now() - 30 * 24 * 3600 * 1000)
     const after = `${since.getFullYear()}/${String(since.getMonth() + 1).padStart(2,'0')}/${String(since.getDate()).padStart(2,'0')}`
-    const list = await gmailGet(token, `messages?q=${encodeURIComponent(`from:${PJUD_SENDER} after:${after}`)}&maxResults=50`)
+    const list = await gmailGet(token, `messages?q=${encodeURIComponent(`from:${PJUD_SENDER} after:${after}`)}&maxResults=20`)
     const messages: Array<{ id: string }> = list.messages ?? []
     if (!messages.length) return json({ procesados: 0, nuevos: 0, errores: [] })
 
@@ -265,9 +265,11 @@ serve(async (req) => {
     const errores: string[] = []
     const inserts: unknown[] = []
     let procesados = 0
+    const MAX_NEW = 5  // max emails to process with Claude per call (avoids timeout)
 
     for (const { id: msgId } of messages) {
       if (knownIds.has(msgId)) continue
+      if (inserts.length >= MAX_NEW) break
       procesados++
       try {
         const msg     = await gmailGet(token, `messages/${msgId}?format=full`)
