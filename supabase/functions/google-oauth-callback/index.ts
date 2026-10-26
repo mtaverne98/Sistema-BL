@@ -11,17 +11,19 @@ const APP_URL              = Deno.env.get('APP_URL')!
 // Single-tenant: fixed token row ids
 const CALENDAR_ROW_ID = '00000000-0000-0000-0000-000000000001'
 const DRIVE_ROW_ID    = '00000000-0000-0000-0000-000000000002'
+const GMAIL_ROW_ID    = '00000000-0000-0000-0000-000000000003'
 
 serve(async (req) => {
-  const url   = new URL(req.url)
-  const code  = url.searchParams.get('code')
-  const error = url.searchParams.get('error')
-  const state = url.searchParams.get('state') ?? ''
+  const url     = new URL(req.url)
+  const code    = url.searchParams.get('code')
+  const error   = url.searchParams.get('error')
+  const state   = url.searchParams.get('state') ?? ''
   const isDrive = state === 'drive'
+  const isGmail = state === 'gmail'
 
-  const errorParam = isDrive ? 'drive' : 'calendar'
+  const errorParam = isDrive ? 'drive' : isGmail ? 'gmail' : 'calendar'
 
-  console.log('callback received', { hasCode: !!code, error, isDrive, url: url.toString().slice(0, 100) })
+  console.log('callback received', { hasCode: !!code, error, state, url: url.toString().slice(0, 100) })
 
   if (error || !code) {
     const msg = encodeURIComponent(error || 'cancelled')
@@ -51,18 +53,37 @@ serve(async (req) => {
   }
 
   const expiresAt  = new Date(Date.now() + ((tokens.expires_in ?? 3600) - 60) * 1000).toISOString()
-  const tokenRowId = isDrive ? DRIVE_ROW_ID : CALENDAR_ROW_ID
+  const tokenRowId = isDrive ? DRIVE_ROW_ID : isGmail ? GMAIL_ROW_ID : CALENDAR_ROW_ID
+  const tipo       = isDrive ? 'drive'      : isGmail ? 'gmail'      : 'calendar'
+
+  // For Gmail, fetch the authorized account email
+  let authorizedEmail: string | null = null
+  if (isGmail) {
+    try {
+      const infoRes  = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+        headers: { Authorization: `Bearer ${tokens.access_token}` },
+      })
+      const infoData = await infoRes.json()
+      authorizedEmail = infoData.email ?? null
+      console.log('gmail authorized email:', authorizedEmail)
+    } catch (e) {
+      console.warn('could not fetch userinfo:', e)
+    }
+  }
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
-  console.log('upserting tokens to DB...', { isDrive, tokenRowId })
-  const { error: dbErr } = await supabase.from('google_tokens').upsert({
+  console.log('upserting tokens to DB...', { tipo, tokenRowId })
+  const upsertData: Record<string, unknown> = {
     id:            tokenRowId,
-    tipo:          isDrive ? 'drive' : 'calendar',
+    tipo,
     access_token:  tokens.access_token,
     refresh_token: tokens.refresh_token ?? null,
     expires_at:    expiresAt,
     created_at:    new Date().toISOString(),
-  })
+  }
+  if (authorizedEmail) upsertData.authorized_email = authorizedEmail
+
+  const { error: dbErr } = await supabase.from('google_tokens').upsert(upsertData)
 
   console.log('upsert result', { dbErr: dbErr?.message })
 
@@ -71,9 +92,9 @@ serve(async (req) => {
     return Response.redirect(`${APP_URL}/configuracion?${errorParam}=error&msg=${msg}`, 302)
   }
 
-  const successRedirect = isDrive
-    ? `${APP_URL}/configuracion?drive=connected`
-    : `${APP_URL}/configuracion?calendar=connected`
+  const successRedirect = isDrive  ? `${APP_URL}/configuracion?drive=connected`
+                        : isGmail  ? `${APP_URL}/configuracion?gmail=connected`
+                        :            `${APP_URL}/configuracion?calendar=connected`
 
   console.log('success, redirecting to', successRedirect)
   return Response.redirect(successRedirect, 302)

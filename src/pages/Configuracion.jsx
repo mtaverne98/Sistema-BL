@@ -3,7 +3,7 @@ import { useLocation } from 'react-router-dom'
 import {
   Settings, Link2, RefreshCw, CheckCircle, XCircle,
   ChevronDown, ExternalLink, AlertCircle, Calendar,
-  Loader, Unlink, Info, HardDrive,
+  Loader, Unlink, Info, HardDrive, Mail,
   Bell, Gavel, CheckSquare, ClipboardCheck, Clock,
 } from 'lucide-react'
 import { useNotifications } from '../context/NotificationContext'
@@ -15,6 +15,9 @@ import {
 import {
   getDriveAuthUrl, checkDriveConnection, disconnectDrive,
 } from '../lib/driveApi'
+import {
+  getGmailAuthUrl, getGmailConnectionInfo, disconnectGmail,
+} from '../lib/gmailApi'
 import { supabase } from '../lib/supabase'
 
 // ── Section wrapper ───────────────────────────────────────────────────────────
@@ -370,6 +373,145 @@ function GoogleDriveCard() {
   )
 }
 
+// ── Google Gmail card ─────────────────────────────────────────────────────────
+function GoogleGmailCard() {
+  const location = useLocation()
+  const [info,    setInfo]    = useState({ connected: false, email: null, lastSyncAt: null })
+  const [loading, setLoading] = useState(true)
+  const [status,  setStatus]  = useState(null)  // 'error'
+  const [statusMsg, setStatusMsg] = useState('')
+
+  useEffect(() => {
+    getGmailConnectionInfo(supabase).then(i => { setInfo(i); setLoading(false) })
+  }, [])
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search)
+    const gmail  = params.get('gmail')
+    if (gmail === 'connected') {
+      getGmailConnectionInfo(supabase).then(i => setInfo(i))
+      window.history.replaceState({}, '', '/configuracion')
+    } else if (gmail === 'error') {
+      const msg = params.get('msg') || 'Error al conectar Gmail'
+      setStatus('error')
+      setStatusMsg(decodeURIComponent(msg))
+      window.history.replaceState({}, '', '/configuracion')
+    }
+  }, [location.search])
+
+  async function handleDisconnect() {
+    await disconnectGmail(supabase)
+    setInfo({ connected: false, email: null, lastSyncAt: null })
+    setStatus(null)
+    setStatusMsg('')
+  }
+
+  function fmtDate(iso) {
+    if (!iso) return 'Nunca'
+    const d = new Date(iso)
+    const now = new Date()
+    const diff = Math.floor((now - d) / 60000)
+    if (diff < 2)  return 'Hace un momento'
+    if (diff < 60) return `Hace ${diff} min`
+    const h = Math.floor(diff / 60)
+    if (h < 24) return `Hace ${h}h`
+    return d.toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric' })
+  }
+
+  return (
+    <div className="p-5">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-4 mb-5">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-white border border-gray-100 shadow-sm flex items-center justify-center flex-shrink-0">
+            <Mail size={18} className="text-[#EA4335]" />
+          </div>
+          <div>
+            <p className="text-sm font-bold text-[#1a2e4a]">Gmail</p>
+            <p className="text-xs text-gray-400">Lectura de correos entrantes — solo lectura</p>
+          </div>
+        </div>
+        {loading ? (
+          <span className="inline-flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1 rounded-full bg-gray-50 text-gray-300 border border-gray-100 flex-shrink-0">
+            <Loader size={10} className="animate-spin" />
+            Verificando…
+          </span>
+        ) : info.connected ? (
+          <span className="inline-flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-100 flex-shrink-0">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            Conectado
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1 rounded-full bg-gray-50 text-gray-400 border border-gray-100 flex-shrink-0">
+            <span className="w-1.5 h-1.5 rounded-full bg-gray-300" />
+            Sin conectar
+          </span>
+        )}
+      </div>
+
+      {/* Error */}
+      {status === 'error' && (
+        <div className="flex items-center gap-2 text-xs font-medium px-3.5 py-2.5 rounded-xl bg-red-50 text-red-600 border border-red-100 mb-4">
+          <XCircle size={12} className="flex-shrink-0" />
+          {statusMsg}
+        </div>
+      )}
+
+      {/* Not connected */}
+      {!info.connected && (
+        <div className="space-y-4">
+          <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 flex gap-3">
+            <Info size={14} className="text-blue-400 flex-shrink-0 mt-0.5" />
+            <div className="text-xs text-blue-700 leading-relaxed space-y-1">
+              <p className="font-semibold">¿Para qué sirve?</p>
+              <ul className="space-y-0.5 text-blue-600">
+                <li>· Lee correos entrantes relacionados con causas — notificaciones del tribunal, fiscalía, contrapartes</li>
+                <li>· Solo lectura: el sistema nunca envía ni modifica correos</li>
+                <li>· Accede únicamente a la bandeja de entrada de la cuenta autorizada</li>
+              </ul>
+            </div>
+          </div>
+          <button
+            onClick={() => { window.location.href = getGmailAuthUrl() }}
+            className="w-full flex items-center justify-center gap-2.5 bg-[#2570BA] text-white text-sm font-semibold px-5 py-3 rounded-xl hover:bg-[#2570BA]/90 transition-colors shadow-sm"
+          >
+            <Mail size={15} />
+            Conectar Gmail
+          </button>
+        </div>
+      )}
+
+      {/* Connected */}
+      {info.connected && (
+        <div className="space-y-4">
+          <div className="bg-gray-50/60 border border-gray-100 rounded-xl divide-y divide-gray-100">
+            {info.email && (
+              <div className="flex items-center justify-between px-4 py-3">
+                <p className="text-[11px] text-gray-500 font-medium">Cuenta autorizada</p>
+                <p className="text-[11px] text-gray-800 font-semibold">{info.email}</p>
+              </div>
+            )}
+            <div className="flex items-center justify-between px-4 py-3">
+              <p className="text-[11px] text-gray-500 font-medium">Última sincronización</p>
+              <p className="text-[11px] text-gray-800 font-semibold">{fmtDate(info.lastSyncAt)}</p>
+            </div>
+          </div>
+
+          <div className="pt-2 border-t border-gray-50">
+            <button
+              onClick={handleDisconnect}
+              className="flex items-center gap-2 text-xs text-gray-400 hover:text-red-500 font-medium transition-colors"
+            >
+              <Unlink size={12} />
+              Desconectar Gmail
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Info row ──────────────────────────────────────────────────────────────────
 function InfoRow({ label, value }) {
   return (
@@ -562,11 +704,13 @@ export default function Configuracion() {
         {/* Integraciones */}
         <Section
           title="Integraciones"
-          description="Conecta Google para sincronizar audiencias y subir documentos"
+          description="Conecta Google para sincronizar audiencias, subir documentos y leer correos"
         >
           <GoogleCalendarCard />
           <div className="border-t border-gray-100" />
           <GoogleDriveCard />
+          <div className="border-t border-gray-100" />
+          <GoogleGmailCard />
         </Section>
 
         {/* Notificaciones */}

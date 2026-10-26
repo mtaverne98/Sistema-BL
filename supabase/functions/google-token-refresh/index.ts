@@ -6,6 +6,7 @@ const CLIENT_ID       = Deno.env.get('GOOGLE_CLIENT_ID')!
 const CLIENT_SECRET   = Deno.env.get('GOOGLE_CLIENT_SECRET')!
 const CALENDAR_ROW_ID = '00000000-0000-0000-0000-000000000001'
 const DRIVE_ROW_ID    = '00000000-0000-0000-0000-000000000002'
+const GMAIL_ROW_ID    = '00000000-0000-0000-0000-000000000003'
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -25,7 +26,7 @@ Deno.serve(async (req) => {
   try {
     const url  = new URL(req.url)
     const tipo = url.searchParams.get('tipo') || 'calendar'
-    const TOKEN_ROW_ID = tipo === 'drive' ? DRIVE_ROW_ID : CALENDAR_ROW_ID
+    const TOKEN_ROW_ID = tipo === 'drive' ? DRIVE_ROW_ID : tipo === 'gmail' ? GMAIL_ROW_ID : CALENDAR_ROW_ID
 
     const sb = createClient(SUPABASE_URL, SERVICE_KEY)
     const { data: row } = await sb
