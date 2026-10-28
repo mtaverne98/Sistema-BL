@@ -37,12 +37,17 @@ const PRESENTA_CONFIG = {
 }
 
 const TIPO_SOLICITUD_CONFIG = {
-  'Escrito':      { bg: 'bg-[#f1f5f9]', text: 'text-[#475569]' },
-  'Presentación': { bg: 'bg-[#f1f5f9]', text: 'text-[#475569]' },
-  'Recurso':      { bg: 'bg-[#f1f5f9]', text: 'text-[#475569]' },
-  'Otrosí':       { bg: 'bg-[#f1f5f9]', text: 'text-[#475569]' },
-  'Solicitud':    { bg: 'bg-[#f1f5f9]', text: 'text-[#475569]' },
-  'Otro':         { bg: 'bg-[#f1f5f9]', text: 'text-[#475569]' },
+  'Escrito':               { bg: 'bg-[#f1f5f9]', text: 'text-[#475569]' },
+  'Recurso':               { bg: 'bg-[#f1f5f9]', text: 'text-[#475569]' },
+  'Solicitud de diligencia': { bg: 'bg-[#f1f5f9]', text: 'text-[#475569]' },
+  'Solicitud de audiencia':  { bg: 'bg-[#f1f5f9]', text: 'text-[#475569]' },
+  'Acta de audiencia':     { bg: 'bg-[#f1f5f9]', text: 'text-[#475569]' },
+  'Resolución':            { bg: 'bg-[#f1f5f9]', text: 'text-[#475569]' },
+  'Sentencia':             { bg: 'bg-[#f1f5f9]', text: 'text-[#475569]' },
+  'Certificado':           { bg: 'bg-[#f1f5f9]', text: 'text-[#475569]' },
+  'Informe':               { bg: 'bg-[#f1f5f9]', text: 'text-[#475569]' },
+  'Notificación':          { bg: 'bg-[#f1f5f9]', text: 'text-[#475569]' },
+  'Otro':                  { bg: 'bg-[#f1f5f9]', text: 'text-[#475569]' },
 }
 const TIPOS_SOLICITUD = Object.keys(TIPO_SOLICITUD_CONFIG)
 
@@ -349,7 +354,7 @@ function FormNuevaEntrada({ causa, causasInfo, onSave, onClose, globalMode = fal
   const [selectedClienteNombre, setSelectedClienteNombre] = useState(globalMode ? '' : (causa?.cliente_nombre || ''))
   const [selectedCausaRit, setSelectedCausaRit] = useState(globalMode ? '' : (causa?.rit || causa?.causa_rit || ''))
   const [form, setForm] = useState({
-    fecha: TODAY, folio: '', presenta: 'Nosotros', tipo_solicitud: 'Solicitud',
+    fecha: TODAY, folio: '', presenta: 'Nosotros', tipo_solicitud: 'Escrito',
     fecha_respuesta: '', fecha_notificacion: '',
     tiene_documento: false, documento_desc: '', responsable: 'MT',
   })
@@ -374,7 +379,7 @@ function FormNuevaEntrada({ causa, causasInfo, onSave, onClose, globalMode = fal
     ? (causasInfo?.find(c => c.rit === selectedCausaRit) || null)
     : causa
 
-  const valid = form.fecha && form.folio.trim() && solicitudFilled &&
+  const valid = form.fecha && solicitudFilled &&
     (globalMode ? (selectedClienteNombre && selectedCausaRit) : true)
 
   const handleSubmit = () => {
@@ -1680,7 +1685,7 @@ export default function PJUD() {
     const ci = causasInfo.find(c => c.rit === causaRit) || causasInfo.find(c => c.ruc === causaRuc)
     const payload = {
       fecha: movData.fecha, folio: movData.folio, presenta: movData.presenta || 'Nosotros',
-      tipo_solicitud: movData.tipo_solicitud || 'Solicitud',
+      tipo_solicitud: movData.tipo_solicitud || 'Escrito',
       solicitud: movData.solicitud || null, respuesta: movData.respuesta || null,
       fecha_respuesta: movData.fecha_respuesta || null, fecha_notificacion: movData.fecha_notificacion || null,
       accion_requerida: movData.accion_requerida || null, consecuencia_procesal: movData.consecuencia_procesal || null,
