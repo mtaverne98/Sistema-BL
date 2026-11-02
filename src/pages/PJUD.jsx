@@ -694,10 +694,16 @@ export function MovimientosTable({ causaData, rowsAll, onUpdate, onAdd, onDelete
 
   const movimientos = useMemo(() =>
     rowsAll.filter(r => embedded || matchCausa(r, causaData, clienteNombre))
-      .sort((a, b) => (b.fecha || '').localeCompare(a.fecha || '')),
+      .sort((a, b) => {
+        const fa = parseInt(a.folio) || 0
+        const fb = parseInt(b.folio) || 0
+        if (fa !== fb) return fa - fb
+        return (a.folio || '').localeCompare(b.folio || '', undefined, { numeric: true })
+      }),
     [rowsAll, causa_rit, causa_ruc, clienteNombre, embedded])
 
   const [expandedId,      setExpandedId]      = useState(null)
+  const [inlineCell,      setInlineCell]      = useState(null) // { id, field, value }
   const [editingId,       setEditingId]       = useState(null)
   const [editDraft,       setEditDraft]       = useState({})
   const [showForm,        setShowForm]        = useState(false)
@@ -735,7 +741,7 @@ export function MovimientosTable({ causaData, rowsAll, onUpdate, onAdd, onDelete
   }
 
   const toggleRow  = id => { if (editingId === id) return; setExpandedId(p => p === id ? null : id) }
-  const startEdit  = (r, e) => { e.stopPropagation(); setEditingId(r.id); setEditDraft({ ...r }); setExpandedId(null) }
+  const startEdit  = (r, e) => { e.stopPropagation(); setInlineCell(null); setEditingId(r.id); setEditDraft({ ...r }); setExpandedId(null) }
   const cancelEdit = e => { e.stopPropagation(); setEditingId(null) }
   const saveEdit   = async e => {
     e.stopPropagation()
@@ -942,12 +948,58 @@ export function MovimientosTable({ causaData, rowsAll, onUpdate, onAdd, onDelete
                         </>
                       ) : (
                         <>
-                          <td className="px-3 py-3 first:pl-6 whitespace-nowrap">
-                            <span className="text-[11px] text-gray-500 font-mono">{fmtFecha(r.fecha)}</span>
+                          <td className="px-3 py-3 first:pl-6 whitespace-nowrap" onClick={e => e.stopPropagation()}>
+                            {inlineCell?.id === r.id && inlineCell?.field === 'fecha' ? (
+                              <input
+                                type="date"
+                                autoFocus
+                                defaultValue={r.fecha || ''}
+                                className="text-xs border-0 border-b border-blue-400 bg-transparent outline-none w-28 font-mono"
+                                onChange={e => {
+                                  const val = e.target.value || null
+                                  setInlineCell(null)
+                                  if (val !== r.fecha) onUpdate(r.id, { fecha: val })
+                                }}
+                                onBlur={() => setInlineCell(null)}
+                                onKeyDown={e => { if (e.key === 'Escape') setInlineCell(null) }}
+                              />
+                            ) : (
+                              <span
+                                className="text-[11px] text-gray-500 font-mono cursor-pointer hover:text-[#2570ba] transition-colors"
+                                onClick={() => setInlineCell({ id: r.id, field: 'fecha', value: r.fecha || '' })}
+                                title="Click para editar fecha"
+                              >
+                                {fmtFecha(r.fecha)}
+                              </span>
+                            )}
                           </td>
-                          <td className="px-3 py-3 whitespace-nowrap">
+                          <td className="px-3 py-3 whitespace-nowrap" onClick={e => e.stopPropagation()}>
                             <div className="space-y-1">
-                              <span className="text-[11px] font-mono font-semibold text-gray-700 bg-violet-50 text-violet-700 px-1.5 py-0.5 rounded block w-fit">{r.folio || '—'}</span>
+                              {inlineCell?.id === r.id && inlineCell?.field === 'folio' ? (
+                                <input
+                                  type="text"
+                                  autoFocus
+                                  defaultValue={r.folio || ''}
+                                  className="text-xs font-mono border-0 border-b border-blue-400 bg-transparent outline-none w-20"
+                                  onBlur={e => {
+                                    const val = e.target.value.trim()
+                                    setInlineCell(null)
+                                    if (val !== (r.folio || '')) onUpdate(r.id, { folio: val || null })
+                                  }}
+                                  onKeyDown={e => {
+                                    if (e.key === 'Enter') { e.currentTarget.blur() }
+                                    if (e.key === 'Escape') setInlineCell(null)
+                                  }}
+                                />
+                              ) : (
+                                <span
+                                  className="text-[11px] font-mono font-semibold bg-violet-50 text-violet-700 px-1.5 py-0.5 rounded block w-fit cursor-pointer hover:bg-violet-100 transition-colors"
+                                  onClick={() => setInlineCell({ id: r.id, field: 'folio', value: r.folio || '' })}
+                                  title="Click para editar folio"
+                                >
+                                  {r.folio || '—'}
+                                </span>
+                              )}
                               {r.presenta && r.presenta !== 'Nosotros' && <PresentaBadge presenta={r.presenta} compact />}
                             </div>
                           </td>
