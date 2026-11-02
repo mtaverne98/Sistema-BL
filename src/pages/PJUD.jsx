@@ -695,10 +695,14 @@ export function MovimientosTable({ causaData, rowsAll, onUpdate, onAdd, onDelete
   const movimientos = useMemo(() =>
     rowsAll.filter(r => embedded || matchCausa(r, causaData, clienteNombre))
       .sort((a, b) => {
-        const fa = parseInt(a.folio) || 0
-        const fb = parseInt(b.folio) || 0
-        if (fa !== fb) return fa - fb
-        return (a.folio || '').localeCompare(b.folio || '', undefined, { numeric: true })
+        const fa = parseInt(a.folio)
+        const fb = parseInt(b.folio)
+        const haA = !isNaN(fa)
+        const haB = !isNaN(fb)
+        if (haA && haB) return fb - fa
+        if (haA) return -1
+        if (haB) return 1
+        return (b.fecha || '').localeCompare(a.fecha || '')
       }),
     [rowsAll, causa_rit, causa_ruc, clienteNombre, embedded])
 
