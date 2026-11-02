@@ -155,7 +155,8 @@ function computeGrupos(tareas, groupBy) {
 }
 
 // ── TaskRow ───────────────────────────────────────────────────────────────────
-function TaskRow({ tarea, onClick, onToggle, onDeleteRequest, panelOpen, onOpenCausa, isResolviendo, onUndo }) {
+function TaskRow({ tarea, onClick, onToggle, onDeleteRequest, panelOpen, onOpenCausa, isResolviendo, onUndo, onUpdate }) {
+  const [editingFecha, setEditingFecha] = useState(false)
   if (isResolviendo) {
     return (
       <div className="flex items-center gap-3 px-4 py-3.5 border-l-[3px] border-l-transparent border-b border-gray-50">
@@ -239,9 +240,29 @@ function TaskRow({ tarea, onClick, onToggle, onDeleteRequest, panelOpen, onOpenC
       )}
 
       {/* Fecha */}
-      <span className={`flex-shrink-0 text-[11px] w-16 text-right tabular-nums ${fechaColor}`}>
-        {label}
-      </span>
+      {editingFecha ? (
+        <input
+          type="date"
+          autoFocus
+          defaultValue={tarea.fecha_vencimiento || ''}
+          className="flex-shrink-0 text-[11px] w-16 text-right tabular-nums bg-transparent border-0 border-b border-[#2570ba] outline-none focus:ring-0 p-0 cursor-pointer"
+          onChange={e => {
+            const val = e.target.value || null
+            setEditingFecha(false)
+            if (val !== tarea.fecha_vencimiento) onUpdate(tarea.id, { fecha_vencimiento: val })
+          }}
+          onBlur={() => setEditingFecha(false)}
+          onClick={e => e.stopPropagation()}
+        />
+      ) : (
+        <span
+          className={`flex-shrink-0 text-[11px] w-16 text-right tabular-nums cursor-pointer hover:text-[#2570ba] transition-colors ${fechaColor}`}
+          onClick={e => { e.stopPropagation(); setEditingFecha(true) }}
+          title="Click para cambiar fecha"
+        >
+          {label || '—'}
+        </span>
+      )}
 
       {/* Responsable */}
       {abo && (
@@ -292,7 +313,7 @@ function TaskRow({ tarea, onClick, onToggle, onDeleteRequest, panelOpen, onOpenC
 }
 
 // ── GroupSection ──────────────────────────────────────────────────────────────
-function GroupSection({ grupo, onTaskClick, onToggle, onDeleteRequest, panelOpen, onOpenCausa, resolviendo, onUndo }) {
+function GroupSection({ grupo, onTaskClick, onToggle, onDeleteRequest, panelOpen, onOpenCausa, resolviendo, onUndo, onUpdate }) {
   const [open, setOpen] = useState(true)
 
   return (
@@ -323,6 +344,7 @@ function GroupSection({ grupo, onTaskClick, onToggle, onDeleteRequest, panelOpen
               onOpenCausa={onOpenCausa}
               isResolviendo={resolviendo?.has(t.id)}
               onUndo={onUndo}
+              onUpdate={onUpdate}
             />
           ))}
         </div>
@@ -1045,6 +1067,7 @@ export default function Tareas() {
                         onOpenCausa={handleOpenCausa}
                         resolviendo={resolviendo}
                         onUndo={handleUndoToggle}
+                        onUpdate={handleUpdate}
                       />
                     ))}
                   </div>
