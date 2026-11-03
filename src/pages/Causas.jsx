@@ -4518,6 +4518,8 @@ export default function Causas() {
   const [selectedIds, setSelectedIds] = useState(new Set())
   const [tableEdit, setTableEdit]     = useState(null)  // { id, field }
   const [bulkField, setBulkField]     = useState(null)  // campo activo del bulk action bar
+  const [bannerProspectos, setBannerProspectos] = useState(null) // null | { causaId, prospectos[] }
+  const [bannerGuardando, setBannerGuardando]   = useState(false)
 
   const { activeCausa, clearActiveCausa } = useNavigation()
 
@@ -4634,6 +4636,21 @@ export default function Causas() {
         setCausas(prev => [...prev, nueva].sort((a, b) => a.cliente_nombre.localeCompare(b.cliente_nombre, 'es')))
         setFormulario(null)
         setSeleccionada(nueva)
+        // Buscar prospectos abiertos del mismo cliente
+        const clienteNombre = nueva.cliente_nombre || ''
+        const primerasPalabras = clienteNombre.split(' ').slice(0, 2).join(' ')
+        if (primerasPalabras.length >= 2) {
+          const q = supabase.from('prospectos')
+            .select('id, nombre, fecha_contacto, materia, estado')
+            .eq('convertido', false)
+            .neq('estado', 'Rechazado')
+          const { data: ps } = nueva.cliente_id
+            ? await q.or(`cliente_existente_id.eq.${nueva.cliente_id},nombre.ilike.%${primerasPalabras}%`)
+            : await q.ilike('nombre', `%${primerasPalabras}%`)
+          if (ps && ps.length > 0) {
+            setBannerProspectos({ causaId: nueva.id, causaNombre: nueva.rit || nueva.ruc || nueva.materia, prospectos: ps })
+          }
+        }
       }
     } else {
       const { data, error: err } = await supabase.from('causas').update(payload).eq('id', formulario.id).select().single()
@@ -4646,6 +4663,20 @@ export default function Causas() {
       }
     }
     setGuardando(false)
+  }
+
+  // ── Vincular prospecto a causa recién creada ────────────────────────────
+  const handleVincularProspecto = async (prospectoId) => {
+    if (!bannerProspectos) return
+    setBannerGuardando(true)
+    const hoy = new Date().toISOString().slice(0, 10)
+    await supabase.from('prospectos').update({
+      convertido: true,
+      causa_vinculada_id: bannerProspectos.causaId,
+      fecha_conversion: hoy,
+    }).eq('id', prospectoId)
+    setBannerGuardando(false)
+    setBannerProspectos(null)
   }
 
   // ── Actualización parcial (ej: cambio de estado inline) ─────────────────
@@ -5504,6 +5535,52 @@ export default function Causas() {
               onCrearCliente={() => { setFormulario(null); window.location.href = '/clientes' }}
             />
           )}
+        </div>
+      )}
+
+      {/* Banner: vincular prospecto a causa recién creada */}
+      {bannerProspectos && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center pb-8 pointer-events-none">
+          <div className="pointer-events-auto w-[480px] bg-white border border-[#2570ba]/30 rounded-2xl shadow-2xl p-5 space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="w-8 h-8 rounded-full bg-[#2570ba]/10 flex items-center justify-center flex-shrink-0">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#2570ba" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[13px] font-semibold text-gray-900 mb-0.5">¿Esta causa viene de un prospecto?</p>
+                <p className="text-[11px] text-gray-500">
+                  {bannerProspectos.prospectos.length === 1
+                    ? `Hay un prospecto abierto que podría corresponder a esta causa.`
+                    : `Hay ${bannerProspectos.prospectos.length} prospectos abiertos que podrían corresponder.`}
+                </p>
+              </div>
+              <button onClick={() => setBannerProspectos(null)} className="text-gray-300 hover:text-gray-500 p-0.5 flex-shrink-0">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+            <div className="space-y-1.5">
+              {bannerProspectos.prospectos.map(p => (
+                <div key={p.id} className="flex items-center gap-3 px-3 py-2.5 bg-gray-50 rounded-xl hover:bg-[#E6F1FB] transition-colors group">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[12px] font-medium text-gray-800 truncate">{p.nombre}</p>
+                    <p className="text-[10px] text-gray-400">{p.fecha_contacto} · {p.materia}</p>
+                  </div>
+                  <button
+                    disabled={bannerGuardando}
+                    onClick={() => handleVincularProspecto(p.id)}
+                    className="flex-shrink-0 px-3 py-1.5 text-[11px] font-semibold text-white rounded-lg transition-colors disabled:opacity-50"
+                    style={{ backgroundColor: '#2570BA' }}
+                  >
+                    {bannerGuardando ? 'Guardando…' : 'Sí, vincular'}
+                  </button>
+                </div>
+              ))}
+            </div>
+            <button onClick={() => setBannerProspectos(null)}
+              className="w-full py-2 text-[11px] text-gray-400 hover:text-gray-600 transition-colors">
+              No, ignorar
+            </button>
+          </div>
         </div>
       )}
 
