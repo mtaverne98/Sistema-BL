@@ -146,9 +146,9 @@ serve(async (req) => {
 
     // Get inbox row
     const { data: inbox, error: inboxErr } = await sb.from('pjud_inbox')
-      .select('*, causas(id, rit, ruc, cliente_nombre, cliente_id, drive_folder_id)')
+      .select('*, causas(id, rit, ruc, cliente_nombre, cliente_id)')
       .eq('id', inbox_id).single()
-    if (inboxErr || !inbox) return json({ error: 'inbox no encontrado' }, 404)
+    if (inboxErr || !inbox) return json({ error: 'inbox no encontrado: ' + (inboxErr?.message || 'null') }, 404)
     if (!inbox.causa_id) return json({ error: 'Sin causa asignada' }, 400)
 
     const causa    = inbox.causas
@@ -173,12 +173,15 @@ serve(async (req) => {
     let driveUrl:    string | null = null
 
     if (pdfBytes) {
-      const sa = JSON.parse(SA_KEY_JSON) as Record<string, string>
-      const driveToken = await getServiceAccountToken(sa)
-      const folderId   = causa?.drive_folder_id ?? null
-      const uploaded   = await uploadFileToDrive(driveToken, filename, pdfBytes, folderId)
-      driveFileId = uploaded.id
-      driveUrl    = uploaded.webViewLink || `https://drive.google.com/file/d/${uploaded.id}/view`
+      try {
+        const sa = JSON.parse(SA_KEY_JSON) as Record<string, string>
+        const driveToken = await getServiceAccountToken(sa)
+        const uploaded   = await uploadFileToDrive(driveToken, filename, pdfBytes, SHARED_DRIVE_ID)
+        driveFileId = uploaded.id
+        driveUrl    = uploaded.webViewLink || `https://drive.google.com/file/d/${uploaded.id}/view`
+      } catch (driveErr) {
+        console.error('Drive upload falhou (continuando sin Drive):', (driveErr as Error).message)
+      }
     }
 
     // Insert into pjud

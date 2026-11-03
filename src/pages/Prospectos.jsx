@@ -60,7 +60,7 @@ const INACTIVOS = ['Inactivo', 'Rechazado']
 // Base columns always present; extended columns added via supabase_schema_additions.sql
 const PROSPECTOS_BASE_FIELDS    = new Set(['nombre','telefono','email','fecha_contacto','origen','materia','estado','proxima_accion','notas','convertido'])
 const PROSPECTOS_EXTENDED_FIELDS = new Set(['presupuesto_enviado','descripcion','antecedentes','interacciones'])
-const PROSPECTOS_EXTRA_FIELDS   = new Set(['motivo_rechazo'])
+const PROSPECTOS_EXTRA_FIELDS   = new Set(['motivo_rechazo','cliente_existente_id','causa_vinculada_id','fecha_conversion'])
 const PROSPECTOS_DB_FIELDS = new Set([...PROSPECTOS_BASE_FIELDS, ...PROSPECTOS_EXTENDED_FIELDS, ...PROSPECTOS_EXTRA_FIELDS])
 
 function mapProspectoRow(row) {
@@ -81,6 +81,9 @@ function mapProspectoRow(row) {
     interacciones:       Array.isArray(row.interacciones) ? row.interacciones : [],
     notas:               row.notas               || '',
     motivo_rechazo:      row.motivo_rechazo      || '',
+    cliente_existente_id: row.cliente_existente_id || null,
+    causa_vinculada_id:   row.causa_vinculada_id   || null,
+    fecha_conversion:     row.fecha_conversion     || null,
     created_at:          row.created_at          || '',
   }
 }
@@ -368,10 +371,76 @@ function MetricCard({ label, value, sub, color = 'text-gray-900', icon: Icon, ic
   )
 }
 
+// ── Buscadores ────────────────────────────────────────────────────────────
+function BuscadorClientes({ onSelect, placeholder = 'Buscar cliente…' }) {
+  const [q, setQ] = useState('')
+  const [resultados, setResultados] = useState([])
+  useEffect(() => {
+    if (q.trim().length < 2) { setResultados([]); return }
+    supabase.from('clientes').select('id, nombre').ilike('nombre', `%${q.trim()}%`).limit(8)
+      .then(({ data }) => setResultados(data || []))
+  }, [q])
+  return (
+    <div className="relative">
+      <input value={q} onChange={e => setQ(e.target.value)} placeholder={placeholder}
+        className="w-full px-3 py-2 text-xs border border-gray-200 rounded-lg outline-none focus:border-[#2570ba] transition-all placeholder:text-gray-300" />
+      {resultados.length > 0 && (
+        <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-gray-100 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+          {resultados.map(c => (
+            <button key={c.id} onClick={() => { onSelect(c); setQ(''); setResultados([]) }}
+              className="w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 transition-colors first:rounded-t-lg last:rounded-b-lg">
+              {c.nombre}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function BuscadorCausas({ onSelect, placeholder = 'Buscar por RIT, RUC o cliente…' }) {
+  const [q, setQ] = useState('')
+  const [resultados, setResultados] = useState([])
+  useEffect(() => {
+    if (q.trim().length < 2) { setResultados([]); return }
+    const s = q.trim()
+    supabase.from('causas').select('id, rit, ruc, cliente_nombre')
+      .or(`rit.ilike.%${s}%,ruc.ilike.%${s}%,cliente_nombre.ilike.%${s}%`)
+      .limit(8)
+      .then(({ data }) => setResultados(data || []))
+  }, [q])
+  return (
+    <div className="relative">
+      <input value={q} onChange={e => setQ(e.target.value)} placeholder={placeholder}
+        className="w-full px-3 py-2 text-xs border border-gray-200 rounded-lg outline-none focus:border-[#2570ba] transition-all placeholder:text-gray-300" />
+      {resultados.length > 0 && (
+        <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-gray-100 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+          {resultados.map(c => (
+            <button key={c.id} onClick={() => { onSelect(c); setQ(''); setResultados([]) }}
+              className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 transition-colors first:rounded-t-lg last:rounded-b-lg">
+              <span className="font-mono font-semibold text-violet-700">{c.rit || c.ruc}</span>
+              {c.cliente_nombre && <span className="text-gray-500 ml-2">{c.cliente_nombre}</span>}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Panel Detalle ─────────────────────────────────────────────────────────
-function PanelDetalle({ prospecto, onClose, onConvertir, onUpdate }) {
+function PanelDetalle({ prospecto, onClose, onConvertir, onVincularCausa, onMarcarConvertido, onUpdate }) {
+  const todayISO = new Date().toISOString().slice(0, 10)
   const [tab, setTab] = useState('resumen')
   const [confirmando, setConfirmando] = useState(false)
+  const [buscandoDuplicado, setBuscandoDuplicado] = useState(false)
+  const [duplicado, setDuplicado] = useState(null) // cliente encontrado
+  const [mostrarVincular, setMostrarVincular] = useState(false)
+  const [causaVincular, setCausaVincular] = useState(null) // { id, rit, ruc, cliente_nombre }
+  const [mostrarMarcar, setMostrarMarcar] = useState(false)
+  const [causaMarcar, setCausaMarcar] = useState(null)
+  const [fechaMarcar, setFechaMarcar] = useState(todayISO)
+  const [guardandoAccion, setGuardandoAccion] = useState(false)
   // Notas
   const [editandoNota, setEditandoNota] = useState(false)
   const [textNota, setTextNota] = useState(prospecto.notas || '')
@@ -380,7 +449,6 @@ function PanelDetalle({ prospecto, onClose, onConvertir, onUpdate }) {
   const [interacciones, setInteracciones] = useState([])
   const [cargandoInter, setCargandoInter] = useState(false)
   const [mostrarFormInter, setMostrarFormInter] = useState(false)
-  const todayISO = new Date().toISOString().slice(0, 10)
   const [formInter, setFormInter] = useState({ fecha: todayISO, tipo: 'Llamada', descripcion: '', resultado: '' })
   const [guardandoInter, setGuardandoInter] = useState(false)
 
@@ -470,48 +538,104 @@ function PanelDetalle({ prospecto, onClose, onConvertir, onUpdate }) {
 
         {/* Acciones */}
         {!inactivo ? (
-          confirmando ? (
+          // ── Bloque de conversión / vinculación ──────────────────────────
+          duplicado ? (
+            // Duplicado encontrado — preguntar
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-3">
+              <p className="text-xs font-semibold text-amber-800">¿Cliente existente?</p>
+              <p className="text-[11px] text-amber-700 leading-relaxed">
+                Encontramos un cliente similar: <strong className="uppercase">{duplicado.nombre}</strong>.
+              </p>
+              <div className="flex gap-2">
+                <button onClick={() => { setDuplicado(null); onConvertir(prospecto.id, duplicado.id) }}
+                  className="flex-1 py-2 text-xs font-semibold text-white rounded-lg bg-amber-500 hover:bg-amber-600 transition-colors">
+                  Vincular a este cliente
+                </button>
+                <button onClick={() => { setDuplicado(null); onConvertir(prospecto.id, null) }}
+                  className="flex-1 py-2 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition-colors">
+                  Crear cliente nuevo
+                </button>
+              </div>
+              <button onClick={() => setDuplicado(null)} className="text-[11px] text-gray-400 hover:text-gray-600 transition-colors">Cancelar</button>
+            </div>
+          ) : mostrarVincular ? (
+            // Vincular a causa existente
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 space-y-3">
+              <p className="text-xs font-semibold text-[#1a2e4a]">Vincular a causa existente</p>
+              <BuscadorCausas onSelect={c => setCausaVincular(c)} />
+              {causaVincular && (
+                <div className="flex items-center gap-2 bg-white border border-blue-100 rounded-lg px-3 py-2">
+                  <span className="font-mono font-semibold text-violet-700 text-xs">{causaVincular.rit || causaVincular.ruc}</span>
+                  <span className="text-xs text-gray-500">{causaVincular.cliente_nombre}</span>
+                  <button onClick={() => setCausaVincular(null)} className="ml-auto text-gray-300 hover:text-gray-500"><X size={11}/></button>
+                </div>
+              )}
+              <div className="flex gap-2">
+                <button disabled={!causaVincular || guardandoAccion}
+                  onClick={async () => { setGuardandoAccion(true); await onVincularCausa(prospecto.id, causaVincular.id); setGuardandoAccion(false); setMostrarVincular(false) }}
+                  className="flex-1 py-2 text-xs font-semibold text-white rounded-lg transition-colors disabled:opacity-50"
+                  style={{ backgroundColor: '#1a2e4a' }}>
+                  {guardandoAccion ? 'Guardando…' : 'Confirmar vinculación'}
+                </button>
+                <button onClick={() => { setMostrarVincular(false); setCausaVincular(null) }}
+                  className="px-3 py-2 text-xs text-gray-500 rounded-lg hover:bg-blue-100 transition-colors">Cancelar</button>
+              </div>
+            </div>
+          ) : confirmando ? (
+            // Confirmación de conversión normal
             <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
               <div className="flex items-center gap-2 mb-1.5">
                 <CheckCircle size={14} className="text-emerald-500 flex-shrink-0" />
                 <p className="text-xs font-semibold text-emerald-800">Confirmar conversión</p>
               </div>
               <p className="text-[11px] text-emerald-700 leading-relaxed mb-3">
-                <strong className="uppercase">{prospecto.nombre}</strong> será agregado al módulo Clientes como cliente formal del estudio.
+                <strong className="uppercase">{prospecto.nombre}</strong> será agregado como cliente formal del estudio.
+                {prospecto.cliente_existente_id && <span className="block mt-1 font-medium">Se usará el cliente ya vinculado — no se creará uno nuevo.</span>}
               </p>
               <div className="flex gap-2">
                 <button
-                  onClick={() => { onConvertir(prospecto.id); setConfirmando(false) }}
-                  className="flex-1 py-2 text-xs font-semibold text-white rounded-lg bg-emerald-500 hover:bg-emerald-600 transition-colors flex items-center justify-center gap-1.5"
+                  disabled={buscandoDuplicado}
+                  onClick={async () => {
+                    setConfirmando(false)
+                    if (prospecto.cliente_existente_id) { onConvertir(prospecto.id, prospecto.cliente_existente_id); return }
+                    setBuscandoDuplicado(true)
+                    const { data } = await supabase.from('clientes').select('id, nombre').ilike('nombre', `%${prospecto.nombre.split(' ')[0]}%`).limit(5)
+                    setBuscandoDuplicado(false)
+                    const match = (data || []).find(c => c.nombre.toLowerCase().includes(prospecto.nombre.split(' ')[0].toLowerCase()) && c.id !== prospecto.cliente_existente_id)
+                    if (match) { setDuplicado(match) } else { onConvertir(prospecto.id, null) }
+                  }}
+                  className="flex-1 py-2 text-xs font-semibold text-white rounded-lg bg-emerald-500 hover:bg-emerald-600 transition-colors flex items-center justify-center gap-1.5 disabled:opacity-60"
                 >
-                  <UserPlus size={12} />Convertir y abrir Clientes
+                  <UserPlus size={12} />{buscandoDuplicado ? 'Verificando…' : 'Convertir y abrir Clientes'}
                 </button>
-                <button
-                  onClick={() => setConfirmando(false)}
-                  className="px-3 py-2 text-xs text-gray-500 rounded-lg hover:bg-white border border-emerald-100 transition-colors"
-                >Cancelar</button>
+                <button onClick={() => setConfirmando(false)}
+                  className="px-3 py-2 text-xs text-gray-500 rounded-lg hover:bg-white border border-emerald-100 transition-colors">Cancelar</button>
               </div>
             </div>
           ) : (
-            <div className="flex items-center gap-1.5">
-              <button
-                onClick={() => setConfirmando(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition-colors"
-              >
-                <UserPlus size={11} />Convertir a cliente
-              </button>
-              {prospecto.telefono && (
-                <a href={`tel:${prospecto.telefono}`}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors">
-                  <Phone size={11} />Llamar
-                </a>
-              )}
-              {prospecto.email && (
-                <a href={`mailto:${prospecto.email}`}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors">
-                  <Mail size={11} />Email
-                </a>
-              )}
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <button onClick={() => setConfirmando(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition-colors">
+                  <UserPlus size={11} />Convertir a cliente
+                </button>
+                <button onClick={() => setMostrarVincular(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium text-[#1a2e4a] bg-[#1a2e4a]/5 hover:bg-[#1a2e4a]/10 rounded-lg transition-colors">
+                  <Scale size={11} />Vincular a causa existente
+                </button>
+                {prospecto.telefono && (
+                  <a href={`tel:${prospecto.telefono}`}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors">
+                    <Phone size={11} />Llamar
+                  </a>
+                )}
+                {prospecto.email && (
+                  <a href={`mailto:${prospecto.email}`}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors">
+                    <Mail size={11} />Email
+                  </a>
+                )}
+              </div>
             </div>
           )
         ) : rechazado ? (
@@ -527,16 +651,55 @@ function PanelDetalle({ prospecto, onClose, onConvertir, onUpdate }) {
             </button>
           </div>
         ) : (
-          <div className="flex items-center gap-2">
-            <div className="flex-1 text-center py-2 text-[11px] rounded-lg bg-gray-100 text-gray-400">
-              {prospecto.convertido ? 'Convertido a cliente' : 'Inactivo'}
-            </div>
-            <button
-              onClick={() => onUpdate(prospecto.id, { estado: 'Activo', convertido: false })}
-              className="px-3 py-2 text-[11px] font-medium text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors whitespace-nowrap"
-            >
-              Reactivar
-            </button>
+          <div className="space-y-2">
+            {mostrarMarcar ? (
+              <div className="bg-purple-50 border border-purple-200 rounded-xl p-4 space-y-3">
+                <p className="text-xs font-semibold text-purple-900">Marcar como convertido</p>
+                <div>
+                  <label className="block text-[10px] text-gray-500 mb-1">Causa vinculada (opcional)</label>
+                  <BuscadorCausas onSelect={c => setCausaMarcar(c)} />
+                  {causaMarcar && (
+                    <div className="flex items-center gap-2 mt-1.5 bg-white border border-purple-100 rounded-lg px-3 py-2">
+                      <span className="font-mono font-semibold text-violet-700 text-xs">{causaMarcar.rit || causaMarcar.ruc}</span>
+                      <span className="text-xs text-gray-500">{causaMarcar.cliente_nombre}</span>
+                      <button onClick={() => setCausaMarcar(null)} className="ml-auto text-gray-300 hover:text-gray-500"><X size={11}/></button>
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-[10px] text-gray-500 mb-1">Fecha de conversión</label>
+                  <input type="date" value={fechaMarcar} onChange={e => setFechaMarcar(e.target.value)}
+                    className="w-full px-3 py-2 text-xs border border-gray-200 rounded-lg outline-none focus:border-purple-400 transition-all bg-white" />
+                </div>
+                <div className="flex gap-2">
+                  <button disabled={guardandoAccion}
+                    onClick={async () => { setGuardandoAccion(true); await onMarcarConvertido(prospecto.id, causaMarcar?.id || null, fechaMarcar); setGuardandoAccion(false); setMostrarMarcar(false) }}
+                    className="flex-1 py-2 text-xs font-semibold text-white rounded-lg bg-purple-600 hover:bg-purple-700 transition-colors disabled:opacity-50">
+                    {guardandoAccion ? 'Guardando…' : 'Confirmar'}
+                  </button>
+                  <button onClick={() => { setMostrarMarcar(false); setCausaMarcar(null); setFechaMarcar(todayISO) }}
+                    className="px-3 py-2 text-xs text-gray-500 rounded-lg hover:bg-purple-100 transition-colors">Cancelar</button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <div className="flex-1 text-center py-2 text-[11px] rounded-lg bg-gray-100 text-gray-400">
+                  {prospecto.convertido ? 'Convertido a cliente' : 'Inactivo'}
+                </div>
+                {!prospecto.convertido && (
+                  <button onClick={() => setMostrarMarcar(true)}
+                    className="px-3 py-2 text-[11px] font-medium text-purple-700 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors whitespace-nowrap">
+                    Marcar convertido
+                  </button>
+                )}
+                <button
+                  onClick={() => onUpdate(prospecto.id, { estado: 'Activo', convertido: false })}
+                  className="px-3 py-2 text-[11px] font-medium text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors whitespace-nowrap"
+                >
+                  Reactivar
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -835,7 +998,10 @@ function FormNuevoProspecto({ onClose, onGuardar }) {
     origen: '', materia: '', estado: 'Activo',
     proxima_accion: 'Llamar',
     descripcion: '', antecedentes: '', motivo_rechazo: '',
+    cliente_existente_id: null,
   })
+  const [clienteYaExiste, setClienteYaExiste] = useState(false)
+  const [clienteSeleccionado, setClienteSeleccionado] = useState(null)
   const [guardando, setGuardando] = useState(false)
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }))
 
@@ -866,6 +1032,27 @@ function FormNuevoProspecto({ onClose, onGuardar }) {
               <input value={form.nombre} onChange={e => set('nombre', e.target.value)}
                 placeholder="Ej. Juan Pérez Soto"
                 className="w-full px-3 py-2 text-xs border border-gray-200 rounded-lg outline-none focus:border-[#2570ba] focus:ring-1 focus:ring-[#2570ba]/20 transition-all placeholder:text-gray-300" />
+            </div>
+            <div>
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <div onClick={() => { setClienteYaExiste(p => !p); if (clienteYaExiste) { setClienteSeleccionado(null); set('cliente_existente_id', null) } }}
+                  className={`w-8 h-4 rounded-full transition-colors relative flex-shrink-0 ${clienteYaExiste ? 'bg-[#2570ba]' : 'bg-gray-200'}`}>
+                  <span className={`absolute top-0.5 w-3 h-3 bg-white rounded-full shadow transition-all ${clienteYaExiste ? 'left-4' : 'left-0.5'}`}/>
+                </div>
+                <span className="text-[10px] text-gray-500">El cliente ya existe en el sistema</span>
+              </label>
+              {clienteYaExiste && (
+                <div className="mt-2 space-y-2">
+                  <BuscadorClientes placeholder="Buscar cliente existente…"
+                    onSelect={c => { setClienteSeleccionado(c); set('cliente_existente_id', c.id) }} />
+                  {clienteSeleccionado && (
+                    <div className="flex items-center gap-2 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
+                      <span className="text-xs font-medium text-[#1a2e4a]">{clienteSeleccionado.nombre}</span>
+                      <button onClick={() => { setClienteSeleccionado(null); set('cliente_existente_id', null) }} className="ml-auto text-gray-300 hover:text-gray-500"><X size={11}/></button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -1017,26 +1204,52 @@ export default function Prospectos() {
     setProspectos(prev => [mapProspectoRow(data), ...prev])
   }
 
-  const handleConvertir = async (id) => {
+  const handleConvertir = async (id, clienteExistenteId = null) => {
     const prospecto = prospectos.find(p => p.id === id)
     if (!prospecto) return
 
-    // Insertar en clientes
-    const { error: errCliente } = await supabase.from('clientes').insert([{
-      nombre:   prospecto.nombre,
-      telefono: prospecto.telefono || null,
-      email:    prospecto.email    || null,
-      estado:   'Activo',
-    }])
-    if (errCliente) { console.error('[convertir] error insertando cliente:', errCliente.message); return }
+    const vinculadoId = clienteExistenteId || prospecto.cliente_existente_id
 
-    // Marcar prospecto como inactivo (siempre)
-    await supabase.from('prospectos').update({ estado: 'Inactivo' }).eq('id', id)
-    // Marcar convertido=true si la columna existe (ignorar error si no existe)
-    await supabase.from('prospectos').update({ convertido: true }).eq('id', id)
+    if (!vinculadoId) {
+      const { error: errCliente } = await supabase.from('clientes').insert([{
+        nombre:   prospecto.nombre,
+        telefono: prospecto.telefono || null,
+        email:    prospecto.email    || null,
+        estado:   'Activo',
+      }])
+      if (errCliente) { console.error('[convertir] error insertando cliente:', errCliente.message); return }
+    }
+
+    const today = new Date().toISOString().slice(0, 10)
+    await supabase.from('prospectos').update({
+      estado: 'Inactivo',
+      convertido: true,
+      fecha_conversion: today,
+      ...(vinculadoId ? { cliente_existente_id: vinculadoId } : {}),
+    }).eq('id', id)
     setProspectos(p => p.map(x => x.id === id ? { ...x, estado: 'Inactivo', convertido: true } : x))
     setSeleccionado(null)
     navigate('/clientes')
+  }
+
+  const handleVincularCausa = async (id, causaId) => {
+    const today = new Date().toISOString().slice(0, 10)
+    await supabase.from('prospectos').update({
+      estado: 'Inactivo',
+      convertido: true,
+      causa_vinculada_id: causaId,
+      fecha_conversion: today,
+    }).eq('id', id)
+    setProspectos(p => p.map(x => x.id === id ? { ...x, estado: 'Inactivo', convertido: true, causa_vinculada_id: causaId } : x))
+    setSeleccionado(prev => prev?.id === id ? { ...prev, estado: 'Inactivo', convertido: true } : prev)
+  }
+
+  const handleMarcarConvertido = async (id, causaId, fechaConversion) => {
+    const updates = { convertido: true, fecha_conversion: fechaConversion }
+    if (causaId) updates.causa_vinculada_id = causaId
+    await supabase.from('prospectos').update(updates).eq('id', id)
+    setProspectos(p => p.map(x => x.id === id ? { ...x, ...updates } : x))
+    setSeleccionado(prev => prev?.id === id ? { ...prev, ...updates } : prev)
   }
 
   const handleDelete = async () => {
@@ -1235,6 +1448,8 @@ export default function Prospectos() {
           prospecto={seleccionado}
           onClose={() => setSeleccionado(null)}
           onConvertir={handleConvertir}
+          onVincularCausa={handleVincularCausa}
+          onMarcarConvertido={handleMarcarConvertido}
           onUpdate={handleUpdate}
         />
       )}
