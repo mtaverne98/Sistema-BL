@@ -437,6 +437,8 @@ function PanelDetalle({ prospecto, onClose, onConvertir, onVincularCausa, onMarc
   const [duplicado, setDuplicado] = useState(null) // cliente encontrado
   const [mostrarVincular, setMostrarVincular] = useState(false)
   const [causaVincular, setCausaVincular] = useState(null) // { id, rit, ruc, cliente_nombre }
+  const [mostrarVincularCliente, setMostrarVincularCliente] = useState(false)
+  const [clienteVincular, setClienteVincular] = useState(null)
   const [mostrarMarcar, setMostrarMarcar] = useState(false)
   const [causaMarcar, setCausaMarcar] = useState(null)
   const [fechaMarcar, setFechaMarcar] = useState(todayISO)
@@ -558,6 +560,65 @@ function PanelDetalle({ prospecto, onClose, onConvertir, onVincularCausa, onMarc
               </div>
               <button onClick={() => setDuplicado(null)} className="text-[11px] text-gray-400 hover:text-gray-600 transition-colors">Cancelar</button>
             </div>
+          ) : mostrarVincularCliente ? (
+            // Vincular a cliente existente
+            <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 space-y-3">
+              <p className="text-xs font-semibold text-indigo-900">Vincular a cliente existente</p>
+              <BuscadorClientes onSelect={c => setClienteVincular(c)} />
+              {clienteVincular && (
+                <div className="flex items-center gap-2 bg-white border border-indigo-100 rounded-lg px-3 py-2">
+                  <User size={11} className="text-indigo-400 flex-shrink-0" />
+                  <span className="text-xs text-gray-700 font-medium">{clienteVincular.nombre}</span>
+                  <button onClick={() => setClienteVincular(null)} className="ml-auto text-gray-300 hover:text-gray-500"><X size={11}/></button>
+                </div>
+              )}
+              <p className="text-[11px] text-indigo-700">El prospecto quedará marcado como convertido vinculado a este cliente, sin crear uno nuevo.</p>
+              <div className="flex gap-2">
+                <button disabled={!clienteVincular || guardandoAccion}
+                  onClick={async () => {
+                    setGuardandoAccion(true)
+                    await onUpdate(prospecto.id, { cliente_existente_id: clienteVincular.id, convertido: true })
+                    setGuardandoAccion(false)
+                    setMostrarVincularCliente(false)
+                    setClienteVincular(null)
+                  }}
+                  className="flex-1 py-2 text-xs font-semibold text-white rounded-lg bg-indigo-600 hover:bg-indigo-700 transition-colors disabled:opacity-50">
+                  {guardandoAccion ? 'Guardando…' : 'Confirmar vinculación'}
+                </button>
+                <button onClick={() => { setMostrarVincularCliente(false); setClienteVincular(null) }}
+                  className="px-3 py-2 text-xs text-gray-500 rounded-lg hover:bg-indigo-100 transition-colors">Cancelar</button>
+              </div>
+            </div>
+          ) : mostrarMarcar && !inactivo ? (
+            // Marcar como convertido (desde estado activo)
+            <div className="bg-purple-50 border border-purple-200 rounded-xl p-4 space-y-3">
+              <p className="text-xs font-semibold text-purple-900">Marcar como convertido</p>
+              <div>
+                <label className="block text-[10px] text-gray-500 mb-1">Causa vinculada (opcional)</label>
+                <BuscadorCausas onSelect={c => setCausaMarcar(c)} />
+                {causaMarcar && (
+                  <div className="flex items-center gap-2 mt-1.5 bg-white border border-purple-100 rounded-lg px-3 py-2">
+                    <span className="font-mono font-semibold text-violet-700 text-xs">{causaMarcar.rit || causaMarcar.ruc}</span>
+                    <span className="text-xs text-gray-500">{causaMarcar.cliente_nombre}</span>
+                    <button onClick={() => setCausaMarcar(null)} className="ml-auto text-gray-300 hover:text-gray-500"><X size={11}/></button>
+                  </div>
+                )}
+              </div>
+              <div>
+                <label className="block text-[10px] text-gray-500 mb-1">Fecha de conversión</label>
+                <input type="date" value={fechaMarcar} onChange={e => setFechaMarcar(e.target.value)}
+                  className="w-full px-3 py-2 text-xs border border-gray-200 rounded-lg outline-none focus:border-purple-400 transition-all bg-white" />
+              </div>
+              <div className="flex gap-2">
+                <button disabled={guardandoAccion}
+                  onClick={async () => { setGuardandoAccion(true); await onMarcarConvertido(prospecto.id, causaMarcar?.id || null, fechaMarcar); setGuardandoAccion(false); setMostrarMarcar(false) }}
+                  className="flex-1 py-2 text-xs font-semibold text-white rounded-lg bg-purple-600 hover:bg-purple-700 transition-colors disabled:opacity-50">
+                  {guardandoAccion ? 'Guardando…' : 'Confirmar'}
+                </button>
+                <button onClick={() => { setMostrarMarcar(false); setCausaMarcar(null); setFechaMarcar(todayISO) }}
+                  className="px-3 py-2 text-xs text-gray-500 rounded-lg hover:bg-purple-100 transition-colors">Cancelar</button>
+              </div>
+            </div>
           ) : mostrarVincular ? (
             // Vincular a causa existente
             <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 space-y-3">
@@ -622,6 +683,14 @@ function PanelDetalle({ prospecto, onClose, onConvertir, onVincularCausa, onMarc
                 <button onClick={() => setMostrarVincular(true)}
                   className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium text-[#1a2e4a] bg-[#1a2e4a]/5 hover:bg-[#1a2e4a]/10 rounded-lg transition-colors">
                   <Scale size={11} />Vincular a causa existente
+                </button>
+                <button onClick={() => setMostrarVincularCliente(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors">
+                  <User size={11} />Vincular a cliente existente
+                </button>
+                <button onClick={() => setMostrarMarcar(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium text-purple-700 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors">
+                  <CheckSquare size={11} />Marcar como convertido
                 </button>
                 {prospecto.telefono && (
                   <a href={`tel:${prospecto.telefono}`}
