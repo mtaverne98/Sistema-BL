@@ -1341,7 +1341,7 @@ export default function Prospectos() {
   }
 
   const handleMarcarConvertido = async (id, causaId, fechaConversion) => {
-    const updates = { convertido: true, fecha_conversion: fechaConversion }
+    const updates = { convertido: true, estado: 'Inactivo', fecha_conversion: fechaConversion }
     if (causaId) updates.causa_vinculada_id = causaId
     await supabase.from('prospectos').update(updates).eq('id', id)
     setProspectos(p => p.map(x => x.id === id ? { ...x, ...updates } : x))
@@ -1358,6 +1358,8 @@ export default function Prospectos() {
 
   const handleUpdate = async (id, cambios) => {
     if (cambios.nombre) cambios = { ...cambios, nombre: cambios.nombre.trim().toUpperCase() }
+    // Si se marca convertido, asegurar que el estado sea Inactivo
+    if (cambios.convertido === true && !cambios.estado) cambios = { ...cambios, estado: 'Inactivo' }
     setProspectos(p => p.map(x => x.id === id ? { ...x, ...cambios } : x))
     setSeleccionado(prev => prev?.id === id ? { ...prev, ...cambios } : prev)
     const dbCambios = Object.fromEntries(
@@ -1384,7 +1386,7 @@ export default function Prospectos() {
       return matchQ &&
         (!filtroOrigen      || p.origen  === filtroOrigen) &&
         (!filtroMateria     || p.materia === filtroMateria) &&
-        (!filtroEstado      || p.estado  === filtroEstado) &&
+        (!filtroEstado      || (p.estado === filtroEstado && !(filtroEstado === 'Activo' && p.convertido))) &&
         (!filtroNuevos      || (p.created_at && new Date(p.created_at) >= inicioSemana)) &&
         (!filtroConvertidos || p.convertido === true)
     }).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
