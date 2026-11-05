@@ -1305,7 +1305,7 @@ export default function Prospectos() {
     }
 
     // Crear causa vinculada al cliente (nueva o existente)
-    await supabase.from('causas').insert([{
+    const { error: errCausa } = await supabase.from('causas').insert([{
       cliente_id:     clienteId,
       cliente_nombre: clienteNombre,
       area:           MATERIA_TO_AREA[prospecto.materia] || 'Penal',
@@ -1313,6 +1313,7 @@ export default function Prospectos() {
       estado:         'Abierta',
       parte:          'Imputado',
     }])
+    if (errCausa) { console.error('[convertir] error insertando causa:', errCausa.message, errCausa.details, errCausa.hint); return }
 
     const today = new Date().toISOString().slice(0, 10)
     await supabase.from('prospectos').update({
