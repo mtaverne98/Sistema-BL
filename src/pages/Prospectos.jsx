@@ -600,7 +600,7 @@ function PanelDetalle({ prospecto, onClose, onConvertir, onVincularCausa, onMarc
                     <label className="block text-[10px] text-gray-500 mb-1">Área</label>
                     <select value={formNuevaCausa.area} onChange={e => setFormNuevaCausa(f => ({ ...f, area: e.target.value }))}
                       className="w-full px-3 py-2 text-xs border border-gray-200 rounded-lg outline-none focus:border-indigo-400 bg-white">
-                      {['Penal','Civil','Familia','Laboral','JPL','Administrativo'].map(a => <option key={a}>{a}</option>)}
+                      {['Penal','Civil','Familia','Laboral','JPL','Administrativo','Otro'].map(a => <option key={a}>{a}</option>)}
                     </select>
                   </div>
                   <div>
