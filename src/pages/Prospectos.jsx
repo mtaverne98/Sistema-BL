@@ -1279,25 +1279,52 @@ export default function Prospectos() {
 
     const vinculadoId = clienteExistenteId || prospecto.cliente_existente_id
 
-    if (!vinculadoId) {
-      const { error: errCliente } = await supabase.from('clientes').insert([{
+    const MATERIA_TO_AREA = {
+      'Penal': 'Penal', 'Civil': 'Civil', 'Familia': 'Familia',
+      'Laboral': 'Laboral', 'Policía Local': 'JPL', 'Administrativo': 'Administrativo',
+    }
+
+    let clienteId   = vinculadoId
+    let clienteNombre = ''
+
+    if (vinculadoId) {
+      // Obtener nombre del cliente existente para la causa
+      const { data: cl } = await supabase.from('clientes').select('nombre').eq('id', vinculadoId).single()
+      clienteNombre = cl?.nombre || prospecto.nombre
+    } else {
+      // Crear cliente nuevo y recuperar su id
+      const { data: nuevo, error: errCliente } = await supabase.from('clientes').insert([{
         nombre:   prospecto.nombre,
         telefono: prospecto.telefono || null,
         email:    prospecto.email    || null,
         estado:   'Activo',
-      }])
+      }]).select().single()
       if (errCliente) { console.error('[convertir] error insertando cliente:', errCliente.message); return }
+      clienteId     = nuevo.id
+      clienteNombre = nuevo.nombre
     }
+
+    // Crear causa mínima vinculada al cliente
+    await supabase.from('causas').insert([{
+      cliente_id:     clienteId,
+      cliente_nombre: clienteNombre,
+      area:           MATERIA_TO_AREA[prospecto.materia] || 'Penal',
+      materia:        prospecto.descripcion?.slice(0, 100) || null,
+      estado:         'Abierta',
+      parte:          'Imputado',
+    }])
 
     const today = new Date().toISOString().slice(0, 10)
     await supabase.from('prospectos').update({
-      estado: 'Inactivo',
-      convertido: true,
-      fecha_conversion: today,
-      ...(vinculadoId ? { cliente_existente_id: vinculadoId } : {}),
+      estado:            'Inactivo',
+      convertido:        true,
+      fecha_conversion:  today,
+      cliente_existente_id: clienteId,
     }).eq('id', id)
     setProspectos(p => p.map(x => x.id === id ? { ...x, estado: 'Inactivo', convertido: true } : x))
     setSeleccionado(null)
+    // Navegar al perfil del cliente (sesión de Clientes restaura por selectedId)
+    try { sessionStorage.setItem('ps.clientes', JSON.stringify({ selectedId: clienteId })) } catch {}
     navigate('/clientes')
   }
 
