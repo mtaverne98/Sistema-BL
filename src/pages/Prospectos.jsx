@@ -7,7 +7,7 @@ import {
   Clock, Pencil, UserPlus, TrendingUp,
   CheckSquare, MessageSquare, FileText,
   ArrowUpRight, Users, CheckCircle,
-  User, Calendar, Scale, ChevronDown, Trash2,
+  User, Calendar, Scale, ChevronDown, ChevronLeft, Trash2,
 } from 'lucide-react'
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal'
 
@@ -439,6 +439,8 @@ function PanelDetalle({ prospecto, onClose, onConvertir, onVincularCausa, onMarc
   const [causaVincular, setCausaVincular] = useState(null) // { id, rit, ruc, cliente_nombre }
   const [mostrarVincularCliente, setMostrarVincularCliente] = useState(false)
   const [clienteVincular, setClienteVincular] = useState(null)
+  const [pasoVincularCliente, setPasoVincularCliente] = useState(1) // 1=elegir cliente, 2=definir causa
+  const [formNuevaCausa, setFormNuevaCausa] = useState({ area: 'Penal', materia: '', parte: 'Imputado' })
   const [mostrarMarcar, setMostrarMarcar] = useState(false)
   const [causaMarcar, setCausaMarcar] = useState(null)
   const [fechaMarcar, setFechaMarcar] = useState(todayISO)
@@ -561,33 +563,93 @@ function PanelDetalle({ prospecto, onClose, onConvertir, onVincularCausa, onMarc
               <button onClick={() => setDuplicado(null)} className="text-[11px] text-gray-400 hover:text-gray-600 transition-colors">Cancelar</button>
             </div>
           ) : mostrarVincularCliente ? (
-            // Vincular a cliente existente
+            // Vincular a cliente existente — dos pasos
             <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 space-y-3">
-              <p className="text-xs font-semibold text-indigo-900">Vincular a cliente existente</p>
-              <BuscadorClientes onSelect={c => setClienteVincular(c)} />
-              {clienteVincular && (
-                <div className="flex items-center gap-2 bg-white border border-indigo-100 rounded-lg px-3 py-2">
-                  <User size={11} className="text-indigo-400 flex-shrink-0" />
-                  <span className="text-xs text-gray-700 font-medium">{clienteVincular.nombre}</span>
-                  <button onClick={() => setClienteVincular(null)} className="ml-auto text-gray-300 hover:text-gray-500"><X size={11}/></button>
-                </div>
+              {pasoVincularCliente === 1 ? (
+                <>
+                  <p className="text-xs font-semibold text-indigo-900">Vincular a cliente existente — paso 1 de 2</p>
+                  <BuscadorClientes onSelect={c => setClienteVincular(c)} />
+                  {clienteVincular && (
+                    <div className="flex items-center gap-2 bg-white border border-indigo-100 rounded-lg px-3 py-2">
+                      <User size={11} className="text-indigo-400 flex-shrink-0" />
+                      <span className="text-xs text-gray-700 font-medium">{clienteVincular.nombre}</span>
+                      <button onClick={() => setClienteVincular(null)} className="ml-auto text-gray-300 hover:text-gray-500"><X size={11}/></button>
+                    </div>
+                  )}
+                  <div className="flex gap-2">
+                    <button disabled={!clienteVincular}
+                      onClick={() => {
+                        const MATERIA_TO_AREA = { 'Penal':'Penal','Civil':'Civil','Familia':'Familia','Laboral':'Laboral','Policía Local':'JPL','Administrativo':'Administrativo' }
+                        setFormNuevaCausa({ area: MATERIA_TO_AREA[prospecto.materia] || 'Penal', materia: prospecto.descripcion?.slice(0,100) || '', parte: 'Imputado' })
+                        setPasoVincularCliente(2)
+                      }}
+                      className="flex-1 py-2 text-xs font-semibold text-white rounded-lg bg-indigo-600 hover:bg-indigo-700 transition-colors disabled:opacity-50">
+                      Continuar →
+                    </button>
+                    <button onClick={() => { setMostrarVincularCliente(false); setClienteVincular(null); setPasoVincularCliente(1) }}
+                      className="px-3 py-2 text-xs text-gray-500 rounded-lg hover:bg-indigo-100 transition-colors">Cancelar</button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => setPasoVincularCliente(1)} className="text-indigo-400 hover:text-indigo-700"><ChevronLeft size={14}/></button>
+                    <p className="text-xs font-semibold text-indigo-900">Nueva causa para <span className="text-indigo-600">{clienteVincular?.nombre}</span> — paso 2 de 2</p>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-gray-500 mb-1">Área</label>
+                    <select value={formNuevaCausa.area} onChange={e => setFormNuevaCausa(f => ({ ...f, area: e.target.value }))}
+                      className="w-full px-3 py-2 text-xs border border-gray-200 rounded-lg outline-none focus:border-indigo-400 bg-white">
+                      {['Penal','Civil','Familia','Laboral','JPL','Administrativo'].map(a => <option key={a}>{a}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-gray-500 mb-1">Materia / descripción</label>
+                    <input value={formNuevaCausa.materia} onChange={e => setFormNuevaCausa(f => ({ ...f, materia: e.target.value }))}
+                      placeholder="Ej: Lesiones graves, Art. 397 CP…"
+                      className="w-full px-3 py-2 text-xs border border-gray-200 rounded-lg outline-none focus:border-indigo-400 bg-white" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-gray-500 mb-1">Calidad en que actúa</label>
+                    <select value={formNuevaCausa.parte} onChange={e => setFormNuevaCausa(f => ({ ...f, parte: e.target.value }))}
+                      className="w-full px-3 py-2 text-xs border border-gray-200 rounded-lg outline-none focus:border-indigo-400 bg-white">
+                      <option>Imputado</option>
+                      <option>Querellante</option>
+                      <option>Víctima</option>
+                      <option>Demandante</option>
+                      <option>Demandado</option>
+                    </select>
+                  </div>
+                  <div className="flex gap-2">
+                    <button disabled={guardandoAccion}
+                      onClick={async () => {
+                        setGuardandoAccion(true)
+                        const { error: errC } = await supabase.from('causas').insert([{
+                          cliente_id: clienteVincular.id,
+                          cliente_nombre: clienteVincular.nombre,
+                          area: formNuevaCausa.area,
+                          materia: formNuevaCausa.materia || null,
+                          parte: formNuevaCausa.parte,
+                          estado: 'Abierta',
+                        }])
+                        if (errC) { console.error('[vincular-cliente] causa:', errC.message); setGuardandoAccion(false); return }
+                        const today = new Date().toISOString().slice(0, 10)
+                        await onUpdate(prospecto.id, { estado: 'Inactivo', convertido: true, fecha_conversion: today, cliente_existente_id: clienteVincular.id })
+                        setGuardandoAccion(false)
+                        setMostrarVincularCliente(false)
+                        setClienteVincular(null)
+                        setPasoVincularCliente(1)
+                        try { sessionStorage.setItem('ps.clientes', JSON.stringify({ selectedId: clienteVincular.id })) } catch {}
+                        navigate('/clientes')
+                      }}
+                      className="flex-1 py-2 text-xs font-semibold text-white rounded-lg bg-indigo-600 hover:bg-indigo-700 transition-colors disabled:opacity-50">
+                      {guardandoAccion ? 'Guardando…' : 'Crear causa y convertir'}
+                    </button>
+                    <button onClick={() => { setMostrarVincularCliente(false); setClienteVincular(null); setPasoVincularCliente(1) }}
+                      className="px-3 py-2 text-xs text-gray-500 rounded-lg hover:bg-indigo-100 transition-colors">Cancelar</button>
+                  </div>
+                </>
               )}
-              <p className="text-[11px] text-indigo-700">El prospecto quedará marcado como convertido vinculado a este cliente, sin crear uno nuevo.</p>
-              <div className="flex gap-2">
-                <button disabled={!clienteVincular || guardandoAccion}
-                  onClick={async () => {
-                    setGuardandoAccion(true)
-                    await onUpdate(prospecto.id, { cliente_existente_id: clienteVincular.id, convertido: true })
-                    setGuardandoAccion(false)
-                    setMostrarVincularCliente(false)
-                    setClienteVincular(null)
-                  }}
-                  className="flex-1 py-2 text-xs font-semibold text-white rounded-lg bg-indigo-600 hover:bg-indigo-700 transition-colors disabled:opacity-50">
-                  {guardandoAccion ? 'Guardando…' : 'Confirmar vinculación'}
-                </button>
-                <button onClick={() => { setMostrarVincularCliente(false); setClienteVincular(null) }}
-                  className="px-3 py-2 text-xs text-gray-500 rounded-lg hover:bg-indigo-100 transition-colors">Cancelar</button>
-              </div>
             </div>
           ) : mostrarMarcar && !inactivo ? (
             // Marcar como convertido (desde estado activo)
