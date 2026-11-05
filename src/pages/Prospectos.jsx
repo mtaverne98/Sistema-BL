@@ -1304,17 +1304,15 @@ export default function Prospectos() {
       clienteNombre = nuevo.nombre
     }
 
-    // Solo crear causa si es cliente nuevo (si ya existe, ya tiene sus propias causas)
-    if (!vinculadoId) {
-      await supabase.from('causas').insert([{
-        cliente_id:     clienteId,
-        cliente_nombre: clienteNombre,
-        area:           MATERIA_TO_AREA[prospecto.materia] || 'Penal',
-        materia:        prospecto.descripcion?.slice(0, 100) || null,
-        estado:         'Abierta',
-        parte:          'Imputado',
-      }])
-    }
+    // Crear causa vinculada al cliente (nueva o existente)
+    await supabase.from('causas').insert([{
+      cliente_id:     clienteId,
+      cliente_nombre: clienteNombre,
+      area:           MATERIA_TO_AREA[prospecto.materia] || 'Penal',
+      materia:        prospecto.descripcion?.slice(0, 100) || null,
+      estado:         'Abierta',
+      parte:          'Imputado',
+    }])
 
     const today = new Date().toISOString().slice(0, 10)
     await supabase.from('prospectos').update({
