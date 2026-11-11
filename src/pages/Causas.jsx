@@ -22,6 +22,7 @@ import InlineField from '../components/InlineField'
 import CargaMasivaModal from '../components/CargaMasivaModal'
 import CopyValue from '../components/CopyValue'
 import { PendientesPanel } from '../components/PendientesPanel'
+import PendientesTab from './Pendientes'
 import { SolicitudesTable } from './SIAU'
 import { MovimientosTable } from './PJUD'
 import useResizableColumns from '../hooks/useResizableColumns'
@@ -3531,30 +3532,11 @@ function CausaView({ causa, onClose, onEdit, onDelete, onUpdate, onNavigateToCli
 
         {/* PENDIENTES */}
         {tab === 'pendientes' && (
-          <div className="px-5 py-4 h-full">
-            <PendientesPanel
-              variant="section"
-              simpleMode
-              parents={pendienteParents}
-              childrenByParent={pendChildrenByParent}
-              resolvingIds={resolvingPendIds}
-              input={pendienteInput}
-              onInputChange={setPendienteInput}
-              onAddPendiente={handleAddPendiente}
-              editingId={editingPendId}
-              editDraft={editPendDraft}
-              onEditDraftChange={setEditPendDraft}
-              onToggle={handleTogglePendiente}
-              onUndo={handleUndoPendiente}
-              onStartEdit={p => { setEditingPendId(p.id); setEditPendDraft(p.texto) }}
-              onSaveEdit={handleSaveEditPendiente}
-              onCancelEdit={() => setEditingPendId(null)}
-              addingChildParentId={addingPendChildId}
-              childInput={pendChildInput}
-              onStartAddChild={id => { setAddingPendChildId(id); setPendChildInput('') }}
-              onChildInputChange={setPendChildInput}
-              onAddChild={handleAddPendChild}
-              onCancelAddChild={() => { setAddingPendChildId(null); setPendChildInput('') }}
+          <div className="px-5 py-4">
+            <PendientesTab
+              causaId={causa.id}
+              causaFija={{ id: causa.id, rit: causa.rit, ruc: causa.ruc, cliente_nombre: causa.cliente_nombre }}
+              mostrarEncabezado={false}
             />
           </div>
         )}

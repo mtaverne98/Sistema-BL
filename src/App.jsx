@@ -21,6 +21,7 @@ import Tareas from './pages/Tareas'
 import Reuniones from './pages/Reuniones'
 import Entrevistas from './pages/Entrevistas'
 import Diligencias from './pages/Diligencias'
+import Pendientes from './pages/Pendientes'
 import SeguimientoSemanal from './pages/SeguimientoSemanal'
 import Gastos from './pages/Gastos'
 import Apuntes from './pages/Apuntes'
@@ -59,6 +60,7 @@ function AppInner() {
             <Route path="calendario"     element={<Calendario />} />
             <Route path="plazos"         element={<Plazos />} />
             <Route path="pjud"           element={<PJUD />} />
+            <Route path="pendientes"     element={<Pendientes />} />
             <Route path="siau"           element={<SIAU />} />
             <Route path="revision"       element={<RevisionCausas />} />
             <Route path="mi-semana"     element={<MiSemana />} />
