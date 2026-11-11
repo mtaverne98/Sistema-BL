@@ -297,6 +297,11 @@ export default function Pendientes({ causaId: causaIdProp, causaFija, mostrarEnc
   const [filtroAsig, setFiltroAsig] = useState('Todos')
   const [filtroTipo, setFiltroTipo] = useState('Todos')
 
+  // Captura rápida
+  const [rapido, setRapido] = useState({ descripcion: '', drive_url: '', tipo: 'Gestión', asignada: 'MT' })
+  const [rapidoError, setRapidoError] = useState('')
+  const rapidoRef = useRef(null)
+
   // Cargar
   useEffect(() => {
     setCargando(true)
@@ -330,6 +335,26 @@ export default function Pendientes({ causaId: causaIdProp, causaFija, mostrarEnc
     const listo = !p.listo
     setPendientes(prev => prev.map(x => x.id === p.id ? { ...x, listo } : x))
     await supabase.from('pendientes').update({ listo }).eq('id', p.id)
+  }
+
+  async function handleRapido() {
+    if (!rapido.descripcion.trim()) { setRapidoError('descripcion'); return }
+    setRapidoError('')
+    const payload = {
+      descripcion: rapido.descripcion.trim(),
+      tipo: rapido.tipo,
+      asignada: rapido.asignada,
+      drive_url: rapido.drive_url.trim() || null,
+      causa_id: null,
+      fecha_limite: null,
+      listo: false,
+    }
+    const { data, error } = await supabase.from('pendientes').insert([payload]).select('*, causas(id, rit, ruc, cliente_nombre, cliente_id)').single()
+    if (!error && data) {
+      setPendientes(prev => [...prev, { ...data, _causa: data.causas || null }])
+      setRapido(r => ({ ...r, descripcion: '', drive_url: '' }))
+      rapidoRef.current?.focus()
+    }
   }
 
   function handleCausaClick(causa) {
@@ -437,6 +462,51 @@ export default function Pendientes({ causaId: causaIdProp, causaFija, mostrarEnc
             style={{ backgroundColor: '#2570BA' }}>
             <Plus size={12}/> Nuevo pendiente
           </button>
+        </div>
+
+        {/* Barra captura rápida */}
+        <div className="px-6 pt-4 pb-3 border-b border-gray-100">
+          <div className="flex items-center gap-2">
+            <input
+              ref={rapidoRef}
+              value={rapido.descripcion}
+              onChange={e => { setRapido(r => ({ ...r, descripcion: e.target.value })); setRapidoError('') }}
+              onKeyDown={e => { if (e.key === 'Enter') handleRapido() }}
+              placeholder="Descripción…"
+              className={`flex-1 px-3 py-2 text-xs border rounded-lg outline-none focus:border-[#2570ba] transition-all ${
+                rapidoError === 'descripcion' ? 'border-red-400 bg-red-50' : 'border-gray-200'
+              }`}
+            />
+            <input
+              value={rapido.drive_url}
+              onChange={e => setRapido(r => ({ ...r, drive_url: e.target.value }))}
+              onKeyDown={e => { if (e.key === 'Enter') handleRapido() }}
+              placeholder="Link de Drive…"
+              className="w-44 px-3 py-2 text-xs border border-gray-200 rounded-lg outline-none focus:border-[#2570ba] transition-all"
+            />
+            <select value={rapido.tipo} onChange={e => setRapido(r => ({ ...r, tipo: e.target.value }))}
+              className="px-2 py-2 text-xs border border-gray-200 rounded-lg outline-none focus:border-[#2570ba] bg-white">
+              {TIPOS.map(t => <option key={t}>{t}</option>)}
+            </select>
+            <div className="flex rounded-lg border border-gray-200 overflow-hidden">
+              {ASIGNADAS.map(a => (
+                <button key={a} type="button"
+                  onClick={() => setRapido(r => ({ ...r, asignada: a }))}
+                  className={`px-3 py-2 text-xs font-semibold transition-colors ${
+                    rapido.asignada === a
+                      ? a === 'MT' ? 'bg-orange-500 text-white' : 'bg-purple-600 text-white'
+                      : 'text-gray-500 hover:bg-gray-50'
+                  }`}>
+                  {a}
+                </button>
+              ))}
+            </div>
+            <button onClick={handleRapido}
+              className="flex items-center gap-1 px-3 py-2 text-xs font-semibold text-white rounded-lg transition-colors flex-shrink-0"
+              style={{ backgroundColor: '#2570BA' }}>
+              <Plus size={12}/> Agregar
+            </button>
+          </div>
         </div>
 
         <div className="px-6 pt-5">
